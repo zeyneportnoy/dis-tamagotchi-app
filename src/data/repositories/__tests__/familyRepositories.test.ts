@@ -109,6 +109,34 @@ describe('family repositories', () => {
     rmSync(directory, { recursive: true, force: true });
   });
 
+  it('allows duplicate nicknames in one family and keeps profile identity distinct', async () => {
+    const database = new NodeSQLiteDatabase();
+    await migrateDatabase(database as unknown as SQLiteDatabase);
+    const { families, profiles } = repositories(database);
+    const family = await families.createLocal();
+
+    const first = await profiles.create({
+      familyId: family.id,
+      nickname: 'Ege',
+      ageBand: '6_8',
+      avatarId: 'cheerful-incisor',
+    });
+    const second = await profiles.create({
+      familyId: family.id,
+      nickname: 'Ege',
+      ageBand: '9_10',
+      avatarId: 'sleepy-molar',
+    });
+
+    expect(first.id).not.toBe(second.id);
+    const listedProfiles = await profiles.list(family.id);
+    expect(listedProfiles).toHaveLength(2);
+    expect(listedProfiles).toEqual(expect.arrayContaining([first, second]));
+    await profiles.selectActive(first.id);
+    await expect(profiles.getActive()).resolves.toEqual(first);
+    database.close();
+  });
+
   it('enforces the family foreign key', async () => {
     const database = new NodeSQLiteDatabase();
     await migrateDatabase(database as unknown as SQLiteDatabase);

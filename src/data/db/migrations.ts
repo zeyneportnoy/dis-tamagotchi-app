@@ -33,4 +33,9 @@ export const migrations: readonly Migration[] = [
       `INSERT INTO active_profile(singleton, child_profile_id) VALUES (1, NULL);`,
     ],
   },
+  {
+    version: 2,
+    name: 'allow_duplicate_profile_nicknames',
+    statements: ['DROP INDEX IF EXISTS child_profiles_family_nickname_uq;'],
+  },
 ];

@@ -3,6 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { NodeSQLiteDatabase } from '@/test/NodeSQLiteDatabase';
 
 import { migrateDatabase } from '../database';
+import { migrations } from '../migrations';
 
 jest.mock('expo-sqlite', () => ({}));
 
@@ -29,7 +30,59 @@ describe('M1 migrations', () => {
     const migrations = await database.getAllAsync<{ version: number }>(
       'SELECT version FROM schema_migrations',
     );
-    expect(migrations).toEqual([{ version: 1 }]);
+    expect(migrations).toEqual([{ version: 1 }, { version: 2 }]);
+    database.close();
+  });
+
+  it('preserves existing profiles when removing nickname uniqueness', async () => {
+    const database = new NodeSQLiteDatabase();
+    const initialMigration = migrations[0];
+    if (!initialMigration) throw new Error('Migration 1 is required');
+
+    await database.execAsync('PRAGMA foreign_keys = ON;');
+    await database.execAsync(
+      'CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY NOT NULL, name TEXT NOT NULL, applied_at TEXT NOT NULL);',
+    );
+    for (const statement of initialMigration.statements) await database.execAsync(statement);
+    await database.runAsync(
+      'INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)',
+      initialMigration.version,
+      initialMigration.name,
+      '2026-08-02T12:00:00.000Z',
+    );
+    await database.runAsync(
+      `INSERT INTO families (id, created_at, locale, timezone)
+       VALUES (?, ?, ?, ?)`,
+      'family-1',
+      '2026-08-02T12:00:00.000Z',
+      'tr',
+      'Europe/Istanbul',
+    );
+    await database.runAsync(
+      `INSERT INTO child_profiles
+        (id, family_id, nickname, age_band, avatar_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      'profile-1',
+      'family-1',
+      'Ege',
+      '6_8',
+      'cheerful-incisor',
+      '2026-08-02T12:00:00.000Z',
+    );
+
+    await migrateDatabase(database as unknown as SQLiteDatabase);
+    await migrateDatabase(database as unknown as SQLiteDatabase);
+
+    await expect(
+      database.getAllAsync<{ id: string; nickname: string }>(
+        'SELECT id, nickname FROM child_profiles ORDER BY id',
+      ),
+    ).resolves.toEqual([{ id: 'profile-1', nickname: 'Ege' }]);
+    await expect(
+      database.getAllAsync<{ version: number }>(
+        'SELECT version FROM schema_migrations ORDER BY version',
+      ),
+    ).resolves.toEqual([{ version: 1 }, { version: 2 }]);
     database.close();
   });
 });
