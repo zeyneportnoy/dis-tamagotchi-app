@@ -48,7 +48,7 @@ Yerel lockfile üretimi ve GitHub Actions kurulumu Node 22.13.0 ile gelen kararl
 
 ## 2026-08-02 — ADR-012: M1 aile/profil şeması ve aktif profil
 
-Migration 1, bağlayıcı `families` ve `child_profiles` tablolarına ek olarak tek satırlı `active_profile` uygulama durumu tablosu kurar. Böylece aktif seçim AsyncStorage gibi ikinci bir kaynak yerine aynı transaction destekli SQLite kaynağında kalır. Profil FK’sı `ON DELETE CASCADE`, aktif seçim FK’sı `ON DELETE SET NULL` kullanır. Aynı ailede takma adlar büyük/küçük harfe duyarsız unique’tir; profil sayısına uygulama limiti konmaz ve en az üç profil desteklenir.
+Migration 1, bağlayıcı `families` ve `child_profiles` tablolarına ek olarak tek satırlı `active_profile` uygulama durumu tablosu kurar. Böylece aktif seçim AsyncStorage gibi ikinci bir kaynak yerine aynı transaction destekli SQLite kaynağında kalır. Profil FK’sı `ON DELETE CASCADE`, aktif seçim FK’sı `ON DELETE SET NULL` kullanır. Profil sayısına uygulama limiti konmaz ve en az üç profil desteklenir. Takma ad kimlik değildir; aynı ailede tekrar edebilir.
 
 ## 2026-08-02 — ADR-013: Takma ad ve onboarding veri minimizasyonu
 
@@ -73,3 +73,7 @@ Quality workflow’unun varsayılan `github.token` değeri yalnızca `contents: 
 ## 2026-08-02 — ADR-018: PR secret scan için tam Git geçmişi
 
 Quality workflow’undaki `actions/checkout@v4`, `fetch-depth: 0` ile tüm Git geçmişini indirir. Gitleaks böylece pull request taban ve baş commit’leri arasındaki aralığı çözebilir; sığ checkout nedeniyle kısmi tarama yapılmaz. Secret scan, minimum salt-okunur izinler ve varsayılan `github.token` ile çalışmaya devam eder.
+
+## 2026-08-02 — ADR-019: Çocuk takma adları benzersiz değildir
+
+Takma ad yalnızca çocuk arayüzünde kullanılan, veri minimizasyonuna uygun bir hitap değeridir ve profil kimliği değildir. Aynı ailede birden fazla çocuk aynı takma adı kullanabilir. Geçmiş kurulumları ve mevcut verileri korumak için Migration 1 değiştirilmez; ileri yönlü Migration 2 yalnızca `child_profiles_family_nickname_uq` index’ini kaldırır.
