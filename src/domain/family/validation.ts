@@ -1,0 +1,27 @@
+import { z } from 'zod';
+
+export const NICKNAME_MAX_LENGTH = 20;
+
+export const ageBandSchema = z.enum(['6_8', '9_10']);
+export const starterAvatarSchema = z.enum(['cheerful-incisor', 'sleepy-molar', 'brave-canine']);
+export const nicknameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(NICKNAME_MAX_LENGTH)
+  .refine((value) => !/[\r\n\t]/.test(value));
+
+export const createChildProfileSchema = z.object({
+  familyId: z.string().uuid(),
+  nickname: nicknameSchema,
+  ageBand: ageBandSchema,
+  avatarId: starterAvatarSchema,
+});
+
+export const updateChildProfileSchema = z
+  .object({
+    nickname: nicknameSchema.optional(),
+    ageBand: ageBandSchema.optional(),
+    avatarId: starterAvatarSchema.optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0);

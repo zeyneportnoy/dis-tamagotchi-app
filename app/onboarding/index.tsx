@@ -10,7 +10,10 @@ export default function WelcomeScreen() {
     <Screen testID="welcome-screen">
       <Text variant="title">{t('welcome.title')}</Text>
       <Text>{t('welcome.body')}</Text>
-      <Button label={t('welcome.continue')} onPress={() => router.replace('/(child)')} />
+      <Button
+        label={t('welcome.continue')}
+        onPress={() => router.push('/onboarding/accountless')}
+      />
     </Screen>
   );
 }

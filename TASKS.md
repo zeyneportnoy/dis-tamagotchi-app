@@ -9,12 +9,19 @@
 - [x] SQLite migration altyapısı ve health-check
 - [x] Kapalı feature flag’ler
 - [x] Test, lint, formatter, typecheck ve CI
-- [ ] Gerçek iOS simulator smoke — Xcode/Simulator ortamı gerekir
+- [x] Gerçek iOS Simulator smoke
 - [ ] Gerçek Android emulator smoke — Android SDK/emulator ortamı gerekir
 
 ## M1 — Yerel veri ve aile kurulumu
 
-- [ ] Başlatılmadı; kullanıcı onayı bekleniyor.
+- [x] Migration 1: `families`, `child_profiles` ve aktif profil kalıcılığı
+- [x] Transaction kullanan repository ve family/profile use-case’leri
+- [x] Zod input doğrulaması ve UI view model sınırı
+- [x] Kısa Türkçe onboarding: hesapsız kullanım → profil onayı
+- [x] Profil varsa Child Home bootstrap yönlendirmesi
+- [x] Değişken toplama sorulu temel ebeveyn kapısı
+- [x] Migration, repository, kalıcılık, route ve erişilebilirlik testleri
+- [x] Dokümantasyon, tam kalite kapıları ve iOS Simulator akış doğrulaması
 
 ## Açık riskler / teknik borç
 

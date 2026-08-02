@@ -3,8 +3,10 @@ import * as SQLite from 'expo-sqlite';
 import { migrations } from './migrations';
 
 const DATABASE_NAME = 'dis-tamagotchi.db';
+let databasePromise: Promise<SQLite.SQLiteDatabase> | undefined;
 
 export async function migrateDatabase(database: SQLite.SQLiteDatabase): Promise<void> {
+  await database.execAsync('PRAGMA foreign_keys = ON;');
   await database.execAsync(
     'CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY NOT NULL, name TEXT NOT NULL, applied_at TEXT NOT NULL);',
   );
@@ -34,7 +36,12 @@ export async function checkDatabaseHealth(database: SQLite.SQLiteDatabase): Prom
 }
 
 export async function initializeDatabase(): Promise<void> {
-  const database = await SQLite.openDatabaseAsync(DATABASE_NAME);
+  const database = await getDatabase();
   await migrateDatabase(database);
   if (!(await checkDatabaseHealth(database))) throw new Error('Database health check failed');
+}
+
+export function getDatabase(): Promise<SQLite.SQLiteDatabase> {
+  databasePromise ??= SQLite.openDatabaseAsync(DATABASE_NAME);
+  return databasePromise;
 }
