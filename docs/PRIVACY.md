@@ -1,15 +1,17 @@
 # Gizlilik ve Çocuk Güvenliği
 
-## M0 veri davranışı
+## M1 veri davranışı
 
-M0 kişisel veri toplamaz. Kamera, mikrofon, hassas konum, kişiler, reklam kimliği, çocuk e-postası, doğum tarihi ve serbest metin kullanılmaz. Analytics, bulut, abonelik ve satın alma kapalıdır; backend yoktur.
+M1 yalnızca çocuk takma adı, `6_8`/`9_10` yaş bandı ve başlangıç avatar anahtarını cihazdaki SQLite veritabanında saklar. Tam ad, e-posta, doğum tarihi, kamera, mikrofon, hassas konum, kişiler veya reklam kimliği kullanılmaz. Analytics, bulut, abonelik ve satın alma kapalıdır; backend yoktur.
 
-SQLite yalnızca migration sürümü metadata’sını cihazda tutar. Profil veya ürün verisi tablosu yoktur. Loglara kişisel veri/payload yazma stratejisi yoktur.
+Takma ad log, analytics veya URL parametresine yazılmaz. Profil verisi application view model üzerinden UI’ya taşınır. M1’de veri yalnızca cihaz uygulama verisi temizlenerek tamamen silinebilir; kullanıcıya dönük silme/onay UX’i sonraki kapsamda tamamlanmalıdır.
 
 ## Ürün kırmızı çizgileri
 
 Çocuk alanında reklam, fiyat, dış bağlantı ve satın alma CTA’sı bulunamaz. Veli işlemleri ileride ebeveyn kapısı arkasında olmalıdır. Uygulama teşhis koymaz veya fırçalama kalitesini tıbbi olarak ölçtüğünü iddia etmez.
 
+M1 ebeveyn kapısı, her açılışta değişen basit bir toplama sorusudur. Tıbbi veya hukuki yaş doğrulaması değildir; çocuk işlemlerini azaltan bir UX bariyeridir. Cevap sesli okunmaz ve yanlış cevap cezalandırıcı dil kullanmaz.
+
 ## Sonraki değişiklikler
 
-Yeni veri, permission, SDK veya retention davranışı ekleyen her milestone bu dosyayı ve mağaza beyanlarını güncellemelidir. Silme akışı ürün verisi M1’de başladığında tasarlanacaktır.
+Yeni veri, permission, SDK veya retention davranışı ekleyen her milestone bu dosyayı ve mağaza beyanlarını güncellemelidir. Veli kontrollü profil/aile silme UX’i release öncesinde tamamlanmalıdır.

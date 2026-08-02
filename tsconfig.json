@@ -6,7 +6,7 @@
     "noImplicitOverride": true,
     "baseUrl": ".",
     "ignoreDeprecations": "6.0",
-    "types": ["jest"],
+    "types": ["jest", "node"],
     "paths": {
       "@/*": ["src/*"]
     }

@@ -36,8 +36,16 @@ npm run db:verify
 npm run smoke:export
 ```
 
-## M0 kapsamı
+## Milestone 1 kapsamı
 
-Expo Router route grupları, strict TypeScript, temel tasarım sistemi, Türkçe i18n, SQLite migration altyapısı ve health-check içerir. Bulut, analytics, abonelik ve satın alma kapalıdır. Backend, ürün tabloları, profil, karakter ve fırçalama zamanlayıcısı yoktur.
+Uygulama hesap açmadan yerel aile ve birden fazla çocuk profili oluşturur. Kısa onboarding; takma ad, yaş bandı ve yalnızca başlangıç tercihi olan karakter anahtarını kaydeder. Aktif profil SQLite’ta korunur ve sonraki açılış Child Home’a gider. Çocuk alanından veli placeholder’ına geçiş değişken toplama sorulu ebeveyn kapısı arkasındadır.
+
+Bulut, analytics, abonelik ve satın alma kapalıdır. Backend, pet durum sistemi, XP, ödül, koleksiyon, bildirim ve fırçalama zamanlayıcısı yoktur.
+
+### Onboarding akışı
+
+`Welcome → Hesap açmadan devam → Takma ad → Yaş grubu → Başlangıç karakteri → Onay → Child Home`
+
+Test verisini sıfırlamak için geliştirme aşamasında Expo Go içinden uygulama verisi silinmeli veya Simulator uygulaması kaldırılmalıdır; uygulama içinde veri silme UX’i sonraki kapsamda tamamlanacaktır.
 
 Mimari ayrıntıları için `docs/ARCHITECTURE.md`, kararlar için `docs/DECISIONS.md` okunmalıdır.
