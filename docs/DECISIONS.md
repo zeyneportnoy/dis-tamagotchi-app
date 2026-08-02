@@ -65,3 +65,7 @@ Domain repository arayüzleri framework bağımsızdır; Expo SQLite implementas
 ## 2026-08-02 — ADR-016: Route geçişlerinde mutlak yollar
 
 Expo Router ekran geçişleri uygulama kökünden başlayan mutlak yollar kullanır. iOS Simulator smoke testi, onboarding içindeki göreli `./...` ve grup ekranlarındaki `../...` yolların Expo Go geliştirme bağlantısı altında yanlış route üretebildiğini gösterdi. Mutlak yollar navigasyonu geliştirme ve üretim bağlantı bağlamından bağımsız kılar; Welcome geçişi component testiyle korunur.
+
+## 2026-08-02 — ADR-017: Secret scan için en düşük GitHub token izinleri
+
+Quality workflow’unun varsayılan `github.token` değeri yalnızca `contents: read` ve `pull-requests: read` izinlerini alır. Gitleaks pull request commit listesini okuyabilmek için ikinci izne ihtiyaç duyar; yazma izni, kişisel token veya repository secret kullanılmaz. Action’ın Node 20 runtime deprecation mesajı bu API 403 hatasının nedeni değildir ve proje Node/Expo standardını değiştirmez.
