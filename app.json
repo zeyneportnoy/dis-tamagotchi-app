@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "Diş Tamagotchi",
+    "slug": "dis-tamagotchi",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "distamagotchi",
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F7F7F4",
+          "resizeMode": "contain"
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.distamagotchi.app"
+    },
+    "android": {
+      "package": "com.distamagotchi.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#F7F7F4"
+      }
+    },
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
