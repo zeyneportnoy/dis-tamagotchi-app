@@ -69,3 +69,7 @@ Expo Router ekran geçişleri uygulama kökünden başlayan mutlak yollar kullan
 ## 2026-08-02 — ADR-017: Secret scan için en düşük GitHub token izinleri
 
 Quality workflow’unun varsayılan `github.token` değeri yalnızca `contents: read` ve `pull-requests: read` izinlerini alır. Gitleaks pull request commit listesini okuyabilmek için ikinci izne ihtiyaç duyar; yazma izni, kişisel token veya repository secret kullanılmaz. Action’ın Node 20 runtime deprecation mesajı bu API 403 hatasının nedeni değildir ve proje Node/Expo standardını değiştirmez.
+
+## 2026-08-02 — ADR-018: PR secret scan için tam Git geçmişi
+
+Quality workflow’undaki `actions/checkout@v4`, `fetch-depth: 0` ile tüm Git geçmişini indirir. Gitleaks böylece pull request taban ve baş commit’leri arasındaki aralığı çözebilir; sığ checkout nedeniyle kısmi tarama yapılmaz. Secret scan, minimum salt-okunur izinler ve varsayılan `github.token` ile çalışmaya devam eder.
