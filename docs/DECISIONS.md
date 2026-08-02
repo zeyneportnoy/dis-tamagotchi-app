@@ -41,3 +41,7 @@ Belgedeki Navy, Teal, Indigo, Off-white, Success, Warning ve Danger token’lar�
 ## 2026-08-02 — ADR-010: Node 22 geliştirme ve CI standardı
 
 Projenin tekrar üretilebilir çalışma standardı Node 22’dir. `.nvmrc` ana sürümü `22` olarak sabitler, `package.json` en az Node 22.13 ister ve GitHub Actions Node 22.13 kullanır. İlk kurulumda araç ortamının Node 24 çalıştırması bir ürün hatası değildir; bağımlılık kurulumu ve CI için desteklenen ortak taban Node 22.13+ olarak belirlenmiştir.
+
+## 2026-08-02 — ADR-011: npm 10.9.2 ve optional dependency lockfile standardı
+
+Yerel lockfile üretimi ve GitHub Actions kurulumu Node 22.13.0 ile gelen kararlı npm 10.9.2 sürümünde eşitlenir. `packageManager` alanı exact `npm@10.9.2` değerini taşır; CI `npm ci` öncesinde aynı sürümü kurar. Platforma bağlı WASI/`@emnapi` transitif kayıtlarının lockfile’a eksiksiz yazılması için install ve clean-install komutlarında `--include=optional` kullanılır. `@emnapi` paketleri doğrudan uygulama bağımlılığı değildir.
