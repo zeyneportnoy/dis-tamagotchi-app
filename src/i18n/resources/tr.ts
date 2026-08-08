@@ -14,7 +14,7 @@ export const tr = {
     welcome: {
       title: 'Diş arkadaşınla tanış!',
       body: 'Önce sana nasıl sesleneceğimizi seçelim.',
-      continue: 'Devam et',
+      continue: 'Başlayalım',
     },
     onboarding: {
       accountless: {
@@ -30,12 +30,16 @@ export const tr = {
         error: '1–20 karakter arasında bir takma ad deneyelim.',
       },
       ageBand: {
-        title: 'Yaş grubunu seç',
+        title: 'Hangi yaş grubundasın?',
+        body: 'Sana uygun fırçalama yolculuğunu birlikte seçelim.',
         fourSix: '4–6 yaş',
+        fourSixHint: 'Birlikte fırçalayalım',
         sevenEleven: '7–11 yaş',
+        sevenElevenHint: 'Ben hazırım!',
       },
       character: {
-        title: 'Başlangıç arkadaşını seç',
+        title: 'Arkadaşını seç!',
+        body: 'En sevdiğin dostu seç ve yolculuğumuza başla.',
         options: {
           'cheerful-incisor': 'Neşeli Kesici',
           'sleepy-molar': 'Uykucu Azı',
@@ -95,20 +99,14 @@ export const tr = {
       exitQuestion: 'Fırçalamayı bırakmak istiyor musun?',
       exit: 'Çık',
       stay: 'Devam et',
-      helperFourSix: 'Bir büyüğünle birlikte fırçalayabilirsin.',
-      helperSevenEleven: 'Hazırsan başlayalım!',
+      helperFourSix: 'Bu bölgedeki dişlerin dışını, içini ve çiğneme yerlerini fırçala.',
+      helperSevenEleven: 'Bu bölgedeki tüm yüzeyleri fırçala: dış, iç ve çiğneme yüzeyleri.',
       loading: 'Fırçalama hazırlanıyor…',
       regions: {
-        upper: 'Üst dişler',
-        lower: 'Alt dişler',
-        outer: 'Dış yüzeyler',
-        inner: 'İç yüzeyler',
-      },
-      instructions: {
-        upper: 'Üst dişlerini nazikçe fırçala.',
-        lower: 'Şimdi alt dişlerine geç.',
-        outer: 'Dişlerinin dış yüzeylerini fırçala.',
-        inner: 'Son olarak iç yüzeyleri fırçala.',
+        rightUpper: 'Sağ üst bölge',
+        leftUpper: 'Sol üst bölge',
+        rightLower: 'Sağ alt bölge',
+        leftLower: 'Sol alt bölge',
       },
       completeTitle: 'Harika! Fırçalama tamamlandı 🎉',
       completeBody: '2 dakikalık fırçalama seansını tamamladın.',

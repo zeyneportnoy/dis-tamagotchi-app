@@ -32,10 +32,13 @@ describe('Brushing session route', () => {
   it('shows the first region, progress, timer and age-adapted guidance', async () => {
     const view = await render(<BrushingScreen />);
     await waitFor(() => expect(view.getByTestId('brushing-session-screen')).toBeTruthy());
-    expect(view.getByText('Üst dişler')).toBeTruthy();
+    expect(view.getByText('Sağ üst bölge')).toBeTruthy();
     expect(view.getByText('1 / 4')).toBeTruthy();
-    expect(view.getByText('30 saniye')).toBeTruthy();
-    expect(view.getByText('Bir büyüğünle birlikte fırçalayabilirsin.')).toBeTruthy();
+    expect(view.getByText('30')).toBeTruthy();
+    expect(view.getByLabelText('Toplam 120 saniye kaldı')).toBeTruthy();
+    expect(
+      view.getByText('Bu bölgedeki dişlerin dışını, içini ve çiğneme yerlerini fırçala.'),
+    ).toBeTruthy();
   });
 
   it('pauses, resumes and confirms early exit without completing a session', async () => {

@@ -113,3 +113,7 @@ Migration 5'teki `brushing_sessions`, profile `ON DELETE CASCADE` ile bağlıdı
 Child alanı mevcut marka paletini koruyan yumuşak, yuvarlak ve yüksek kontrastlı “Candy Tech” görsel dilinde sadeleştirilir. Home'da karakter birincil odak, fırçalama tek baskın eylem, sabah/akşam görevleri kompakt durum kartlarıdır. Profil değiştirme büyük form yerine erişilebilir başlık tetikleyicisi ve modal seçim yüzeyi kullanır; aynı family use-case'lerini çağırır ve veri davranışını değiştirmez.
 
 Tab ikonları yeni bir bağımlılık veya görsel asset eklemeden, anlamlı platform metin sembolleriyle sunulur. Onboarding alt ekranlarında native Stack başlığı içindeki ortak en az 48 dp `BackButton`, bağımsız detay ekranlarında aynı component kullanılır. Tab köklerinde geri butonu gösterilmez; brushing erken çıkışında mevcut onay davranışı korunur. Bu çalışma M1–M3 domain, migration, timer ve kalıcılık kurallarını değiştirmez.
+
+## 2026-08-08 — ADR-028: Brushing kadran sırası ve görsel yönlendirme
+
+Mevcut timestamp tabanlı 4 × 30 saniyelik timer korunur; segment indeksleri sunum katmanında sırasıyla `Sağ üst`, `Sol üst`, `Sağ alt` ve `Sol alt` ağız bölgelerine eşlenir. Her segmentte dört parçalı ağız göstergesinin ilgili kadranı renk ve çerçeveyle birlikte vurgulanır. Yardımcı metin 4–6 yaşta daha somut, 7–11 yaşta yüzey terminolojisini kullanan tek bir yaş-bandı koşuluyla seçilir. Session kaydı, pause/resume ve sabah/akşam kalıcılığı değiştirilmez.

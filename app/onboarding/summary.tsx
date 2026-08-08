@@ -1,9 +1,11 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { getFamilyUseCases } from '@/application/family';
-import { Button, Screen, Text } from '@/design-system';
+import { Button, Screen, Text, colors, radii, spacing } from '@/design-system';
+import { CharacterAvatar } from '@/features/character';
 import { useOnboardingDraft } from '@/features/onboarding/OnboardingDraftContext';
 
 export default function SummaryScreen() {
@@ -32,11 +34,31 @@ export default function SummaryScreen() {
   };
 
   return (
-    <Screen>
-      <Text variant="title">{t('onboarding.summary.title')}</Text>
-      <Text>{t('onboarding.summary.nickname', { nickname: draft.nickname })}</Text>
-      <Text>{t(`onboarding.ageBand.${draft.ageBand === '7_11' ? 'sevenEleven' : 'fourSix'}`)}</Text>
-      <Text>{draft.avatarId ? t(`onboarding.character.options.${draft.avatarId}`) : ''}</Text>
+    <Screen style={styles.screen}>
+      <View style={styles.hero}>
+        <Text style={styles.sparkleLeft}>✦</Text>
+        <Text style={styles.sparkleRight}>★</Text>
+        {draft.avatarId ? (
+          <CharacterAvatar characterKey={draft.avatarId} size="large" surface="plain" />
+        ) : null}
+        <View style={styles.pedestal} />
+      </View>
+      <Text style={styles.center} variant="title">
+        {t('onboarding.summary.title')}
+      </Text>
+      <View style={styles.card}>
+        <Text style={styles.nickname}>
+          {t('onboarding.summary.nickname', { nickname: draft.nickname })}
+        </Text>
+        <View style={styles.chip}>
+          <Text>
+            {t(`onboarding.ageBand.${draft.ageBand === '7_11' ? 'sevenEleven' : 'fourSix'}`)}
+          </Text>
+        </View>
+        <Text style={styles.center}>
+          {draft.avatarId ? t(`onboarding.character.options.${draft.avatarId}`) : ''}
+        </Text>
+      </View>
       {failed ? <Text>{t('onboarding.summary.error')}</Text> : null}
       <Button
         disabled={saving || !draft.nickname || !draft.ageBand || !draft.avatarId}
@@ -46,3 +68,51 @@ export default function SummaryScreen() {
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  card: {
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: radii.lg,
+    gap: spacing.sm,
+    padding: spacing.lg,
+  },
+  center: { textAlign: 'center' },
+  chip: {
+    backgroundColor: '#DDF8F3',
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  hero: {
+    alignItems: 'center',
+    backgroundColor: '#F9D7E5',
+    borderRadius: 32,
+    height: 260,
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  nickname: { fontSize: 22, fontWeight: '900', lineHeight: 28 },
+  pedestal: {
+    backgroundColor: '#D17AC0',
+    borderRadius: radii.pill,
+    height: 24,
+    marginTop: -28,
+    width: 150,
+  },
+  screen: { justifyContent: 'space-between' },
+  sparkleLeft: {
+    color: colors.brandHighlight,
+    fontSize: 28,
+    left: spacing.lg,
+    position: 'absolute',
+    top: spacing.lg,
+  },
+  sparkleRight: {
+    color: colors.brandSecondary,
+    fontSize: 28,
+    position: 'absolute',
+    right: spacing.lg,
+    top: 58,
+  },
+});
