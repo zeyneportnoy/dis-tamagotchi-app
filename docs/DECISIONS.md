@@ -87,3 +87,15 @@ Eski `6_8` değeri iki yeni bantla kesiştiği için legacy değerler otomatik e
 ## 2026-08-08 — ADR-021: Expo SDK 57 patch uyumluluğu
 
 Zorunlu son doğrulamada Expo Doctor’ın güncel SDK 57 uyumluluk setiyle eşleşmek için yalnızca patch sürümleri güncellendi: Expo `~57.0.11`, Expo Constants `~57.0.9`, Expo Linking `~57.0.5` ve Expo Router `~57.0.11`. Node, npm, React Native ve Expo SDK major standardı değişmedi; sürümler `expo install` ve npm lockfile üzerinden üretildi.
+
+## 2026-08-08 — ADR-022: M2 fırçalama odaklı marka ve navigasyon
+
+Child Home genel pet bakımı yerine yalnızca diş fırçalama rutinini merkezine alır. Marka token’ları `#6C5CE7` primary, `#FF6B81` secondary, `#42D6C5` accent, `#FFD166` highlight, `#263238` text ve `#FFF9F5` background olarak güncellendi. Ana eylem en az 48 dp dokunma alanını korur. Ana Sayfa tam işlevli, Görevler/Koleksiyon/Profil ise sonraki kapsamı önden uygulamadan gerçek placeholder route’lardır.
+
+## 2026-08-08 — ADR-023: Profil karakteri ve minimal fırçalama kalıcılığı
+
+Seçili karakter için yeni ve tekrarlı bir alan açılmaz; M1’deki `child_profiles.avatar_id` profil bazında kaynak doğruluğu olmaya devam eder. Migration 4, mevcut profil verilerini değiştirmeden `profile_progress` tablosunu ekler. Sabah/akşam günlük bayrakları, temel seri sayacı ve son etkileşim/fırçalama zamanları profil FK’sı altında local-first saklanır. Gün değişiminde günlük bayraklar sıfırlanır; M2 seri hesaplamaz, timer başlatmaz, XP veya ödül dağıtmaz.
+
+## 2026-08-08 — ADR-024: M2 transitif audit bulguları
+
+`npm audit --audit-level=critical` sıfır critical bulguyla geçer. Expo/Metro araç zincirindeki `image-size` için 15 high ve `xcode → uuid` için 8 moderate transitif bulgu raporlanır. npm’in sunduğu zorunlu çözüm Expo 53’e breaking downgrade yaptığı için `--force` uygulanmaz; SDK 57 ile uyumlu upstream paket güncellemesi izlenir. Uygulama bu paketlerle kullanıcı girdili görsel dosya ayrıştırmaz.

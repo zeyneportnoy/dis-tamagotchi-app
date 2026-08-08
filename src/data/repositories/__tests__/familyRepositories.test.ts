@@ -11,6 +11,7 @@ import { NodeSQLiteDatabase } from '@/test/NodeSQLiteDatabase';
 
 import { SQLiteChildProfileRepository } from '../SQLiteChildProfileRepository';
 import { SQLiteFamilyRepository } from '../SQLiteFamilyRepository';
+import { SQLiteProfileProgressRepository } from '../SQLiteProfileProgressRepository';
 
 jest.mock('expo-crypto', () => ({ randomUUID: jest.fn() }));
 jest.mock('expo-sqlite', () => ({}));
@@ -104,6 +105,67 @@ describe('family repositories', () => {
     await expect(reopenedUseCases.getActiveProfile()).resolves.toMatchObject({
       id: profileIds[0],
       nickname: 'Ege',
+      avatarId: 'cheerful-incisor',
+    });
+    reopened.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  it('persists separate character choices for different profiles', async () => {
+    const database = new NodeSQLiteDatabase();
+    await migrateDatabase(database as unknown as SQLiteDatabase);
+    const { families, profiles } = repositories(database);
+    const family = await families.createLocal();
+    const first = await profiles.create({
+      familyId: family.id,
+      nickname: 'Ege',
+      ageBand: '4_6',
+      avatarId: 'cheerful-incisor',
+    });
+    const second = await profiles.create({
+      familyId: family.id,
+      nickname: 'Ada',
+      ageBand: '7_11',
+      avatarId: 'brave-canine',
+    });
+
+    await profiles.selectActive(first.id);
+    await expect(profiles.getActive()).resolves.toMatchObject({ avatarId: 'cheerful-incisor' });
+    await profiles.selectActive(second.id);
+    await expect(profiles.getActive()).resolves.toMatchObject({ avatarId: 'brave-canine' });
+    database.close();
+  });
+
+  it('persists morning and evening brushing state after reopen', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'dis-tamagotchi-progress-db-'));
+    const path = join(directory, 'test.db');
+    const first = new NodeSQLiteDatabase(path);
+    await migrateDatabase(first as unknown as SQLiteDatabase);
+    const firstRepositories = repositories(first);
+    const family = await firstRepositories.families.createLocal();
+    const profile = await firstRepositories.profiles.create({
+      familyId: family.id,
+      nickname: 'Ege',
+      ageBand: '4_6',
+      avatarId: 'cheerful-incisor',
+    });
+    const now = () => new Date('2026-08-08T07:30:00.000Z');
+    const progress = new SQLiteProfileProgressRepository(first as unknown as SQLiteDatabase, now);
+    await progress.setBrushingCompleted(profile.id, 'morning', true);
+    await progress.setBrushingCompleted(profile.id, 'evening', true);
+    first.close();
+
+    const reopened = new NodeSQLiteDatabase(path);
+    await migrateDatabase(reopened as unknown as SQLiteDatabase);
+    const reopenedProgress = new SQLiteProfileProgressRepository(
+      reopened as unknown as SQLiteDatabase,
+      now,
+    );
+    await expect(reopenedProgress.get(profile.id)).resolves.toMatchObject({
+      childProfileId: profile.id,
+      morningCompleted: true,
+      eveningCompleted: true,
+      lastBrushingAt: '2026-08-08T07:30:00.000Z',
     });
     reopened.close();
     rmSync(directory, { recursive: true, force: true });

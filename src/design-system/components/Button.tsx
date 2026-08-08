@@ -42,8 +42,8 @@ const styles = StyleSheet.create({
   },
   disabled: { opacity: 0.5 },
   label: { color: colors.white, fontSize: typography.button, fontWeight: '700' },
-  primary: { backgroundColor: colors.teal },
+  primary: { backgroundColor: colors.brandPrimary },
   pressed: { opacity: 0.8 },
-  secondary: { borderColor: colors.indigo, borderWidth: 2 },
-  secondaryLabel: { color: colors.indigo },
+  secondary: { backgroundColor: colors.white, borderColor: colors.brandPrimary, borderWidth: 2 },
+  secondaryLabel: { color: colors.brandPrimary },
 });

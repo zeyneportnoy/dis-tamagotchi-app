@@ -72,4 +72,20 @@ export const migrations: readonly Migration[] = [
       `DROP TABLE active_profile_backup;`,
     ],
   },
+  {
+    version: 4,
+    name: 'add_profile_brushing_progress',
+    statements: [
+      `CREATE TABLE profile_progress (
+        child_profile_id TEXT PRIMARY KEY NOT NULL,
+        status_date TEXT NOT NULL,
+        morning_completed INTEGER NOT NULL DEFAULT 0 CHECK(morning_completed IN (0, 1)),
+        evening_completed INTEGER NOT NULL DEFAULT 0 CHECK(evening_completed IN (0, 1)),
+        current_streak INTEGER NOT NULL DEFAULT 0 CHECK(current_streak >= 0),
+        last_interaction_at TEXT,
+        last_brushing_at TEXT,
+        FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+      );`,
+    ],
+  },
 ];
