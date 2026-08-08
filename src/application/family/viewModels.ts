@@ -1,10 +1,10 @@
-import type { ChildProfile, StoredAgeBand } from '@/domain/family';
+import type { ChildProfile, StarterAvatarKey, StoredAgeBand } from '@/domain/family';
 
 export type ChildProfileViewModel = Readonly<{
   id: string;
   nickname: string;
   ageBand: StoredAgeBand;
-  avatarId: string;
+  avatarId: StarterAvatarKey;
 }>;
 
 export const toChildProfileViewModel = (profile: ChildProfile): ChildProfileViewModel => ({

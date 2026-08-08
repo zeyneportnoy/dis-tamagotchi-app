@@ -33,3 +33,15 @@ export type UpdateChildProfileInput = Readonly<{
   ageBand?: AgeBand;
   avatarId?: StarterAvatarKey;
 }>;
+
+export type BrushingPeriod = 'morning' | 'evening';
+
+export type ProfileProgress = Readonly<{
+  childProfileId: string;
+  statusDate: string;
+  morningCompleted: boolean;
+  eveningCompleted: boolean;
+  currentStreak: number;
+  lastInteractionAt: string | null;
+  lastBrushingAt: string | null;
+}>;

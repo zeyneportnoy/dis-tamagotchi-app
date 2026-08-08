@@ -7,7 +7,7 @@ Birincil hedef 4–11 yaştır: 4–6 yaş yaklaşımı ebeveyn destekli/birlikt
 ## Gereksinimler
 
 - Node.js 22.13 veya üzeri
-- npm 11 veya üzeri
+- npm 10.9.2 (`packageManager` ile sabitlenmiştir)
 - iOS için macOS/Xcode; Android için Android Studio veya Expo Go uyumlu cihaz
 
 Proje Node 22 standardını `.nvmrc` ile sabitler:
@@ -38,11 +38,13 @@ npm run db:verify
 npm run smoke:export
 ```
 
-## Milestone 1 kapsamı
+## Milestone 2 kapsamı
 
-Uygulama hesap açmadan yerel aile ve birden fazla çocuk profili oluşturur. Kısa onboarding; takma ad, `4_6`/`7_11` yaş bandı ve yalnızca başlangıç tercihi olan karakter anahtarını kaydeder. Aktif profil SQLite’ta korunur ve sonraki açılış Child Home’a gider. Legacy `6_8`/`9_10` profilleri tahminle dönüştürülmez; Child Home öncesinde yeni yaş bandı açıkça seçilir. Çocuk alanından veli placeholder’ına geçiş değişken toplama sorulu ebeveyn kapısı arkasındadır.
+Uygulama hesap açmadan yerel aile ve birden fazla çocuk profili oluşturur. Kısa onboarding; takma ad, `4_6`/`7_11` yaş bandı ve başlangıç karakterini kaydeder. Aktif profile ait karakter uygulama yeniden açıldığında geri yüklenir. Child Home; karakteri, sabah/akşam diş fırçalama kartlarını ve ana “Fırçalayalım” eylemini merkeze alır. Ana Sayfa, Görevler, Koleksiyon ve Profil sekmeleri gerçek route’lardır; yalnızca Ana Sayfa M2’de işlevseldir.
 
-Bulut, analytics, abonelik ve satın alma kapalıdır. Backend, pet durum sistemi, XP, ödül, koleksiyon, bildirim ve fırçalama zamanlayıcısı yoktur.
+Legacy `6_8`/`9_10` profilleri tahminle dönüştürülmez; Child Home öncesinde yeni yaş bandı açıkça seçilir. Çocuk alanından veli placeholder’ına geçiş değişken toplama sorulu ebeveyn kapısı arkasındadır.
+
+Bulut, analytics, abonelik ve satın alma kapalıdır. Backend, pet bakım sistemi, XP, ödül ekonomisi, mağaza, bildirim ve gerçek fırçalama zamanlayıcısı yoktur. SQLite yalnızca M2 için karakter anahtarını, günlük sabah/akşam durumunu ve gelecekte kullanılacak temel seri/son etkileşim alanlarını tutar.
 
 ### Onboarding akışı
 

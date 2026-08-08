@@ -1,13 +1,24 @@
 import type {
+  BrushingPeriod,
   ChildProfile,
   CreateChildProfileInput,
   Family,
+  ProfileProgress,
   UpdateChildProfileInput,
 } from './models';
 
 export interface FamilyRepository {
   getLocal(): Promise<Family | null>;
   createLocal(): Promise<Family>;
+}
+
+export interface ProfileProgressRepository {
+  get(profileId: string): Promise<ProfileProgress>;
+  setBrushingCompleted(
+    profileId: string,
+    period: BrushingPeriod,
+    completed: boolean,
+  ): Promise<ProfileProgress>;
 }
 
 export interface ChildProfileRepository {
