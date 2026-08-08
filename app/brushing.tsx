@@ -128,7 +128,24 @@ export default function BrushingScreen() {
           total: BRUSHING_SEGMENT_COUNT,
         })}
       </Text>
-      <CharacterAvatar characterKey={profile.avatarId} size="small" />
+      <View
+        accessibilityLabel={t('brushing.progress', {
+          current: snapshot.segmentIndex + 1,
+          total: BRUSHING_SEGMENT_COUNT,
+        })}
+        accessible
+        style={styles.segmentTrack}
+      >
+        {regionKeys.map((key, index) => (
+          <View
+            key={key}
+            style={[styles.segment, index <= snapshot.segmentIndex && styles.segmentActive]}
+          />
+        ))}
+      </View>
+      <View style={styles.characterBubble}>
+        <CharacterAvatar characterKey={profile.avatarId} size="small" />
+      </View>
       <View
         accessible
         accessibilityLabel={t('brushing.totalRemaining', { seconds: snapshot.remainingSeconds })}
@@ -204,14 +221,37 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     padding: spacing.lg,
   },
-  eyebrow: { color: colors.brandPrimary, fontWeight: '700', textAlign: 'center' },
+  characterBubble: {
+    backgroundColor: '#F0EAFE',
+    borderRadius: radii.pill,
+    padding: spacing.sm,
+  },
+  eyebrow: {
+    backgroundColor: '#F0EAFE',
+    borderRadius: radii.pill,
+    color: colors.brandPrimary,
+    fontWeight: '800',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    textAlign: 'center',
+  },
   helper: { textAlign: 'center' },
   instruction: { fontSize: 22, fontWeight: '700', lineHeight: 30, textAlign: 'center' },
   progress: { color: colors.brandSecondary, fontSize: 24, fontWeight: '800', textAlign: 'center' },
+  segment: {
+    backgroundColor: '#E4DED9',
+    borderRadius: radii.pill,
+    flex: 1,
+    height: 10,
+  },
+  segmentActive: { backgroundColor: colors.brandPrimary },
+  segmentTrack: { flexDirection: 'row', gap: spacing.sm, width: '82%' },
   screen: { alignItems: 'center', justifyContent: 'space-around' },
   timer: {
     alignItems: 'center',
     backgroundColor: colors.brandHighlight,
+    borderColor: colors.white,
+    borderWidth: 8,
     borderRadius: radii.pill,
     height: 180,
     justifyContent: 'center',

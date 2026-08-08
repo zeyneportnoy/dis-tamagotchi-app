@@ -50,6 +50,15 @@
 - [x] Test clock, SQLite kalıcılık ve route testleri
 - [ ] XP, coin, reward, achievement ve gerçek streak — M4 kapsamı
 
+## Milestone dışı — UI/UX refinement
+
+- [x] Child Home'u karakter ve tek fırçalama CTA'sı etrafında sadeleştir
+- [x] Profil değişimini kompakt, erişilebilir modal yüzeye taşı
+- [x] Anlamlı tab ikonları ve tutarlı aktif/pasif durumları ekle
+- [x] Onboarding ve detay route'larında geri navigasyon standardını uygula
+- [x] Görevler, Koleksiyon, Profil ve Brushing yüzeylerini aynı görsel dile getir
+- [x] M1–M3 davranışlarını component ve route testleriyle koru
+
 ## Açık riskler / teknik borç
 
 - M0 ekranları gerçek cihazda manuel erişilebilirlik incelemesinden geçmelidir.

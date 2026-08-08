@@ -104,6 +104,12 @@ Seçili karakter için yeni ve tekrarlı bir alan açılmaz; M1’deki `child_pr
 
 4–6 ve 7–11 profilleri aynı 120 saniyelik timer domain’ini kullanır; yalnız yardımcı metin yaş bandına göre uyarlanır. Dört bölüm sabit 30 saniyedir. Timer render/tick saymak yerine başlangıç timestamp’i ve birikmiş pause süresinden snapshot üretir. Interval yalnız görünümü yeniler, AppState dönüşü güncel zamanı okur. Zustand eklenmedi; tek route’a ait transient state için React state ve saf domain fonksiyonları daha küçük yüzey oluşturur.
 
-## 2026-08-08 — ADR-026: Yalnız tamamlanmış seansların transaction’lı kalıcılığı
+## 2026-08-08 — ADR-026: Yalnız tamamlanmış seansların transaction'lı kalıcılığı
 
-Migration 5’teki `brushing_sessions`, profile `ON DELETE CASCADE` ile bağlıdır. Erken çıkış hiçbir completed kayıt üretmez. Başarılı completion; session insert, yerel gün/period görevi ve son etkileşim/fırçalama timestamp’lerini tek transaction’da yazar. Period 04:00–15:59 morning, 16:00–03:59 evening kabul edilir. Aynı period içinde ek seanslar ayrı geçmiş kaydı oluşturabilir ancak görev bayrağı true kalır. XP, ödül ve gerçek streak hesabı M4’e bırakılmıştır.
+Migration 5'teki `brushing_sessions`, profile `ON DELETE CASCADE` ile bağlıdır. Erken çıkış hiçbir completed kayıt üretmez. Başarılı completion; session insert, yerel gün/period görevi ve son etkileşim/fırçalama timestamp'lerini tek transaction'da yazar. Period 04:00–15:59 morning, 16:00–03:59 evening kabul edilir. Aynı period içinde ek seanslar ayrı geçmiş kaydı oluşturabilir ancak görev bayrağı true kalır. XP, ödül ve gerçek streak hesabı M4'e bırakılmıştır.
+
+## 2026-08-08 — ADR-027: Child UI görsel hiyerarşisi ve navigasyon standardı
+
+Child alanı mevcut marka paletini koruyan yumuşak, yuvarlak ve yüksek kontrastlı “Candy Tech” görsel dilinde sadeleştirilir. Home'da karakter birincil odak, fırçalama tek baskın eylem, sabah/akşam görevleri kompakt durum kartlarıdır. Profil değiştirme büyük form yerine erişilebilir başlık tetikleyicisi ve modal seçim yüzeyi kullanır; aynı family use-case'lerini çağırır ve veri davranışını değiştirmez.
+
+Tab ikonları yeni bir bağımlılık veya görsel asset eklemeden, anlamlı platform metin sembolleriyle sunulur. Onboarding alt ekranlarında native Stack başlığı içindeki ortak en az 48 dp `BackButton`, bağımsız detay ekranlarında aynı component kullanılır. Tab köklerinde geri butonu gösterilmez; brushing erken çıkışında mevcut onay davranışı korunur. Bu çalışma M1–M3 domain, migration, timer ve kalıcılık kurallarını değiştirmez.

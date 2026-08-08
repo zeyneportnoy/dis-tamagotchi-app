@@ -2,7 +2,8 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { Button, Input, Screen, Text } from '@/design-system';
+import { Button, Input, Screen, Text, BackButton, spacing } from '@/design-system';
+import { StyleSheet, View } from 'react-native';
 import { createParentChallenge } from '@/features/parent-gate/challenge';
 
 export default function ParentGateScreen() {
@@ -19,6 +20,9 @@ export default function ParentGateScreen() {
 
   return (
     <Screen testID="parent-gate-screen">
+      <View style={styles.back}>
+        <BackButton testID="detail-back-button" />
+      </View>
       <Text variant="title">{t('parentGate.title')}</Text>
       <Text>{t('parentGate.question', challenge)}</Text>
       <Input
@@ -35,3 +39,7 @@ export default function ParentGateScreen() {
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  back: { left: spacing.lg, position: 'absolute', top: spacing.md },
+});

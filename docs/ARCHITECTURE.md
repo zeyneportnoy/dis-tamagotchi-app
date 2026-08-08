@@ -15,6 +15,10 @@ Local-first modüler monolit. UI/routes → application use-cases → domain →
 
 Root route aktif profili application use-case üzerinden sorgular. Aktif profil yoksa onboarding, legacy `6_8`/`9_10` bandı varsa yaş bandı güncelleme, güncel bandı varsa Child Home açılır.
 
+Child tab kökleri geri butonu göstermez. Onboarding'in kök dışındaki ekranları native Stack header içinde ortak `BackButton` kullanır; parent gate ve parent placeholder gibi bağımsız detay route'ları aynı görsel standardı route seviyesinde uygular. Brushing route'unun erken çıkışı, tamamlanmamış seansı yanlışlıkla kaybetmemek için kendi onay akışını korur.
+
+Home profil değiştirici yalnız bir sunum katmanıdır: başlıktaki erişilebilir tetikleyici modal seçim yüzeyini açar, seçim mevcut family application use-case'i üzerinden kalıcılaştırılır. Domain kuralı veya SQLite erişimi component içine taşınmaz.
+
 ## Veri
 
 SQLite yerel kaynak doğruluğudur. `schema_migrations` uygulanan sürümleri kaydeder. Migration 1 şu yapıları transaction içinde kurar:

@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 
 import ParentGateScreen from '../parent-gate';
 
-jest.mock('expo-router', () => ({ router: { replace: jest.fn() } }));
+jest.mock('expo-router', () => ({ router: { back: jest.fn(), replace: jest.fn() } }));
 jest.mock('@/features/parent-gate/challenge', () => ({
   createParentChallenge: () => ({ left: 2, right: 3, answer: 5 }),
 }));
@@ -20,5 +20,11 @@ describe('parent gate', () => {
     await fireEvent.changeText(input, '5');
     await fireEvent.press(view.getByRole('button', { name: 'Kontrol et' }));
     expect(router.replace).toHaveBeenCalledWith('/(parent)');
+  });
+
+  it('provides an accessible back control on the detail screen', async () => {
+    const view = await render(<ParentGateScreen />);
+    await fireEvent.press(view.getByRole('button', { name: 'Geri' }));
+    expect(router.back).toHaveBeenCalled();
   });
 });
