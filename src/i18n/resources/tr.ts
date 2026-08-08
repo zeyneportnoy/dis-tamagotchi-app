@@ -7,6 +7,10 @@ export const tr = {
       errorTitle: 'Bir şeyler ters gitti',
       errorBody: 'Birlikte yeniden deneyebiliriz.',
     },
+    navigation: {
+      back: 'Geri',
+      close: 'Kapat',
+    },
     welcome: {
       title: 'Diş arkadaşınla tanış!',
       body: 'Önce sana nasıl sesleneceğimizi seçelim.',
@@ -46,17 +50,19 @@ export const tr = {
       },
     },
     childHome: {
-      title: 'Merhaba, {{nickname}}!',
+      title: 'Merhaba, {{nickname}}! 👋',
       greeting: 'Diş arkadaşın bugün de yanında.',
       todayGoal: 'Günün hedefi: Sabah ve akşam dişlerini fırçala',
       morning: 'Sabah fırçalama',
       evening: 'Akşam fırçalama',
       completed: 'Tamamlandı',
       waiting: 'Seni bekliyor',
-      brush: 'Fırçalayalım',
+      brush: 'Fırçalayalım!',
       streak: 'Seri: {{count}} gün',
       parentArea: 'Veli alanı',
       switchProfile: 'Profil seç',
+      activeProfile: 'Aktif profil: {{nickname}}. Profil değiştirmek için dokun.',
+      profilePickerTitle: 'Profili değiştir',
     },
     tabs: {
       home: 'Ana Sayfa',
@@ -66,11 +72,16 @@ export const tr = {
     },
     placeholders: {
       tasksTitle: 'Görevler',
-      tasksBody: 'Fırçalama görevlerin burada görünecek.',
+      tasksBody: 'Sabah ve akşam fırçalama görevlerin burada görünecek.',
       collectionTitle: 'Koleksiyon',
-      collectionBody: 'Diş arkadaşlarının koleksiyonu sonraki adımlarda burada olacak.',
+      collectionBody: 'Yakında ödüllerin burada olacak.',
       profileTitle: 'Profil',
       profileBody: 'Profil bilgilerini güvenle buradan yönetebilirsin.',
+    },
+    profile: {
+      nickname: 'Takma ad',
+      ageBand: 'Yaş grubu',
+      changeProfile: 'Profil değiştir',
     },
     brushing: {
       title: 'Fırçalama zamanı',

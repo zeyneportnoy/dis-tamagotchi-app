@@ -1,7 +1,20 @@
 import { Tabs } from 'expo-router';
+import { type ColorValue, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import { colors, minimumTouchTarget } from '@/design-system';
+import { Text, colors, minimumTouchTarget } from '@/design-system';
+
+function TabIcon({ color, symbol }: { color: ColorValue; symbol: string }) {
+  return <Text style={[styles.icon, { color }]}>{symbol}</Text>;
+}
+
+function TabLabel({ color, label }: { color: ColorValue; label: string }) {
+  return (
+    <Text numberOfLines={1} style={[styles.label, { color }]}>
+      {label}
+    </Text>
+  );
+}
 
 export default function ChildLayout() {
   const { t } = useTranslation();
@@ -11,13 +24,59 @@ export default function ChildLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.brandPrimary,
         tabBarInactiveTintColor: colors.textPrimary,
-        tabBarStyle: { minHeight: minimumTouchTarget + 18 },
+        tabBarStyle: styles.bar,
       }}
     >
-      <Tabs.Screen name="index" options={{ title: t('tabs.home') }} />
-      <Tabs.Screen name="tasks" options={{ title: t('tabs.tasks') }} />
-      <Tabs.Screen name="collection" options={{ title: t('tabs.collection') }} />
-      <Tabs.Screen name="profile" options={{ title: t('tabs.profile') }} />
+      <Tabs.Screen
+        name="index"
+        options={{
+          tabBarIcon: ({ color }) => <TabIcon color={color} symbol="⌂" />,
+          tabBarLabel: ({ color }) => <TabLabel color={color} label={t('tabs.home')} />,
+          title: t('tabs.home'),
+        }}
+      />
+      <Tabs.Screen
+        name="tasks"
+        options={{
+          tabBarIcon: ({ color }) => <TabIcon color={color} symbol="✓" />,
+          tabBarLabel: ({ color }) => <TabLabel color={color} label={t('tabs.tasks')} />,
+          title: t('tabs.tasks'),
+        }}
+      />
+      <Tabs.Screen
+        name="collection"
+        options={{
+          tabBarIcon: ({ color }) => <TabIcon color={color} symbol="★" />,
+          tabBarLabel: ({ color }) => <TabLabel color={color} label={t('tabs.collection')} />,
+          title: t('tabs.collection'),
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          tabBarIcon: ({ color }) => <TabIcon color={color} symbol="●" />,
+          tabBarLabel: ({ color }) => <TabLabel color={color} label={t('tabs.profile')} />,
+          title: t('tabs.profile'),
+        }}
+      />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  bar: {
+    backgroundColor: colors.white,
+    borderTopColor: '#EEE8E3',
+    height: 78,
+    paddingBottom: 8,
+    paddingTop: 6,
+  },
+  icon: { fontSize: 25, fontWeight: '800', lineHeight: 28, minHeight: 28 },
+  label: {
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 15,
+    minHeight: minimumTouchTarget / 2,
+    textAlign: 'center',
+  },
+});
