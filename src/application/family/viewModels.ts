@@ -1,9 +1,9 @@
-import type { ChildProfile } from '@/domain/family';
+import type { ChildProfile, StoredAgeBand } from '@/domain/family';
 
 export type ChildProfileViewModel = Readonly<{
   id: string;
   nickname: string;
-  ageBand: '6_8' | '9_10';
+  ageBand: StoredAgeBand;
   avatarId: string;
 }>;
 

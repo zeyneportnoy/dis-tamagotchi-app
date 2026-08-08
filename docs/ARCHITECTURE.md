@@ -7,11 +7,12 @@ Local-first modüler monolit. UI/routes → application use-cases → domain →
 ## Route yapısı
 
 - `app/onboarding`: hesap gerektirmeyen kısa aile/profil kurulumu
+- `app/age-band-update`: legacy yaş bandı bulunan aktif profil için zorunlu açık yeniden seçim
 - `app/(child)`: aktif profil takma adı ve profil seçimi bulunan M1 Home placeholder
 - `app/parent-gate`: her açılışta değişen toplama sorusu
 - `app/(parent)`: ebeveyn kapısından sonra açılan placeholder ve yeni profil başlangıcı
 
-Root route aktif profili application use-case üzerinden sorgular. Aktif profil varsa Child Home, yoksa onboarding açılır.
+Root route aktif profili application use-case üzerinden sorgular. Aktif profil yoksa onboarding, legacy `6_8`/`9_10` bandı varsa yaş bandı güncelleme, güncel bandı varsa Child Home açılır.
 
 ## Veri
 
@@ -22,6 +23,8 @@ SQLite yerel kaynak doğruluğudur. `schema_migrations` uygulanan sürümleri ka
 - `active_profile`: seçili profil için tek satırlı yerel uygulama durumu
 
 Foreign key’ler her açılışta etkinleştirilir. Profil silinince aktif seçim `NULL`, aile silinince bağlı profiller cascade olur. Migration tekrar çalıştırılabilir ve ürün dışı M2 tabloları oluşturmaz.
+
+Migration 2 aynı ailede tekrar eden takma adları desteklemek için eski unique index’i kaldırır. Migration 3, mevcut profil ve aktif profil kimliklerini koruyarak `child_profiles.age_band` CHECK kuralını günceller. SQLite geçiş döneminde `4_6`, `7_11`, `6_8` ve `9_10` değerlerini okuyabilir; domain create/update girdileri yalnızca `4_6` ve `7_11` kabul eder. Legacy değer ancak kullanıcının açık seçimiyle güncellenir.
 
 Repository yazma işlemleri transaction kullanır. Application katmanı `ensureLocalFamily`, profil oluşturma/listeleme/seçme/güncelleme/arşivleme/silme use-case’lerini sunar.
 

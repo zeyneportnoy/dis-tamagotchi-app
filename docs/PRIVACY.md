@@ -2,7 +2,11 @@
 
 ## M1 veri davranışı
 
-M1 yalnızca çocuk takma adı, `6_8`/`9_10` yaş bandı ve başlangıç avatar anahtarını cihazdaki SQLite veritabanında saklar. Tam ad, e-posta, doğum tarihi, kamera, mikrofon, hassas konum, kişiler veya reklam kimliği kullanılmaz. Analytics, bulut, abonelik ve satın alma kapalıdır; backend yoktur.
+M1 yalnızca çocuk takma adı, yeni profiller için `4_6`/`7_11` yaş bandı ve başlangıç avatar anahtarını cihazdaki SQLite veritabanında saklar. Kesin yaş ve doğum tarihi toplanmaz. Tam ad, e-posta, kamera, mikrofon, hassas konum, kişiler veya reklam kimliği kullanılmaz. Analytics, bulut, abonelik ve satın alma kapalıdır; backend yoktur.
+
+Birincil hedef yaş 4–11’dir; 12+ MVP kapsamı dışındadır. 4–6 yaş yaklaşımı ebeveyn destekli/birlikte fırçalama, 7–11 yaş yaklaşımı daha bağımsız kullanımdır. Bu ürün kararı şu aşamada ayrı UI modu, ses sistemi veya ek veri toplama oluşturmaz.
+
+Önceki sürümden kalan `6_8`/`9_10` değerleri migration uyumluluğu için geçici olarak cihazda okunabilir. Kesişen aralıklar nedeniyle uygulama bunları otomatik tahmin etmez; kullanıcıdan yalnızca yeni yaş bandını yeniden seçmesini ister ve seçimden sonra kaydı `4_6` veya `7_11` olarak günceller.
 
 Takma ad log, analytics veya URL parametresine yazılmaz. Profil verisi application view model üzerinden UI’ya taşınır. M1’de veri yalnızca cihaz uygulama verisi temizlenerek tamamen silinebilir; kullanıcıya dönük silme/onay UX’i sonraki kapsamda tamamlanmalıdır.
 

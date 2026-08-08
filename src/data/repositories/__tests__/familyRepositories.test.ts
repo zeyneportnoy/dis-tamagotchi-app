@@ -45,17 +45,17 @@ describe('family repositories', () => {
 
     await useCases.createProfile({
       nickname: 'Ege',
-      ageBand: '6_8',
+      ageBand: '4_6',
       avatarId: 'cheerful-incisor',
     });
     await useCases.createProfile({
       nickname: 'Ada',
-      ageBand: '9_10',
+      ageBand: '7_11',
       avatarId: 'sleepy-molar',
     });
     await useCases.createProfile({
       nickname: 'Can',
-      ageBand: '6_8',
+      ageBand: '4_6',
       avatarId: 'brave-canine',
     });
 
@@ -83,12 +83,12 @@ describe('family repositories', () => {
     );
     await firstUseCases.createProfile({
       nickname: 'Ege',
-      ageBand: '6_8',
+      ageBand: '4_6',
       avatarId: 'cheerful-incisor',
     });
     await firstUseCases.createProfile({
       nickname: 'Ada',
-      ageBand: '9_10',
+      ageBand: '7_11',
       avatarId: 'sleepy-molar',
     });
     await firstUseCases.selectActiveProfile(profileIds[0]);
@@ -109,6 +109,48 @@ describe('family repositories', () => {
     rmSync(directory, { recursive: true, force: true });
   });
 
+  it('persists a required legacy age-band update and keeps the active profile', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'dis-tamagotchi-legacy-db-'));
+    const path = join(directory, 'test.db');
+    const first = new NodeSQLiteDatabase(path);
+    await migrateDatabase(first as unknown as SQLiteDatabase);
+    const firstRepositories = repositories(first);
+    const family = await firstRepositories.families.createLocal();
+    await first.runAsync(
+      `INSERT INTO child_profiles
+        (id, family_id, nickname, age_band, avatar_id, created_at, archived_at)
+       VALUES (?, ?, ?, ?, ?, ?, NULL)`,
+      profileIds[0],
+      family.id,
+      'Ege',
+      '6_8',
+      'cheerful-incisor',
+      now(),
+    );
+    await firstRepositories.profiles.selectActive(profileIds[0]);
+    const firstUseCases = new FamilyUseCases(
+      firstRepositories.families,
+      firstRepositories.profiles,
+    );
+    await expect(firstUseCases.getActiveProfile()).resolves.toMatchObject({ ageBand: '6_8' });
+    await firstUseCases.updateProfile(profileIds[0], { ageBand: '7_11' });
+    first.close();
+
+    const reopened = new NodeSQLiteDatabase(path);
+    await migrateDatabase(reopened as unknown as SQLiteDatabase);
+    const reopenedRepositories = repositories(reopened);
+    const reopenedUseCases = new FamilyUseCases(
+      reopenedRepositories.families,
+      reopenedRepositories.profiles,
+    );
+    await expect(reopenedUseCases.getActiveProfile()).resolves.toMatchObject({
+      id: profileIds[0],
+      ageBand: '7_11',
+    });
+    reopened.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
   it('allows duplicate nicknames in one family and keeps profile identity distinct', async () => {
     const database = new NodeSQLiteDatabase();
     await migrateDatabase(database as unknown as SQLiteDatabase);
@@ -118,13 +160,13 @@ describe('family repositories', () => {
     const first = await profiles.create({
       familyId: family.id,
       nickname: 'Ege',
-      ageBand: '6_8',
+      ageBand: '4_6',
       avatarId: 'cheerful-incisor',
     });
     const second = await profiles.create({
       familyId: family.id,
       nickname: 'Ege',
-      ageBand: '9_10',
+      ageBand: '7_11',
       avatarId: 'sleepy-molar',
     });
 
@@ -145,7 +187,7 @@ describe('family repositories', () => {
       profiles.create({
         familyId: '00000000-0000-4000-8000-000000000099',
         nickname: 'Ege',
-        ageBand: '6_8',
+        ageBand: '4_6',
         avatarId: 'cheerful-incisor',
       }),
     ).rejects.toThrow();
@@ -160,7 +202,7 @@ describe('family repositories', () => {
     const profile = await profiles.create({
       familyId: family.id,
       nickname: 'Ege',
-      ageBand: '6_8',
+      ageBand: '4_6',
       avatarId: 'cheerful-incisor',
     });
     await expect(profiles.update(profile.id, { nickname: 'Ege 2' })).resolves.toMatchObject({
@@ -181,6 +223,8 @@ describe('family repositories', () => {
 describe('profile validation', () => {
   it('rejects an invalid age band', () => {
     expect(ageBandSchema.safeParse('5_7').success).toBe(false);
+    expect(ageBandSchema.safeParse('6_8').success).toBe(false);
+    expect(ageBandSchema.safeParse('9_10').success).toBe(false);
   });
 
   it('rejects empty and out-of-range nicknames', () => {

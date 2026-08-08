@@ -52,7 +52,7 @@ Migration 1, bağlayıcı `families` ve `child_profiles` tablolarına ek olarak 
 
 ## 2026-08-02 — ADR-013: Takma ad ve onboarding veri minimizasyonu
 
-Takma ad trim sonrası 1–20 karakterdir; satır sonu ve tab karakterleri reddedilir. Bu sınır kısa çocuk UI’sını korur ve gereksiz serbest metni azaltır. Yaş yalnızca `6_8` veya `9_10`, başlangıç seçimi üç kararlı avatar anahtarından biridir. Tam ad, e-posta, doğum tarihi veya permission istenmez. Zod application/repository sınırında doğrulama yapar.
+Takma ad trim sonrası 1–20 karakterdir; satır sonu ve tab karakterleri reddedilir. Bu sınır kısa çocuk UI’sını korur ve gereksiz serbest metni azaltır. Yeni profil yaşı yalnızca `4_6` veya `7_11`, başlangıç seçimi üç kararlı avatar anahtarından biridir. Kesin yaş, tam ad, e-posta, doğum tarihi veya permission istenmez. Zod application/repository sınırında doğrulama yapar.
 
 ## 2026-08-02 — ADR-014: Repository, view model ve SQLite test stratejisi
 
@@ -77,3 +77,13 @@ Quality workflow’undaki `actions/checkout@v4`, `fetch-depth: 0` ile tüm Git g
 ## 2026-08-02 — ADR-019: Çocuk takma adları benzersiz değildir
 
 Takma ad yalnızca çocuk arayüzünde kullanılan, veri minimizasyonuna uygun bir hitap değeridir ve profil kimliği değildir. Aynı ailede birden fazla çocuk aynı takma adı kullanabilir. Geçmiş kurulumları ve mevcut verileri korumak için Migration 1 değiştirilmez; ileri yönlü Migration 2 yalnızca `child_profiles_family_nickname_uq` index’ini kaldırır.
+
+## 2026-08-08 — ADR-020: Hedef yaş 4–11 ve açık legacy yeniden seçimi
+
+Birincil hedef 4–11, yeni yaş bantları `4_6` ve `7_11` olarak belirlenmiştir; 12+ MVP kapsamı dışındadır. 4–6 yaklaşımı ebeveyn destekli/birlikte fırçalama, 7–11 yaklaşımı daha bağımsız kullanımdır. Ayrı UI modu, ses sistemi ve oyun mekaniği bu düzeltmenin kapsamında değildir.
+
+Eski `6_8` değeri iki yeni bantla kesiştiği için legacy değerler otomatik eşlenmez. Migration 3 mevcut profil ve aktif seçim kayıtlarını koruyarak SQLite CHECK kuralına yeni değerleri ekler ve legacy değerleri geçici okuma uyumluluğu için tutar. Domain create/update validasyonu yalnızca yeni değerleri kabul eder. Legacy aktif profil Child Home’dan önce kısa yeniden seçim route’una gider.
+
+## 2026-08-08 — ADR-021: Expo SDK 57 patch uyumluluğu
+
+Zorunlu son doğrulamada Expo Doctor’ın güncel SDK 57 uyumluluk setiyle eşleşmek için yalnızca patch sürümleri güncellendi: Expo `~57.0.11`, Expo Constants `~57.0.9`, Expo Linking `~57.0.5` ve Expo Router `~57.0.11`. Node, npm, React Native ve Expo SDK major standardı değişmedi; sürümler `expo install` ve npm lockfile üzerinden üretildi.

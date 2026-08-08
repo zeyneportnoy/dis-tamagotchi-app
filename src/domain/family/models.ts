@@ -1,4 +1,6 @@
-export type AgeBand = '6_8' | '9_10';
+export type AgeBand = '4_6' | '7_11';
+export type LegacyAgeBand = '6_8' | '9_10';
+export type StoredAgeBand = AgeBand | LegacyAgeBand;
 export type StarterAvatarKey = 'cheerful-incisor' | 'sleepy-molar' | 'brave-canine';
 
 export type Family = Readonly<{
@@ -13,7 +15,7 @@ export type ChildProfile = Readonly<{
   id: string;
   familyId: string;
   nickname: string;
-  ageBand: AgeBand;
+  ageBand: StoredAgeBand;
   avatarId: StarterAvatarKey;
   createdAt: string;
   archivedAt: string | null;

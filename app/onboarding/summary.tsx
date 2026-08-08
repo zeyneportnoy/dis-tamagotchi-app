@@ -35,7 +35,7 @@ export default function SummaryScreen() {
     <Screen>
       <Text variant="title">{t('onboarding.summary.title')}</Text>
       <Text>{t('onboarding.summary.nickname', { nickname: draft.nickname })}</Text>
-      <Text>{t(`onboarding.ageBand.${draft.ageBand === '9_10' ? 'nineTen' : 'sixEight'}`)}</Text>
+      <Text>{t(`onboarding.ageBand.${draft.ageBand === '7_11' ? 'sevenEleven' : 'fourSix'}`)}</Text>
       <Text>{draft.avatarId ? t(`onboarding.character.options.${draft.avatarId}`) : ''}</Text>
       {failed ? <Text>{t('onboarding.summary.error')}</Text> : null}
       <Button

@@ -27,8 +27,8 @@ export const tr = {
       },
       ageBand: {
         title: 'Yaş grubunu seç',
-        sixEight: '6–8 yaş',
-        nineTen: '9–10 yaş',
+        fourSix: '4–6 yaş',
+        sevenEleven: '7–11 yaş',
       },
       character: {
         title: 'Başlangıç arkadaşını seç',
@@ -50,6 +50,13 @@ export const tr = {
       placeholder: 'Çocuk ana ekranı bir sonraki adımlarda gelişecek.',
       parentArea: 'Veli alanı',
       switchProfile: 'Profil seç',
+    },
+    ageBandUpdate: {
+      title: 'Yaş grubunu güncelle',
+      body: 'Devam etmek için yeni yaş gruplarından birini seçelim.',
+      fourSix: '4–6 yaş',
+      sevenEleven: '7–11 yaş',
+      error: 'Kaydederken küçük bir sorun oldu. Yeniden deneyebiliriz.',
     },
     parent: {
       title: 'Veli alanı',

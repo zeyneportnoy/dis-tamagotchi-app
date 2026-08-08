@@ -9,7 +9,7 @@ jest.mock('@/application/family', () => ({
         Promise.resolve({
           id: 'profile-1',
           nickname: 'Ege',
-          ageBand: '6_8',
+          ageBand: '4_6',
           avatarId: 'cheerful-incisor',
         }),
       listProfiles: () => Promise.resolve([]),

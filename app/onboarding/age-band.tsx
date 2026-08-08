@@ -11,14 +11,14 @@ export default function AgeBandScreen() {
     <Screen>
       <Text variant="title">{t('onboarding.ageBand.title')}</Text>
       <SelectionCard
-        label={t('onboarding.ageBand.sixEight')}
-        onPress={() => draft.setAgeBand('6_8')}
-        selected={draft.ageBand === '6_8'}
+        label={t('onboarding.ageBand.fourSix')}
+        onPress={() => draft.setAgeBand('4_6')}
+        selected={draft.ageBand === '4_6'}
       />
       <SelectionCard
-        label={t('onboarding.ageBand.nineTen')}
-        onPress={() => draft.setAgeBand('9_10')}
-        selected={draft.ageBand === '9_10'}
+        label={t('onboarding.ageBand.sevenEleven')}
+        onPress={() => draft.setAgeBand('7_11')}
+        selected={draft.ageBand === '7_11'}
       />
       <Button
         disabled={!draft.ageBand}

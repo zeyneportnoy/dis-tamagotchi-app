@@ -1,6 +1,8 @@
 # Diş Tamagotchi
 
-6–10 yaş çocukları için güvenli, local-first diş fırçalama rutin uygulamasının Milestone 0 iskeleti.
+4–11 yaş çocukları için güvenli, local-first diş fırçalama rutin uygulaması.
+
+Birincil hedef 4–11 yaştır: 4–6 yaş yaklaşımı ebeveyn destekli/birlikte fırçalamayı, 7–11 yaş yaklaşımı daha bağımsız kullanımı temel alır. Bu aşamada ayrı UI modları, ses sistemi veya oyun mekaniği yoktur; kesin yaş ve doğum tarihi toplanmaz. 12+ MVP kapsamı dışındadır.
 
 ## Gereksinimler
 
@@ -38,7 +40,7 @@ npm run smoke:export
 
 ## Milestone 1 kapsamı
 
-Uygulama hesap açmadan yerel aile ve birden fazla çocuk profili oluşturur. Kısa onboarding; takma ad, yaş bandı ve yalnızca başlangıç tercihi olan karakter anahtarını kaydeder. Aktif profil SQLite’ta korunur ve sonraki açılış Child Home’a gider. Çocuk alanından veli placeholder’ına geçiş değişken toplama sorulu ebeveyn kapısı arkasındadır.
+Uygulama hesap açmadan yerel aile ve birden fazla çocuk profili oluşturur. Kısa onboarding; takma ad, `4_6`/`7_11` yaş bandı ve yalnızca başlangıç tercihi olan karakter anahtarını kaydeder. Aktif profil SQLite’ta korunur ve sonraki açılış Child Home’a gider. Legacy `6_8`/`9_10` profilleri tahminle dönüştürülmez; Child Home öncesinde yeni yaş bandı açıkça seçilir. Çocuk alanından veli placeholder’ına geçiş değişken toplama sorulu ebeveyn kapısı arkasındadır.
 
 Bulut, analytics, abonelik ve satın alma kapalıdır. Backend, pet durum sistemi, XP, ödül, koleksiyon, bildirim ve fırçalama zamanlayıcısı yoktur.
 

@@ -38,4 +38,38 @@ export const migrations: readonly Migration[] = [
     name: 'allow_duplicate_profile_nicknames',
     statements: ['DROP INDEX IF EXISTS child_profiles_family_nickname_uq;'],
   },
+  {
+    version: 3,
+    name: 'support_target_age_bands_4_11',
+    statements: [
+      `CREATE TABLE active_profile_backup AS
+        SELECT singleton, child_profile_id FROM active_profile;`,
+      `DROP TABLE active_profile;`,
+      `CREATE TABLE child_profiles_next (
+        id TEXT PRIMARY KEY NOT NULL,
+        family_id TEXT NOT NULL,
+        nickname TEXT NOT NULL CHECK(length(trim(nickname)) BETWEEN 1 AND 20),
+        age_band TEXT NOT NULL CHECK(age_band IN ('4_6', '7_11', '6_8', '9_10')),
+        avatar_id TEXT NOT NULL CHECK(length(trim(avatar_id)) > 0),
+        created_at TEXT NOT NULL,
+        archived_at TEXT,
+        FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE
+      );`,
+      `INSERT INTO child_profiles_next
+        (id, family_id, nickname, age_band, avatar_id, created_at, archived_at)
+       SELECT id, family_id, nickname, age_band, avatar_id, created_at, archived_at
+       FROM child_profiles;`,
+      `DROP TABLE child_profiles;`,
+      `ALTER TABLE child_profiles_next RENAME TO child_profiles;`,
+      `CREATE INDEX child_profiles_family_idx ON child_profiles(family_id);`,
+      `CREATE TABLE active_profile (
+        singleton INTEGER PRIMARY KEY NOT NULL CHECK(singleton = 1),
+        child_profile_id TEXT,
+        FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE SET NULL
+      );`,
+      `INSERT INTO active_profile(singleton, child_profile_id)
+       SELECT singleton, child_profile_id FROM active_profile_backup;`,
+      `DROP TABLE active_profile_backup;`,
+    ],
+  },
 ];
