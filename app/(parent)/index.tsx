@@ -23,5 +23,5 @@ export default function ParentPlaceholderScreen() {
 }
 
 const styles = StyleSheet.create({
-  back: { left: spacing.lg, position: 'absolute', top: spacing.md },
+  back: { left: spacing.lg, position: 'absolute', top: spacing.xl + spacing.lg },
 });

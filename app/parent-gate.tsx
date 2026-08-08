@@ -41,5 +41,5 @@ export default function ParentGateScreen() {
 }
 
 const styles = StyleSheet.create({
-  back: { left: spacing.lg, position: 'absolute', top: spacing.md },
+  back: { left: spacing.lg, position: 'absolute', top: spacing.xl + spacing.lg },
 });

@@ -9,14 +9,18 @@ const characterEmoji: Record<StarterAvatarKey, string> = {
   'brave-canine': '✨',
 };
 
-type Props = { characterKey: StarterAvatarKey; size?: 'small' | 'large' | 'hero' };
+type Props = {
+  characterKey: StarterAvatarKey;
+  size?: 'tiny' | 'small' | 'large' | 'hero';
+  surface?: 'badge' | 'plain';
+};
 
-export function CharacterAvatar({ characterKey, size = 'large' }: Props) {
+export function CharacterAvatar({ characterKey, size = 'large', surface = 'badge' }: Props) {
   return (
     <View
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      style={[styles.base, styles[size]]}
+      style={[styles.base, styles[size], surface === 'plain' && styles.plain]}
       testID={`character-${characterKey}`}
     >
       <View style={styles.face}>
@@ -37,6 +41,9 @@ const styles = StyleSheet.create({
   largeEmoji: { fontSize: 104, lineHeight: 124 },
   hero: { borderRadius: radii.pill, height: 250, width: 250 },
   heroEmoji: { fontSize: 142, lineHeight: 164 },
+  plain: { backgroundColor: 'transparent' },
   small: { borderRadius: radii.pill, height: 64, width: 64 },
   smallEmoji: { fontSize: 34, lineHeight: 42 },
+  tiny: { borderRadius: radii.pill, height: 48, width: 48 },
+  tinyEmoji: { fontSize: 25, lineHeight: 30 },
 });

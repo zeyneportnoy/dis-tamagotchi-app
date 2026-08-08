@@ -1,6 +1,6 @@
 import { router, useNavigation } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { AppState, StyleSheet, View } from 'react-native';
+import { AppState, Pressable, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { getChildExperienceUseCases } from '@/application/child';
@@ -116,8 +116,24 @@ export default function BrushingScreen() {
   }
 
   const paused = timer.status === 'paused';
+  const requestExit = (): void => {
+    const current = Date.now();
+    setTimer((state) => (state ? pauseBrushingTimer(state, current) : state));
+    setNowMs(current);
+    setExitConfirmation(true);
+  };
   return (
     <Screen style={styles.screen} testID="brushing-session-screen">
+      <Pressable
+        accessibilityLabel={t('brushing.exit')}
+        accessibilityRole="button"
+        hitSlop={8}
+        onPress={requestExit}
+        style={({ pressed }) => [styles.exitButton, pressed && styles.pressed]}
+        testID="brushing-exit-button"
+      >
+        <Text style={styles.exitIcon}>×</Text>
+      </Pressable>
       <Text style={styles.eyebrow}>{t('brushing.title')}</Text>
       <Text style={styles.centerText} variant="title">
         {t(`brushing.regions.${region}`)}
@@ -235,9 +251,22 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     textAlign: 'center',
   },
+  exitButton: {
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: radii.pill,
+    height: 48,
+    justifyContent: 'center',
+    left: spacing.lg,
+    position: 'absolute',
+    top: spacing.xl + spacing.lg,
+    width: 48,
+  },
+  exitIcon: { color: colors.brandPrimary, fontSize: 34, fontWeight: '700', lineHeight: 38 },
   helper: { textAlign: 'center' },
   instruction: { fontSize: 22, fontWeight: '700', lineHeight: 30, textAlign: 'center' },
   progress: { color: colors.brandSecondary, fontSize: 24, fontWeight: '800', textAlign: 'center' },
+  pressed: { opacity: 0.7 },
   segment: {
     backgroundColor: '#E4DED9',
     borderRadius: radii.pill,

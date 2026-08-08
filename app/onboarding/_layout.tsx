@@ -9,7 +9,7 @@ export default function OnboardingLayout() {
       <Stack
         screenOptions={{
           contentStyle: { backgroundColor: colors.backgroundBase },
-          headerLeft: () => <BackButton />,
+          headerLeft: () => <BackButton fallbackHref="/onboarding" />,
           headerShadowVisible: false,
           headerStyle: { backgroundColor: colors.backgroundBase },
           headerTitle: '',

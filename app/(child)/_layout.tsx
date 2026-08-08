@@ -4,8 +4,10 @@ import { useTranslation } from 'react-i18next';
 
 import { Text, colors, minimumTouchTarget } from '@/design-system';
 
-function TabIcon({ color, symbol }: { color: ColorValue; symbol: string }) {
-  return <Text style={[styles.icon, { color }]}>{symbol}</Text>;
+function TabIcon({ active, symbol }: { active: boolean; symbol: string }) {
+  return (
+    <Text style={[styles.icon, active ? styles.iconActive : styles.iconInactive]}>{symbol}</Text>
+  );
 }
 
 function TabLabel({ color, label }: { color: ColorValue; label: string }) {
@@ -30,7 +32,7 @@ export default function ChildLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          tabBarIcon: ({ color }) => <TabIcon color={color} symbol="⌂" />,
+          tabBarIcon: ({ focused }) => <TabIcon active={focused} symbol="🏠" />,
           tabBarLabel: ({ color }) => <TabLabel color={color} label={t('tabs.home')} />,
           title: t('tabs.home'),
         }}
@@ -38,7 +40,7 @@ export default function ChildLayout() {
       <Tabs.Screen
         name="tasks"
         options={{
-          tabBarIcon: ({ color }) => <TabIcon color={color} symbol="✓" />,
+          tabBarIcon: ({ focused }) => <TabIcon active={focused} symbol="📋" />,
           tabBarLabel: ({ color }) => <TabLabel color={color} label={t('tabs.tasks')} />,
           title: t('tabs.tasks'),
         }}
@@ -46,7 +48,7 @@ export default function ChildLayout() {
       <Tabs.Screen
         name="collection"
         options={{
-          tabBarIcon: ({ color }) => <TabIcon color={color} symbol="★" />,
+          tabBarIcon: ({ focused }) => <TabIcon active={focused} symbol="⭐" />,
           tabBarLabel: ({ color }) => <TabLabel color={color} label={t('tabs.collection')} />,
           title: t('tabs.collection'),
         }}
@@ -54,7 +56,7 @@ export default function ChildLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          tabBarIcon: ({ color }) => <TabIcon color={color} symbol="●" />,
+          tabBarIcon: ({ focused }) => <TabIcon active={focused} symbol="☺" />,
           tabBarLabel: ({ color }) => <TabLabel color={color} label={t('tabs.profile')} />,
           title: t('tabs.profile'),
         }}
@@ -71,7 +73,9 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     paddingTop: 6,
   },
-  icon: { fontSize: 25, fontWeight: '800', lineHeight: 28, minHeight: 28 },
+  icon: { fontSize: 23, fontWeight: '800', lineHeight: 28, minHeight: 28 },
+  iconActive: { opacity: 1 },
+  iconInactive: { opacity: 0.42 },
   label: {
     fontSize: 11,
     fontWeight: '700',
