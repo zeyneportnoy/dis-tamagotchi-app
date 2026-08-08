@@ -7,6 +7,7 @@ import {
   type ChildProfileRepository,
   type CreateChildProfileInput,
   type StarterAvatarKey,
+  type StoredAgeBand,
   type UpdateChildProfileInput,
   updateChildProfileSchema,
 } from '@/domain/family';
@@ -15,7 +16,7 @@ type ProfileRow = {
   id: string;
   family_id: string;
   nickname: string;
-  age_band: '6_8' | '9_10';
+  age_band: StoredAgeBand;
   avatar_id: StarterAvatarKey;
   created_at: string;
   archived_at: string | null;

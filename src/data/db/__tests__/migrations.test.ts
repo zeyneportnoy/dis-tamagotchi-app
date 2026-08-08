@@ -30,11 +30,11 @@ describe('M1 migrations', () => {
     const migrations = await database.getAllAsync<{ version: number }>(
       'SELECT version FROM schema_migrations',
     );
-    expect(migrations).toEqual([{ version: 1 }, { version: 2 }]);
+    expect(migrations).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }]);
     database.close();
   });
 
-  it('preserves existing profiles when removing nickname uniqueness', async () => {
+  it('preserves a legacy profile and active selection across forward migrations', async () => {
     const database = new NodeSQLiteDatabase();
     const initialMigration = migrations[0];
     if (!initialMigration) throw new Error('Migration 1 is required');
@@ -69,20 +69,29 @@ describe('M1 migrations', () => {
       'cheerful-incisor',
       '2026-08-02T12:00:00.000Z',
     );
+    await database.runAsync(
+      'UPDATE active_profile SET child_profile_id = ? WHERE singleton = 1',
+      'profile-1',
+    );
 
     await migrateDatabase(database as unknown as SQLiteDatabase);
     await migrateDatabase(database as unknown as SQLiteDatabase);
 
     await expect(
-      database.getAllAsync<{ id: string; nickname: string }>(
-        'SELECT id, nickname FROM child_profiles ORDER BY id',
+      database.getAllAsync<{ age_band: string; id: string; nickname: string }>(
+        'SELECT id, nickname, age_band FROM child_profiles ORDER BY id',
       ),
-    ).resolves.toEqual([{ id: 'profile-1', nickname: 'Ege' }]);
+    ).resolves.toEqual([{ age_band: '6_8', id: 'profile-1', nickname: 'Ege' }]);
+    await expect(
+      database.getFirstAsync<{ child_profile_id: string }>(
+        'SELECT child_profile_id FROM active_profile WHERE singleton = 1',
+      ),
+    ).resolves.toEqual({ child_profile_id: 'profile-1' });
     await expect(
       database.getAllAsync<{ version: number }>(
         'SELECT version FROM schema_migrations ORDER BY version',
       ),
-    ).resolves.toEqual([{ version: 1 }, { version: 2 }]);
+    ).resolves.toEqual([{ version: 1 }, { version: 2 }, { version: 3 }]);
     database.close();
   });
 });

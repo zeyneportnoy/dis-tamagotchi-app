@@ -2,10 +2,12 @@ import { render, waitFor } from '@testing-library/react-native';
 
 import Index from '../index';
 
+const mockGetActiveProfile = jest.fn();
+
 jest.mock('@/application/family', () => ({
   getFamilyUseCases: () =>
     Promise.resolve({
-      getActiveProfile: () => Promise.resolve({ id: 'profile-1', nickname: 'Ege' }),
+      getActiveProfile: mockGetActiveProfile,
     }),
 }));
 jest.mock('expo-router', () => {
@@ -18,10 +20,30 @@ jest.mock('expo-router', () => {
 });
 
 describe('bootstrap route', () => {
+  beforeEach(() => {
+    mockGetActiveProfile.mockResolvedValue({
+      id: 'profile-1',
+      nickname: 'Ege',
+      ageBand: '4_6',
+    });
+  });
+
   it('opens Child Home when a profile exists', async () => {
     const view = await render(<Index />);
     await waitFor(() => {
       expect(view.getByText('/(child)')).toBeTruthy();
+    });
+  });
+
+  it('requires age-band reselection for a legacy profile', async () => {
+    mockGetActiveProfile.mockResolvedValue({
+      id: 'profile-legacy',
+      nickname: 'Ege',
+      ageBand: '6_8',
+    });
+    const view = await render(<Index />);
+    await waitFor(() => {
+      expect(view.getByText('/age-band-update')).toBeTruthy();
     });
   });
 });

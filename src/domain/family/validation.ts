@@ -2,7 +2,11 @@ import { z } from 'zod';
 
 export const NICKNAME_MAX_LENGTH = 20;
 
-export const ageBandSchema = z.enum(['6_8', '9_10']);
+export const ageBandSchema = z.enum(['4_6', '7_11']);
+export const legacyAgeBandSchema = z.enum(['6_8', '9_10']);
+export const storedAgeBandSchema = z.union([ageBandSchema, legacyAgeBandSchema]);
+export const isLegacyAgeBand = (value: string): boolean =>
+  legacyAgeBandSchema.safeParse(value).success;
 export const starterAvatarSchema = z.enum(['cheerful-incisor', 'sleepy-molar', 'brave-canine']);
 export const nicknameSchema = z
   .string()

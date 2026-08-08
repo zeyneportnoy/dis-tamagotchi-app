@@ -1,9 +1,10 @@
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { getFamilyUseCases, type ChildProfileViewModel } from '@/application/family';
 import { Button, ErrorState, LoadingState, Screen, SelectionCard, Text } from '@/design-system';
+import { isLegacyAgeBand } from '@/domain/family';
 
 export default function ChildHomeScreen() {
   const { t } = useTranslation();
@@ -19,6 +20,9 @@ export default function ChildHomeScreen() {
         useCases.listProfiles(),
       ]);
       if (!activeProfile) return router.replace('/onboarding');
+      if (isLegacyAgeBand(activeProfile.ageBand)) {
+        return router.replace('/age-band-update' as Href);
+      }
       setActive(activeProfile);
       setProfiles(allProfiles);
     } catch {
@@ -33,6 +37,9 @@ export default function ChildHomeScreen() {
       .then(([activeProfile, allProfiles]) => {
         if (!mounted) return;
         if (!activeProfile) return router.replace('/onboarding');
+        if (isLegacyAgeBand(activeProfile.ageBand)) {
+          return router.replace('/age-band-update' as Href);
+        }
         setActive(activeProfile);
         setProfiles(allProfiles);
       })

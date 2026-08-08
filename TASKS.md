@@ -22,9 +22,12 @@
 - [x] Değişken toplama sorulu temel ebeveyn kapısı
 - [x] Migration, repository, kalıcılık, route ve erişilebilirlik testleri
 - [x] Dokümantasyon, tam kalite kapıları ve iOS Simulator akış doğrulaması
+- [x] Ürün hedefini 4–11 ve yaş bantlarını `4_6`/`7_11` olarak güncelle
+- [x] Legacy yaş bantlarını veri kaybı olmadan açık yeniden seçime yönlendir
 
 ## Açık riskler / teknik borç
 
 - M0 ekranları gerçek cihazda manuel erişilebilirlik incelemesinden geçmelidir.
 - EAS preview build kimlik bilgileri ve harici servis gerektirir; M0’da çalıştırılmaz.
 - `npm audit` Expo CLI transitif zincirinde 11 moderate `uuid@7` bulgusu verir; upstream düzeltme izlenmelidir.
+- 4–6 ebeveyn destekli ve 7–11 bağımsız deneyim ayrımları sonraki milestone’larda tasarlanacaktır; bu güncelleme iki ayrı UI modu eklemez.
