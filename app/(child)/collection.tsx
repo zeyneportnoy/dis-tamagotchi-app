@@ -7,12 +7,18 @@ export default function CollectionScreen() {
   const { t } = useTranslation();
   return (
     <Screen style={styles.screen} testID="collection-screen">
-      <View style={styles.iconBubble}>
-        <Text style={styles.icon}>★</Text>
+      <Text style={styles.heading} variant="title">
+        {t('placeholders.collectionTitle')}
+      </Text>
+      <View style={styles.hero}>
+        <View style={styles.backStar}>
+          <Text style={styles.icon}>★</Text>
+        </View>
+        <Text style={styles.smallStarLeft}>✦</Text>
+        <Text style={styles.smallStarRight}>✦</Text>
       </View>
       <View style={styles.card}>
-        <Text variant="title">{t('placeholders.collectionTitle')}</Text>
-        <Text>{t('placeholders.collectionBody')}</Text>
+        <Text style={styles.center}>{t('placeholders.collectionBody')}</Text>
       </View>
     </Screen>
   );
@@ -25,15 +31,39 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.lg,
   },
-  icon: { color: colors.brandSecondary, fontSize: 52, lineHeight: 60 },
-  iconBubble: {
+  backStar: {
     alignItems: 'center',
     alignSelf: 'center',
-    backgroundColor: '#FFF1F3',
+    backgroundColor: colors.white,
     borderRadius: radii.pill,
-    height: 120,
+    height: 160,
     justifyContent: 'center',
-    width: 120,
+    width: 160,
   },
+  center: { textAlign: 'center' },
+  heading: { textAlign: 'center' },
+  hero: {
+    alignItems: 'center',
+    backgroundColor: '#F9D7E5',
+    borderRadius: 34,
+    height: 300,
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  icon: { color: colors.brandHighlight, fontSize: 88, lineHeight: 100 },
   screen: { justifyContent: 'center' },
+  smallStarLeft: {
+    color: colors.brandPrimary,
+    fontSize: 28,
+    left: spacing.lg,
+    position: 'absolute',
+    top: 62,
+  },
+  smallStarRight: {
+    bottom: 50,
+    color: colors.brandSecondary,
+    fontSize: 30,
+    position: 'absolute',
+    right: spacing.lg,
+  },
 });

@@ -33,9 +33,17 @@ export default function ProfileScreen() {
 
   return (
     <Screen style={styles.screen} testID="profile-screen">
-      <CharacterAvatar characterKey={profile.avatarId} />
+      <Text style={styles.heading} variant="title">
+        {t('placeholders.profileTitle')}
+      </Text>
+      <View style={styles.hero}>
+        <Text style={styles.sparkleLeft}>✦</Text>
+        <Text style={styles.sparkleRight}>★</Text>
+        <CharacterAvatar characterKey={profile.avatarId} size="large" surface="plain" />
+        <View style={styles.pedestal} />
+      </View>
+      <Text style={styles.nickname}>{profile.nickname}</Text>
       <View style={styles.card}>
-        <Text variant="title">{t('placeholders.profileTitle')}</Text>
         <View style={styles.row}>
           <Text style={styles.label}>{t('profile.nickname')}</Text>
           <Text>{profile.nickname}</Text>
@@ -66,8 +74,46 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     gap: spacing.md,
     padding: spacing.lg,
+    width: '100%',
   },
-  label: { fontWeight: '800' },
-  row: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  screen: { alignItems: 'center' },
+  heading: { textAlign: 'center' },
+  hero: {
+    alignItems: 'center',
+    backgroundColor: '#BFEFEB',
+    borderRadius: 34,
+    height: 260,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    width: '100%',
+  },
+  label: { flex: 1, fontWeight: '800' },
+  nickname: { fontSize: 26, fontWeight: '900', lineHeight: 32 },
+  pedestal: {
+    backgroundColor: '#A16DCE',
+    borderRadius: radii.pill,
+    height: 24,
+    marginTop: -28,
+    width: 150,
+  },
+  row: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'space-between',
+  },
+  screen: { alignItems: 'center', gap: spacing.md },
+  sparkleLeft: {
+    color: colors.brandHighlight,
+    fontSize: 28,
+    left: spacing.lg,
+    position: 'absolute',
+    top: spacing.lg,
+  },
+  sparkleRight: {
+    color: colors.brandSecondary,
+    fontSize: 28,
+    position: 'absolute',
+    right: spacing.lg,
+    top: 60,
+  },
 });

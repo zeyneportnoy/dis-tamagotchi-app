@@ -14,7 +14,7 @@ describe('Welcome route', () => {
 
   it('continues to the accountless explanation', async () => {
     const view = await render(<WelcomeScreen />);
-    fireEvent.press(view.getByRole('button', { name: 'Devam et' }));
+    fireEvent.press(view.getByRole('button', { name: 'Başlayalım' }));
     expect(router.push).toHaveBeenCalledWith('/onboarding/accountless');
   });
 });
