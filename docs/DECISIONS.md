@@ -99,3 +99,11 @@ Seçili karakter için yeni ve tekrarlı bir alan açılmaz; M1’deki `child_pr
 ## 2026-08-08 — ADR-024: M2 transitif audit bulguları
 
 `npm audit --audit-level=critical` sıfır critical bulguyla geçer. Expo/Metro araç zincirindeki `image-size` için 15 high ve `xcode → uuid` için 8 moderate transitif bulgu raporlanır. npm’in sunduğu zorunlu çözüm Expo 53’e breaking downgrade yaptığı için `--force` uygulanmaz; SDK 57 ile uyumlu upstream paket güncellemesi izlenir. Uygulama bu paketlerle kullanıcı girdili görsel dosya ayrıştırmaz.
+
+## 2026-08-08 — ADR-025: Timestamp tabanlı tek brushing timer
+
+4–6 ve 7–11 profilleri aynı 120 saniyelik timer domain’ini kullanır; yalnız yardımcı metin yaş bandına göre uyarlanır. Dört bölüm sabit 30 saniyedir. Timer render/tick saymak yerine başlangıç timestamp’i ve birikmiş pause süresinden snapshot üretir. Interval yalnız görünümü yeniler, AppState dönüşü güncel zamanı okur. Zustand eklenmedi; tek route’a ait transient state için React state ve saf domain fonksiyonları daha küçük yüzey oluşturur.
+
+## 2026-08-08 — ADR-026: Yalnız tamamlanmış seansların transaction’lı kalıcılığı
+
+Migration 5’teki `brushing_sessions`, profile `ON DELETE CASCADE` ile bağlıdır. Erken çıkış hiçbir completed kayıt üretmez. Başarılı completion; session insert, yerel gün/period görevi ve son etkileşim/fırçalama timestamp’lerini tek transaction’da yazar. Period 04:00–15:59 morning, 16:00–03:59 evening kabul edilir. Aynı period içinde ek seanslar ayrı geçmiş kaydı oluşturabilir ancak görev bayrağı true kalır. XP, ödül ve gerçek streak hesabı M4’e bırakılmıştır.

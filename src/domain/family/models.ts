@@ -45,3 +45,20 @@ export type ProfileProgress = Readonly<{
   lastInteractionAt: string | null;
   lastBrushingAt: string | null;
 }>;
+
+export type BrushingSession = Readonly<{
+  id: string;
+  profileId: string;
+  startedAt: string;
+  completedAt: string;
+  durationSeconds: number;
+  completed: boolean;
+  period: BrushingPeriod;
+  createdAt: string;
+}>;
+
+export type CompleteBrushingSessionInput = Readonly<{
+  profileId: string;
+  startedAt: string;
+  durationSeconds: number;
+}>;

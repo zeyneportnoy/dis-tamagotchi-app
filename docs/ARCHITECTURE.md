@@ -9,6 +9,7 @@ Local-first modüler monolit. UI/routes → application use-cases → domain →
 - `app/onboarding`: hesap gerektirmeyen kısa aile/profil kurulumu
 - `app/age-band-update`: legacy yaş bandı bulunan aktif profil için zorunlu açık yeniden seçim
 - `app/(child)`: tab tabanlı çocuk alanı; işlevsel karakter Home ile Görevler, Koleksiyon ve Profil placeholder route’ları
+- `app/brushing`: tab alanının üzerinde açılan 120 saniyelik seans ve completion görünümü
 - `app/parent-gate`: her açılışta değişen toplama sorusu
 - `app/(parent)`: ebeveyn kapısından sonra açılan placeholder ve yeni profil başlangıcı
 
@@ -28,11 +29,15 @@ Migration 2 aynı ailede tekrar eden takma adları desteklemek için eski unique
 
 Migration 4, profil kimliğine `ON DELETE CASCADE` ile bağlı `profile_progress` tablosunu ekler. Tablo günlük sabah/akşam tamamlanma bayrakları, gelecekte kullanılacak negatif olmayan temel seri sayacı, son etkileşim ve son fırçalama zamanını tutar. Satır ilk erişimde oluşturulur; gün değişince yalnızca günlük görev bayrakları sıfırlanır. Karakter anahtarı mevcut `child_profiles.avatar_id` alanında kalır; böylece her profil farklı karakter taşıyabilir ve ikinci bir kaynak doğruluğu oluşmaz.
 
-Repository yazma işlemleri transaction kullanır. Application katmanı aile/profil use-case’lerine ek olarak profil ilerlemesini okuma ve sabah/akşam durumunu değiştirme use-case’lerini sunar. UI doğrudan SQLite çağırmaz.
+Migration 5, `brushing_sessions` tablosunu ve profil/tamamlanma zamanı index’ini ekler. Yalnız başarıyla biten seans yazılır. Session insert ile `profile_progress` morning/evening, `last_interaction_at` ve `last_brushing_at` güncellemesi aynı SQLite transaction’ındadır. Period yerel tamamlanma saatinden belirlenir: 04:00–15:59 morning, diğer saatler evening.
+
+Repository yazma işlemleri transaction kullanır. Application katmanı aile/profil use-case’lerine ek olarak profil ilerlemesini okuma, tamamlanan brushing session kaydetme ve geçmişi listeleme use-case’lerini sunar. UI doğrudan SQLite çağırmaz.
+
+Brushing timer kalıcı veri modelinden ayrıdır. Saf domain fonksiyonları başlangıç timestamp’i, toplam pause süresi ve güncel timestamp üzerinden elapsed/remaining/segment snapshot’ı üretir. Render sayısı süre kaynağı değildir; 250 ms interval yalnız ekranı yeniler. AppState değişiminde timestamp yeniden okunur, dolayısıyla kısa background geçişi sayacı bozmaz. Yarım kalan transient seans uygulama process’i sonlandırılırsa geri yüklenmez ve completion kaydı oluşturmaz.
 
 ## Genişleme sınırları
 
-Bulut, analytics, abonelik ve satın alma yalnızca kapalı feature flag’tir. Bu milestone’da SDK, backend, ağ isteği, hesap veya event toplama yoktur. Gerçek timer, pet bakım durumu, XP, ödül dağıtımı, mağaza ve koleksiyon ekonomisi de yoktur.
+Bulut, analytics, abonelik ve satın alma yalnızca kapalı feature flag’tir. Bu milestone’da SDK, backend, ağ isteği, hesap veya event toplama yoktur. Pet bakım durumu, XP, ödül dağıtımı, gerçek streak, mağaza ve koleksiyon ekonomisi de yoktur.
 
 ## Güvenlik ve gizlilik
 

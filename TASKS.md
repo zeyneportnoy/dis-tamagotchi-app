@@ -34,8 +34,21 @@
 - [x] Erişilebilir büyük “Fırçalayalım” ana eylemi
 - [x] Ana Sayfa, Görevler, Koleksiyon ve Profil tab route’ları
 - [x] Migration, repository, kalıcılık, route ve component testleri
-- [ ] Gerçek 2 dakikalık timer — M3 kapsamı
+- [x] Gerçek 2 dakikalık timer — M3 kapsamında tamamlandı
 - [ ] XP, ödül ve koleksiyon ekonomisi — sonraki milestone kapsamı
+
+## M3 — Brushing Session
+
+- [x] Home’dan gerçek brushing route’una geçiş
+- [x] Timestamp tabanlı 120 saniye ve dört adet 30 saniyelik bölüm
+- [x] Üst/alt dişler ile dış/iç yüzey yönlendirmeleri
+- [x] Pause, resume ve onaylı erken çıkış
+- [x] Yaş bandına göre kısa yardımcı metin
+- [x] Tamamlanma ekranı ve Home’a dönüş
+- [x] Migration 5 ve profil bazlı tamamlanmış seans geçmişi
+- [x] Yerel saatle morning/evening görevinin transaction içinde güncellenmesi
+- [x] Test clock, SQLite kalıcılık ve route testleri
+- [ ] XP, coin, reward, achievement ve gerçek streak — M4 kapsamı
 
 ## Açık riskler / teknik borç
 
@@ -43,4 +56,4 @@
 - EAS preview build kimlik bilgileri ve harici servis gerektirir; M0’da çalıştırılmaz.
 - `npm audit --audit-level=critical` geçer; Expo/Metro geliştirme zincirinde 15 high `image-size` ve 8 moderate `uuid` transitif bulgusu kalır. Önerilen zorunlu düzeltme Expo 53’e geri dönüş olduğundan upstream uyumlu çözüm izlenir.
 - 4–6 ebeveyn destekli ve 7–11 bağımsız deneyim ayrımları sonraki milestone’larda tasarlanacaktır; bu güncelleme iki ayrı UI modu eklemez.
-- M2’de “Fırçalayalım” ana eylemi görsel odaktır; gerçek timer M3’e kadar başlatılmaz.
+- Arka planda geçirilen süre timestamp hesabına dahil edilir; uygulamanın işletim sistemi tarafından tamamen sonlandırıldığı yarım seans M3’te geri yüklenmez ve tamamlanmış sayılmaz.

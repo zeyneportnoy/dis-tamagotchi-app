@@ -1,21 +1,10 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { router } from 'expo-router';
 import { StyleSheet } from 'react-native';
 
 import { minimumTouchTarget } from '@/design-system';
 
 import ChildHomeScreen from '../index';
-
-const mockSetBrushingCompleted = jest.fn(() =>
-  Promise.resolve({
-    childProfileId: 'profile-1',
-    statusDate: '2026-08-08',
-    morningCompleted: true,
-    eveningCompleted: false,
-    currentStreak: 0,
-    lastInteractionAt: '2026-08-08T07:30:00.000Z',
-    lastBrushingAt: '2026-08-08T07:30:00.000Z',
-  }),
-);
 
 jest.mock('@/application/child', () => ({
   getChildExperienceUseCases: () =>
@@ -30,7 +19,6 @@ jest.mock('@/application/child', () => ({
           lastInteractionAt: null,
           lastBrushingAt: null,
         }),
-      setBrushingCompleted: mockSetBrushingCompleted,
     }),
 }));
 jest.mock('@/application/family', () => ({
@@ -65,12 +53,10 @@ describe('Child Home route', () => {
     );
   });
 
-  it('persists a morning task interaction through the use case', async () => {
+  it('opens the real brushing session route', async () => {
     const view = await render(<ChildHomeScreen />);
-    await waitFor(() => expect(view.getByTestId('morning-task')).toBeTruthy());
-    await act(async () => fireEvent.press(view.getByTestId('morning-task')));
-    await waitFor(() =>
-      expect(mockSetBrushingCompleted).toHaveBeenCalledWith('profile-1', 'morning', true),
-    );
+    await waitFor(() => expect(view.getByRole('button', { name: 'Fırçalayalım' })).toBeTruthy());
+    fireEvent.press(view.getByRole('button', { name: 'Fırçalayalım' }));
+    expect(router.push).toHaveBeenCalledWith('/brushing');
   });
 });
