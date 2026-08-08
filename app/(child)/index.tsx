@@ -1,6 +1,6 @@
 import { router, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { getChildExperienceUseCases } from '@/application/child';
@@ -16,14 +16,13 @@ import {
   radii,
   spacing,
 } from '@/design-system';
-import type { BrushingPeriod, ProfileProgress } from '@/domain/family';
+import type { ProfileProgress } from '@/domain/family';
 import { isLegacyAgeBand } from '@/domain/family';
 import { CharacterAvatar } from '@/features/character';
 
 type TaskCardProps = {
   completed: boolean;
   label: string;
-  onPress: () => void;
   status: string;
   testID: string;
 };
@@ -46,12 +45,11 @@ async function readHomeData(): Promise<HomeData | 'onboarding' | 'age-band-updat
   return { active, profiles, progress: await childUseCases.getProgress(active.id) };
 }
 
-function TaskCard({ completed, label, onPress, status, testID }: TaskCardProps) {
+function TaskCard({ completed, label, status, testID }: TaskCardProps) {
   return (
-    <Pressable
-      accessibilityRole="checkbox"
-      accessibilityState={{ checked: completed }}
-      onPress={onPress}
+    <View
+      accessibilityLabel={`${label}. ${status}`}
+      accessible
       style={[styles.taskCard, completed && styles.taskCardCompleted]}
       testID={testID}
     >
@@ -60,7 +58,7 @@ function TaskCard({ completed, label, onPress, status, testID }: TaskCardProps) 
         <Text style={styles.taskTitle}>{label}</Text>
         <Text style={styles.taskStatus}>{status}</Text>
       </View>
-    </Pressable>
+    </View>
   );
 }
 
@@ -103,12 +101,6 @@ export default function ChildHomeScreen() {
     };
   }, []);
 
-  const toggleTask = async (period: BrushingPeriod, completed: boolean): Promise<void> => {
-    if (!active) return;
-    const useCases = await getChildExperienceUseCases();
-    setProgress(await useCases.setBrushingCompleted(active.id, period, !completed));
-  };
-
   if (failed) return <ErrorState />;
   if (!active || !progress) return <LoadingState />;
 
@@ -150,20 +142,22 @@ export default function ChildHomeScreen() {
           <TaskCard
             completed={progress.morningCompleted}
             label={t('childHome.morning')}
-            onPress={() => void toggleTask('morning', progress.morningCompleted)}
             status={t(progress.morningCompleted ? 'childHome.completed' : 'childHome.waiting')}
             testID="morning-task"
           />
           <TaskCard
             completed={progress.eveningCompleted}
             label={t('childHome.evening')}
-            onPress={() => void toggleTask('evening', progress.eveningCompleted)}
             status={t(progress.eveningCompleted ? 'childHome.completed' : 'childHome.waiting')}
             testID="evening-task"
           />
         </View>
 
-        <Button label={t('childHome.brush')} onPress={() => undefined} testID="brush-button" />
+        <Button
+          label={t('childHome.brush')}
+          onPress={() => router.push('/brushing')}
+          testID="brush-button"
+        />
         <Text style={styles.streak}>
           {t('childHome.streak', { count: progress.currentStreak })}
         </Text>

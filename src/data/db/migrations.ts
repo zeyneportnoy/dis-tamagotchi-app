@@ -88,4 +88,23 @@ export const migrations: readonly Migration[] = [
       );`,
     ],
   },
+  {
+    version: 5,
+    name: 'add_brushing_session_history',
+    statements: [
+      `CREATE TABLE brushing_sessions (
+        id TEXT PRIMARY KEY NOT NULL,
+        profile_id TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        completed_at TEXT NOT NULL,
+        duration_seconds INTEGER NOT NULL CHECK(duration_seconds >= 0),
+        completed INTEGER NOT NULL CHECK(completed IN (0, 1)),
+        period TEXT NOT NULL CHECK(period IN ('morning', 'evening')),
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+      );`,
+      `CREATE INDEX brushing_sessions_profile_completed_idx
+        ON brushing_sessions(profile_id, completed_at);`,
+    ],
+  },
 ];

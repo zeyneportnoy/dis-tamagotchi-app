@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { toLocalDateKey } from '@/domain/brushing';
 import type { BrushingPeriod, ProfileProgress, ProfileProgressRepository } from '@/domain/family';
 
 type ProgressRow = {
@@ -29,7 +30,7 @@ export class SQLiteProfileProgressRepository implements ProfileProgressRepositor
   ) {}
 
   private today(): string {
-    return this.now().toISOString().slice(0, 10);
+    return toLocalDateKey(this.now());
   }
 
   private async ensure(profileId: string): Promise<void> {

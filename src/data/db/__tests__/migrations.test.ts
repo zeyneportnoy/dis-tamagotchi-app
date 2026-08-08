@@ -16,6 +16,7 @@ describe('database migrations', () => {
     );
     expect(tables.map((table) => table.name)).toEqual([
       'active_profile',
+      'brushing_sessions',
       'child_profiles',
       'families',
       'profile_progress',
@@ -31,7 +32,13 @@ describe('database migrations', () => {
     const migrations = await database.getAllAsync<{ version: number }>(
       'SELECT version FROM schema_migrations',
     );
-    expect(migrations).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
+    expect(migrations).toEqual([
+      { version: 1 },
+      { version: 2 },
+      { version: 3 },
+      { version: 4 },
+      { version: 5 },
+    ]);
     database.close();
   });
 
@@ -92,7 +99,13 @@ describe('database migrations', () => {
       database.getAllAsync<{ version: number }>(
         'SELECT version FROM schema_migrations ORDER BY version',
       ),
-    ).resolves.toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
+    ).resolves.toEqual([
+      { version: 1 },
+      { version: 2 },
+      { version: 3 },
+      { version: 4 },
+      { version: 5 },
+    ]);
     database.close();
   });
 });

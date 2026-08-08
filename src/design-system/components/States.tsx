@@ -5,26 +5,23 @@ import { colors } from '../theme';
 import { Screen } from './Screen';
 import { Text } from './Text';
 
-export function LoadingState() {
+export function LoadingState({ label }: { label?: string } = {}) {
   const { t } = useTranslation();
+  const resolvedLabel = label ?? t('common.loading');
   return (
-    <Screen accessibilityLabel={t('common.loading')}>
-      <ActivityIndicator
-        accessibilityLabel={t('common.loading')}
-        color={colors.teal}
-        size="large"
-      />
-      <Text>{t('common.loading')}</Text>
+    <Screen accessibilityLabel={resolvedLabel}>
+      <ActivityIndicator accessibilityLabel={resolvedLabel} color={colors.teal} size="large" />
+      <Text>{resolvedLabel}</Text>
     </Screen>
   );
 }
 
-export function ErrorState() {
+export function ErrorState({ body }: { body?: string } = {}) {
   const { t } = useTranslation();
   return (
     <Screen accessibilityLabel={t('common.errorTitle')}>
       <Text variant="title">{t('common.errorTitle')}</Text>
-      <Text>{t('common.errorBody')}</Text>
+      <Text>{body ?? t('common.errorBody')}</Text>
     </Screen>
   );
 }

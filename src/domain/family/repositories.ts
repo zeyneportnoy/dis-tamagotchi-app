@@ -1,6 +1,8 @@
 import type {
   BrushingPeriod,
+  BrushingSession,
   ChildProfile,
+  CompleteBrushingSessionInput,
   CreateChildProfileInput,
   Family,
   ProfileProgress,
@@ -19,6 +21,11 @@ export interface ProfileProgressRepository {
     period: BrushingPeriod,
     completed: boolean,
   ): Promise<ProfileProgress>;
+}
+
+export interface BrushingSessionRepository {
+  complete(input: CompleteBrushingSessionInput): Promise<BrushingSession>;
+  listCompleted(profileId: string): Promise<readonly BrushingSession[]>;
 }
 
 export interface ChildProfileRepository {

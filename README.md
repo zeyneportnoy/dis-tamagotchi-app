@@ -38,13 +38,15 @@ npm run db:verify
 npm run smoke:export
 ```
 
-## Milestone 2 kapsamı
+## Milestone 3 kapsamı
 
-Uygulama hesap açmadan yerel aile ve birden fazla çocuk profili oluşturur. Kısa onboarding; takma ad, `4_6`/`7_11` yaş bandı ve başlangıç karakterini kaydeder. Aktif profile ait karakter uygulama yeniden açıldığında geri yüklenir. Child Home; karakteri, sabah/akşam diş fırçalama kartlarını ve ana “Fırçalayalım” eylemini merkeze alır. Ana Sayfa, Görevler, Koleksiyon ve Profil sekmeleri gerçek route’lardır; yalnızca Ana Sayfa M2’de işlevseldir.
+Uygulama hesap açmadan yerel aile ve birden fazla çocuk profili oluşturur. Kısa onboarding; takma ad, `4_6`/`7_11` yaş bandı ve başlangıç karakterini kaydeder. Aktif profile ait karakter uygulama yeniden açıldığında geri yüklenir. Child Home; karakteri, sabah/akşam diş fırçalama kartlarını ve ana “Fırçalayalım” eylemini merkeze alır.
+
+“Fırçalayalım” 120 saniyelik gerçek seansı açar. Seans üst dişler, alt dişler, dış yüzeyler ve iç yüzeyler için dört adet 30 saniyelik bölümden oluşur. Sayaç duraklatılabilir ve devam ettirilebilir; erken çıkış onay ister ve tamamlanmış kayıt oluşturmaz. Tamamlanan seans profil bazında SQLite’a yazılır ve yerel saate göre sabah veya akşam Home kartını günceller.
 
 Legacy `6_8`/`9_10` profilleri tahminle dönüştürülmez; Child Home öncesinde yeni yaş bandı açıkça seçilir. Çocuk alanından veli placeholder’ına geçiş değişken toplama sorulu ebeveyn kapısı arkasındadır.
 
-Bulut, analytics, abonelik ve satın alma kapalıdır. Backend, pet bakım sistemi, XP, ödül ekonomisi, mağaza, bildirim ve gerçek fırçalama zamanlayıcısı yoktur. SQLite yalnızca M2 için karakter anahtarını, günlük sabah/akşam durumunu ve gelecekte kullanılacak temel seri/son etkileşim alanlarını tutar.
+Bulut, analytics, abonelik ve satın alma kapalıdır. Backend, pet bakım sistemi, XP, ödül ekonomisi, mağaza ve bildirim yoktur. SQLite karakter anahtarını, günlük sabah/akşam durumunu, tamamlanan seans geçmişini ve temel seri/son etkileşim alanlarını tutar.
 
 ### Onboarding akışı
 
