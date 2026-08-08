@@ -45,8 +45,7 @@ describe('Brushing session route', () => {
     expect(view.getByTestId('pause-controls')).toBeTruthy();
     await act(async () => fireEvent.press(view.getByRole('button', { name: 'Devam et' })));
     expect(view.getByRole('button', { name: 'Duraklat' })).toBeTruthy();
-    await act(async () => fireEvent.press(view.getByRole('button', { name: 'Duraklat' })));
-    await act(async () => fireEvent.press(view.getByRole('button', { name: 'Seansı bitir' })));
+    await act(async () => fireEvent.press(view.getByTestId('brushing-exit-button')));
     expect(view.getByText('Fırçalamayı bırakmak istiyor musun?')).toBeTruthy();
     await act(async () => fireEvent.press(view.getByRole('button', { name: 'Çık' })));
     expect(router.back).toHaveBeenCalled();
