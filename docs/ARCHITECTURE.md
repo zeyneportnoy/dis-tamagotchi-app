@@ -37,6 +37,8 @@ Migration 5, `brushing_sessions` tablosunu ve profil/tamamlanma zamanı index’
 
 Repository yazma işlemleri transaction kullanır. Application katmanı aile/profil use-case’lerine ek olarak profil ilerlemesini okuma, tamamlanan brushing session kaydetme ve geçmişi listeleme use-case’lerini sunar. UI doğrudan SQLite çağırmaz.
 
+M3.5, `ParentAuthService` adapter sınırı üzerinden Supabase Auth ekler. SQLite cihazdaki çalışma kaynağı olmaya devam eder; Supabase yalnız veli kimliği, ownership ve child profile recovery foundation kaynağıdır. Migration 6 local profile’a `remote_id`, `parent_auth_user_id`, `sync_status` ve `updated_at` ekler. Local UUID cloud UUID olarak korunur; cloud hata verirse profil silinmez. Brushing history bu milestone’da cloud sync kapsamında değildir.
+
 Brushing timer kalıcı veri modelinden ayrıdır. Saf domain fonksiyonları başlangıç timestamp’i, toplam pause süresi ve güncel timestamp üzerinden elapsed/remaining/segment snapshot’ı üretir. Render sayısı süre kaynağı değildir; 250 ms interval yalnız ekranı yeniler. AppState değişiminde timestamp yeniden okunur, dolayısıyla kısa background geçişi sayacı bozmaz. Yarım kalan transient seans uygulama process’i sonlandırılırsa geri yüklenmez ve completion kaydı oluşturmaz.
 
 ## Genişleme sınırları

@@ -1,14 +1,26 @@
-import { StyleSheet, TextInput, type TextInputProps } from 'react-native';
+import { StyleSheet, Text as NativeText, TextInput, View, type TextInputProps } from 'react-native';
 
 import { colors, minimumTouchTarget, radii, spacing, typography } from '../theme';
 
-type Props = TextInputProps & { accessibilityLabel: string };
+type Props = TextInputProps & { accessibilityLabel: string; label?: string };
 
-export function Input(props: Props) {
-  return <TextInput placeholderTextColor={colors.navy} style={styles.input} {...props} />;
+export function Input({ label, placeholder, style, ...props }: Props) {
+  return (
+    <View style={styles.field}>
+      {label ? <NativeText style={styles.label}>{label}</NativeText> : null}
+      <TextInput
+        placeholder={placeholder ?? label}
+        placeholderTextColor={styles.placeholder.color}
+        selectionColor={colors.brandPrimary}
+        style={[styles.input, style]}
+        {...props}
+      />
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
+  field: { gap: spacing.xs, width: '100%' },
   input: {
     backgroundColor: colors.white,
     borderColor: colors.teal,
@@ -20,4 +32,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
+  label: {
+    color: colors.navy,
+    fontSize: 16,
+    fontWeight: '700',
+    paddingHorizontal: spacing.xs,
+  },
+  placeholder: { color: '#68767C' },
 });

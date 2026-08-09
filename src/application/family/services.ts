@@ -1,5 +1,6 @@
 import { getDatabase } from '@/data/db';
 import { SQLiteChildProfileRepository, SQLiteFamilyRepository } from '@/data/repositories';
+import { getParentAuthUseCases } from '@/application/auth';
 
 import { FamilyUseCases } from './useCases';
 
@@ -10,7 +11,10 @@ export function getFamilyUseCases(): Promise<FamilyUseCases> {
     (database) =>
       new FamilyUseCases(
         new SQLiteFamilyRepository(database),
-        new SQLiteChildProfileRepository(database),
+        new SQLiteChildProfileRepository(database, undefined, undefined, async () => {
+          const auth = getParentAuthUseCases();
+          return (await auth?.getSession())?.userId ?? null;
+        }),
       ),
   );
   return useCasesPromise;

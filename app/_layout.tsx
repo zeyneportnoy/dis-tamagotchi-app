@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 
 import { ErrorState, LoadingState } from '@/design-system';
 import { initializeDatabase } from '@/data/db';
+import { AuthProvider } from '@/features/auth';
 import '@/i18n';
 
 void SplashScreen.preventAutoHideAsync();
@@ -25,5 +26,9 @@ export default function RootLayout() {
   if (failed) return <ErrorState />;
   if (!ready) return <LoadingState />;
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <AuthProvider>
+      <Stack screenOptions={{ headerShown: false }} />
+    </AuthProvider>
+  );
 }

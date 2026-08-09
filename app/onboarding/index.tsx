@@ -29,15 +29,20 @@ export default function WelcomeScreen() {
         </Text>
         <Text style={styles.body}>{t('welcome.body')}</Text>
       </View>
-      <Button
-        label={t('welcome.continue')}
-        onPress={() => router.push('/onboarding/accountless')}
-      />
+      <View style={styles.actions}>
+        <Button label={t('welcome.createAccount')} onPress={() => router.push('/auth/signup')} />
+        <Button
+          label={t('welcome.signIn')}
+          onPress={() => router.push('/auth/login')}
+          variant="secondary"
+        />
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  actions: { gap: spacing.md },
   body: { textAlign: 'center' },
   cloudLeft: {
     backgroundColor: '#F8A8C5',

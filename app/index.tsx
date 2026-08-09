@@ -2,25 +2,50 @@ import { Redirect, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
 
 import { getFamilyUseCases } from '@/application/family';
+import { getProfileSyncUseCases } from '@/application/sync';
 import { ErrorState, LoadingState } from '@/design-system';
 import { isLegacyAgeBand } from '@/domain/family';
+import { useAuth } from '@/features/auth';
 
 export default function Index() {
+  const { configured, loading: authLoading, session } = useAuth();
   const [destination, setDestination] = useState<
-    'age-band-update' | 'child' | 'onboarding' | 'error' | null
+    | 'age-band-update'
+    | 'child'
+    | 'onboarding'
+    | 'profile-onboarding'
+    | 'claim-local'
+    | 'error'
+    | null
   >(null);
 
   useEffect(() => {
-    void getFamilyUseCases()
-      .then((useCases) => useCases.getActiveProfile())
-      .then((profile) =>
+    if (authLoading || !configured || !session || !session.emailVerified) return;
+    void getProfileSyncUseCases()
+      .then(async (sync) => {
+        if (sync && (await sync.countLegacyProfiles(session.userId)) > 0)
+          return 'claim-local' as const;
+        if (sync) await sync.recoverFromCloud();
+        const useCases = await getFamilyUseCases();
+        return useCases.getActiveProfile();
+      })
+      .then((result) => {
+        if (result === 'claim-local') return setDestination('claim-local');
+        const profile = result;
         setDestination(
-          profile ? (isLegacyAgeBand(profile.ageBand) ? 'age-band-update' : 'child') : 'onboarding',
-        ),
-      )
+          profile
+            ? isLegacyAgeBand(profile.ageBand)
+              ? 'age-band-update'
+              : 'child'
+            : 'profile-onboarding',
+        );
+      })
       .catch(() => setDestination('error'));
-  }, []);
+  }, [authLoading, configured, session]);
 
+  if (authLoading) return <LoadingState />;
+  if (!configured || !session) return <Redirect href="/onboarding" />;
+  if (!session.emailVerified) return <LoadingState />;
   if (destination === 'error') return <ErrorState />;
   if (!destination) return <LoadingState />;
   const href =
@@ -28,6 +53,10 @@ export default function Index() {
       ? '/(child)'
       : destination === 'age-band-update'
         ? '/age-band-update'
-        : '/onboarding';
+        : destination === 'claim-local'
+          ? '/auth/claim-local'
+          : destination === 'profile-onboarding'
+            ? '/onboarding/nickname'
+            : '/onboarding';
   return <Redirect href={href as Href} />;
 }

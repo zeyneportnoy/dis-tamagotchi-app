@@ -107,4 +107,37 @@ export const migrations: readonly Migration[] = [
         ON brushing_sessions(profile_id, completed_at);`,
     ],
   },
+  {
+    version: 6,
+    name: 'add_parent_ownership_and_profile_sync_metadata',
+    statements: [
+      `ALTER TABLE child_profiles ADD COLUMN remote_id TEXT;`,
+      `ALTER TABLE child_profiles ADD COLUMN parent_auth_user_id TEXT;`,
+      `ALTER TABLE child_profiles ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'legacy_local'
+        CHECK(sync_status IN ('legacy_local', 'pending', 'synced', 'failed'));`,
+      `ALTER TABLE child_profiles ADD COLUMN updated_at TEXT;`,
+      `UPDATE child_profiles SET updated_at = created_at WHERE updated_at IS NULL;`,
+      `CREATE UNIQUE INDEX child_profiles_remote_id_uq
+        ON child_profiles(remote_id) WHERE remote_id IS NOT NULL;`,
+      `CREATE INDEX child_profiles_parent_auth_user_idx
+        ON child_profiles(parent_auth_user_id);`,
+    ],
+  },
+  {
+    version: 7,
+    name: 'isolate_active_profiles_by_parent',
+    statements: [
+      `CREATE TABLE active_parent_profile (
+        parent_auth_user_id TEXT PRIMARY KEY NOT NULL,
+        child_profile_id TEXT NOT NULL UNIQUE,
+        FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+      );`,
+      `INSERT OR IGNORE INTO active_parent_profile(parent_auth_user_id, child_profile_id)
+       SELECT child_profiles.parent_auth_user_id, active_profile.child_profile_id
+       FROM active_profile
+       INNER JOIN child_profiles ON child_profiles.id = active_profile.child_profile_id
+       WHERE active_profile.singleton = 1
+         AND child_profiles.parent_auth_user_id IS NOT NULL;`,
+    ],
+  },
 ];

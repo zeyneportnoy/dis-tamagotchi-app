@@ -15,6 +15,7 @@ describe('database migrations', () => {
       `SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`,
     );
     expect(tables.map((table) => table.name)).toEqual([
+      'active_parent_profile',
       'active_profile',
       'brushing_sessions',
       'child_profiles',
@@ -38,6 +39,8 @@ describe('database migrations', () => {
       { version: 3 },
       { version: 4 },
       { version: 5 },
+      { version: 6 },
+      { version: 7 },
     ]);
     database.close();
   });
@@ -105,7 +108,20 @@ describe('database migrations', () => {
       { version: 3 },
       { version: 4 },
       { version: 5 },
+      { version: 6 },
+      { version: 7 },
     ]);
+    await expect(
+      database.getFirstAsync<{
+        id: string;
+        sync_status: string;
+        updated_at: string;
+      }>("SELECT id, sync_status, updated_at FROM child_profiles WHERE id = 'profile-1'"),
+    ).resolves.toEqual({
+      id: 'profile-1',
+      sync_status: 'legacy_local',
+      updated_at: '2026-08-02T12:00:00.000Z',
+    });
     database.close();
   });
 });

@@ -10,6 +10,20 @@ jest.mock('@/application/family', () => ({
       getActiveProfile: mockGetActiveProfile,
     }),
 }));
+jest.mock('@/application/sync', () => ({
+  getProfileSyncUseCases: () =>
+    Promise.resolve({
+      countLegacyProfiles: () => Promise.resolve(0),
+      recoverFromCloud: () => Promise.resolve(0),
+    }),
+}));
+jest.mock('@/features/auth', () => ({
+  useAuth: () => ({
+    configured: true,
+    loading: false,
+    session: { emailVerified: true, userId: 'parent-1' },
+  }),
+}));
 jest.mock('expo-router', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   const { Text } = jest.requireActual<typeof import('react-native')>('react-native');

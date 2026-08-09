@@ -4,13 +4,16 @@ import { StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { getFamilyUseCases } from '@/application/family';
+import { getProfileSyncUseCases } from '@/application/sync';
 import { Button, Screen, Text, colors, radii, spacing } from '@/design-system';
 import { CharacterAvatar } from '@/features/character';
 import { useOnboardingDraft } from '@/features/onboarding/OnboardingDraftContext';
+import { useAuth } from '@/features/auth';
 
 export default function SummaryScreen() {
   const { t } = useTranslation();
   const draft = useOnboardingDraft();
+  const { session } = useAuth();
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -25,6 +28,8 @@ export default function SummaryScreen() {
         ageBand: draft.ageBand,
         avatarId: draft.avatarId,
       });
+      const sync = await getProfileSyncUseCases();
+      if (sync && session) await sync.claimLegacyProfiles(session.userId);
       draft.reset();
       router.replace('/(child)');
     } catch {

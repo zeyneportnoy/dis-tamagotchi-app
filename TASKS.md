@@ -1,5 +1,10 @@
 # Milestone Takibi
 
+- [ ] M3.5: Supabase Dashboard project, email confirmation ve redirect URL ayarlarını tamamla.
+- [ ] M3.5: Production öncesi custom SMTP ve final marka email template’lerini yapılandır.
+- [ ] M3.5: Server-side güvenli account deletion endpoint’ini release öncesi uygula.
+- [ ] M3.5: Gerçek credentials ile signup, verification, reset ve iki kullanıcı RLS E2E testini tamamla.
+
 ## M0 — Proje iskeleti
 
 - [x] Expo SDK 57 / React Native / TypeScript strict

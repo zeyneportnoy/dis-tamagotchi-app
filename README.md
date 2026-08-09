@@ -1,5 +1,7 @@
 # Diş Tamagotchi
 
+M3.5 auth foundation, doğrulanmış veli hesabı ve child profile recovery için Supabase kullanır; SQLite local-first kaynak olarak korunur. Dashboard kurulumu için `docs/SUPABASE_SETUP.md`, auth sınırları için `docs/AUTH.md` dosyasına bakın. Gerçek `.env` ve service-role secret commit etmeyin.
+
 4–11 yaş çocukları için güvenli, local-first diş fırçalama rutin uygulaması.
 
 Birincil hedef 4–11 yaştır: 4–6 yaş yaklaşımı ebeveyn destekli/birlikte fırçalamayı, 7–11 yaş yaklaşımı daha bağımsız kullanımı temel alır. Bu aşamada ayrı UI modları, ses sistemi veya oyun mekaniği yoktur; kesin yaş ve doğum tarihi toplanmaz. 12+ MVP kapsamı dışındadır.

@@ -23,6 +23,7 @@ const profileIds = [
   '00000000-0000-4000-8000-000000000013',
 ] as const;
 const now = () => '2026-08-02T12:00:00.000Z';
+const parentId = '10000000-0000-4000-8000-000000000001';
 
 function repositories(database: NodeSQLiteDatabase) {
   let profileIndex = 0;
@@ -33,6 +34,7 @@ function repositories(database: NodeSQLiteDatabase) {
       sqlite,
       () => profileIds[profileIndex++] ?? '00000000-0000-4000-8000-000000000099',
       now,
+      async () => parentId,
     ),
   };
 }
@@ -189,6 +191,13 @@ describe('family repositories', () => {
       'cheerful-incisor',
       now(),
     );
+    await first.runAsync(
+      `UPDATE child_profiles
+       SET parent_auth_user_id = ?, sync_status = 'synced'
+       WHERE id = ?`,
+      parentId,
+      profileIds[0],
+    );
     await firstRepositories.profiles.selectActive(profileIds[0]);
     const firstUseCases = new FamilyUseCases(
       firstRepositories.families,
@@ -278,6 +287,50 @@ describe('family repositories', () => {
       'SELECT count(*) AS count FROM child_profiles',
     );
     expect(count?.count).toBe(0);
+    database.close();
+  });
+
+  it('isolates list, active selection, update, archive and delete by active parent', async () => {
+    const database = new NodeSQLiteDatabase();
+    await migrateDatabase(database as unknown as SQLiteDatabase);
+    const sqlite = database as unknown as SQLiteDatabase;
+    const families = new SQLiteFamilyRepository(sqlite, () => familyId, now);
+    const family = await families.createLocal();
+    let activeParentId = 'parent-a';
+    let nextId = 0;
+    const profiles = new SQLiteChildProfileRepository(
+      sqlite,
+      () => `00000000-0000-4000-8000-00000000002${++nextId}`,
+      now,
+      async () => activeParentId,
+    );
+
+    const profileA = await profiles.create({
+      familyId: family.id,
+      nickname: 'A child',
+      ageBand: '4_6',
+      avatarId: 'cheerful-incisor',
+    });
+    activeParentId = 'parent-b';
+    await expect(profiles.list(family.id)).resolves.toEqual([]);
+    await expect(profiles.getActive()).resolves.toBeNull();
+    await expect(profiles.selectActive(profileA.id)).rejects.toThrow('PROFILE_NOT_FOUND');
+    await expect(profiles.update(profileA.id, { nickname: 'Changed' })).rejects.toThrow(
+      'PROFILE_NOT_FOUND',
+    );
+    await expect(profiles.archive(profileA.id)).rejects.toThrow('PROFILE_NOT_FOUND');
+    await expect(profiles.delete(profileA.id)).rejects.toThrow('PROFILE_NOT_FOUND');
+
+    const profileB = await profiles.create({
+      familyId: family.id,
+      nickname: 'B child',
+      ageBand: '7_11',
+      avatarId: 'brave-canine',
+    });
+    await expect(profiles.list(family.id)).resolves.toEqual([profileB]);
+    activeParentId = 'parent-a';
+    await expect(profiles.list(family.id)).resolves.toEqual([profileA]);
+    await expect(profiles.getActive()).resolves.toEqual(profileA);
     database.close();
   });
 });

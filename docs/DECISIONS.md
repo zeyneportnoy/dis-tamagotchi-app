@@ -117,3 +117,21 @@ Tab ikonları yeni bir bağımlılık veya görsel asset eklemeden, anlamlı pla
 ## 2026-08-08 — ADR-028: Brushing kadran sırası ve görsel yönlendirme
 
 Mevcut timestamp tabanlı 4 × 30 saniyelik timer korunur; segment indeksleri sunum katmanında sırasıyla `Sağ üst`, `Sol üst`, `Sağ alt` ve `Sol alt` ağız bölgelerine eşlenir. Her segmentte dört parçalı ağız göstergesinin ilgili kadranı renk ve çerçeveyle birlikte vurgulanır. Yardımcı metin 4–6 yaşta daha somut, 7–11 yaşta yüzey terminolojisini kullanan tek bir yaş-bandı koşuluyla seçilir. Session kaydı, pause/resume ve sabah/akşam kalıcılığı değiştirilmez.
+
+## 2026-08-08 — ADR-029: Veli auth ve local-first cloud ownership
+
+Hesapsız kullanım kaldırılır; çocuk kendi hesabını oluşturmaz. Supabase Auth doğrulanmış veli kimliği, Postgres/RLS cloud ownership ve profile recovery foundation sağlar. SQLite hızlı/offline child ve brushing çalışma kaynağı olarak kalır. Local child UUID’si cloud primary key olarak yeniden kullanılır; bu duplicate profil riskini azaltır ve legacy brushing FK’larını korur. Sync başarısızlığı local profili silmez.
+
+Logout local çocuk verisini otomatik silmez fakat auth guard child route erişimini kapatır. Shared-device gizlilik riski nedeniyle bu karar parent gate arkasında açık logout UX’iyle uygulanır. Gerçek hesap silme, service-role anahtarını mobil client’a koymayan server-side endpoint tamamlanana kadar sahte başarı göstermez.
+
+## 2026-08-09 — ADR-030: Yerel profil ownership izolasyonu
+
+Supabase RLS tek başına cihazdaki SQLite cache’ini izole etmez. Bu nedenle profil oluşturma, listeleme, aktif profil seçimi, güncelleme, arşivleme ve silme işlemleri her çağrıda aktif doğrulanmış veli kimliğiyle sınırlanır. Migration 7, aktif profil seçimini veli kimliğiyle anahtarlanan `active_parent_profile` tablosuna taşır. `parent_auth_user_id` değeri olmayan `legacy_local` kayıtlar otomatik gösterilmez; yalnızca açık claim akışıyla mevcut veliye bağlanır. Başka bir veliye bağlı `pending` veya `failed` kayıtlar claim kapsamına alınmaz.
+
+## 2026-08-08 — Auth e-posta bağlantıları kalıcı custom scheme ve PKCE kullanır
+
+- Doğrulama ve şifre yenileme yönlendirmeleri ortam-dependent Expo Go URL'si yerine `distamagotchi://` uygulama şemasını kullanır.
+- Mobil auth callback'i PKCE `code` değerini Supabase oturumuna çevirir; erişim veya yenileme token'ları loglanmaz ya da uygulama koduna yazılmaz.
+- Custom scheme'in işletim sistemine kaydolması gerektiğinden gerçek e-posta bağlantısı development/production native build üzerinde doğrulanır; Expo Go bu test için yeterli değildir.
+- Aynı cihazda birden fazla signup/resend PKCE akışının verifier'ı karışmaması için Supabase istemcisinin `appendPkceFlowIdToRedirects` seçeneği açıktır. Callback'teki `sb_flow_id` yalnızca doğru yerel verifier slotunu seçmek için kullanılır; token veya verifier loglanmaz.
+- Password recovery deep link'i de callback `code` ve `sb_flow_id` değerlerini aynı PKCE session sınırında değiştirir; doğrulanmış recovery session oluşmadan yeni şifre yazılamaz.

@@ -12,9 +12,10 @@ describe('Welcome route', () => {
     expect(view.getByText('Diş arkadaşınla tanış!')).toBeTruthy();
   });
 
-  it('continues to the accountless explanation', async () => {
+  it('offers parent signup without a guest action', async () => {
     const view = await render(<WelcomeScreen />);
-    fireEvent.press(view.getByRole('button', { name: 'Başlayalım' }));
-    expect(router.push).toHaveBeenCalledWith('/onboarding/accountless');
+    fireEvent.press(view.getByRole('button', { name: 'Hesap Oluştur' }));
+    expect(router.push).toHaveBeenCalledWith('/auth/signup');
+    expect(view.queryByText(/hesapsız/i)).toBeNull();
   });
 });
