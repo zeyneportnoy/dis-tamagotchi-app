@@ -7,7 +7,7 @@ const profile = {
   parentId: '',
   nickname: 'Ege',
   ageBand: '4_6' as const,
-  avatarId: 'cheerful-incisor' as const,
+  avatarId: 'inci' as const,
   createdAt: '2026-08-08T10:00:00.000Z',
   updatedAt: '2026-08-08T10:00:00.000Z',
   archivedAt: null,

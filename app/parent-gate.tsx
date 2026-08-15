@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -8,12 +8,14 @@ import { createParentChallenge } from '@/features/parent-gate/challenge';
 
 export default function ParentGateScreen() {
   const { t } = useTranslation();
+  const { next } = useLocalSearchParams<{ next?: string }>();
   const challenge = useMemo(() => createParentChallenge(), []);
   const [answer, setAnswer] = useState('');
   const [incorrect, setIncorrect] = useState(false);
 
   const submit = () => {
-    if (Number(answer) === challenge.answer) return router.replace('/(parent)');
+    if (Number(answer) === challenge.answer)
+      return router.replace(next === 'reminders' ? '/(parent)/reminders' : '/(parent)');
     setIncorrect(true);
     setAnswer('');
   };

@@ -15,7 +15,9 @@
           "backgroundColor": "#F7F7F4",
           "resizeMode": "contain"
         }
-      ]
+      ],
+      "expo-audio",
+      "expo-notifications"
     ],
     "ios": {
       "supportsTablet": true,

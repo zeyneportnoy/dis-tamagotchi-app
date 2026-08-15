@@ -17,5 +17,15 @@ export const colors = {
 
 export const spacing = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 } as const;
 export const radii = { sm: 12, md: 20, lg: 28, pill: 999 } as const;
-export const typography = { body: 18, button: 18, title: 32 } as const;
+export const typography = {
+  body: 17,
+  button: 18,
+  title: 31,
+  lineHeight: { body: 25, caption: 19, title: 37 },
+  size: { caption: 13, label: 15, body: 17, subtitle: 21, title: 31 },
+  family: {
+    body: 'Manrope',
+    display: 'Baloo2',
+  },
+} as const;
 export const minimumTouchTarget = 48;

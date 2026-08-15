@@ -40,7 +40,7 @@ export class SQLiteProfileSyncRepository implements LocalProfileSyncRepository {
   async countClaimable(parentId: string): Promise<number> {
     const row = await this.database.getFirstAsync<{ count: number }>(
       `SELECT count(*) AS count FROM child_profiles
-       WHERE sync_status IN ('legacy_local', 'pending', 'failed')
+       WHERE sync_status = 'legacy_local'
          AND (parent_auth_user_id IS NULL OR parent_auth_user_id = ?)
          AND archived_at IS NULL`,
       parentId,

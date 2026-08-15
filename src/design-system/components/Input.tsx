@@ -27,6 +27,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     borderWidth: 2,
     color: colors.navy,
+    fontFamily: typography.family.body,
     fontSize: typography.body,
     minHeight: minimumTouchTarget,
     paddingHorizontal: spacing.md,
@@ -34,6 +35,7 @@ const styles = StyleSheet.create({
   },
   label: {
     color: colors.navy,
+    fontFamily: typography.family.display,
     fontSize: 16,
     fontWeight: '700',
     paddingHorizontal: spacing.xs,

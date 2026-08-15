@@ -18,7 +18,10 @@ export default function SummaryScreen() {
   const [failed, setFailed] = useState(false);
 
   const createProfile = async () => {
-    if (!draft.ageBand || !draft.avatarId || saving) return;
+    if (saving) return;
+    if (!draft.nickname.trim()) return router.replace('/onboarding/nickname');
+    if (!draft.ageBand) return router.replace('/onboarding/age-band');
+    if (!draft.avatarId) return router.replace('/onboarding/character');
     setSaving(true);
     setFailed(false);
     try {
@@ -28,10 +31,16 @@ export default function SummaryScreen() {
         ageBand: draft.ageBand,
         avatarId: draft.avatarId,
       });
-      const sync = await getProfileSyncUseCases();
-      if (sync && session) await sync.claimLegacyProfiles(session.userId);
       draft.reset();
       router.replace('/(child)');
+      void getProfileSyncUseCases()
+        .then((sync) => {
+          if (sync && session) return sync.claimLegacyProfiles(session.userId);
+          return undefined;
+        })
+        .catch(() => {
+          // Local profile creation is the offline-first success boundary. Sync retries later.
+        });
     } catch {
       setFailed(true);
       setSaving(false);
@@ -39,7 +48,7 @@ export default function SummaryScreen() {
   };
 
   return (
-    <Screen style={styles.screen}>
+    <Screen style={styles.screen} testID="profile-summary-screen">
       <View style={styles.hero}>
         <Text style={styles.sparkleLeft}>✦</Text>
         <Text style={styles.sparkleRight}>★</Text>
@@ -66,9 +75,10 @@ export default function SummaryScreen() {
       </View>
       {failed ? <Text>{t('onboarding.summary.error')}</Text> : null}
       <Button
-        disabled={saving || !draft.nickname || !draft.ageBand || !draft.avatarId}
+        disabled={saving}
         label={saving ? t('common.saving') : t('onboarding.summary.create')}
         onPress={() => void createProfile()}
+        testID="create-profile-button"
       />
     </Screen>
   );
@@ -93,7 +103,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#F9D7E5',
     borderRadius: 32,
-    height: 260,
+    height: 250,
     justifyContent: 'center',
     overflow: 'hidden',
   },
@@ -105,7 +115,7 @@ const styles = StyleSheet.create({
     marginTop: -28,
     width: 150,
   },
-  screen: { justifyContent: 'space-between' },
+  screen: { gap: spacing.md, justifyContent: 'space-between' },
   sparkleLeft: {
     color: colors.brandHighlight,
     fontSize: 28,

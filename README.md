@@ -48,7 +48,7 @@ Uygulama hesap açmadan yerel aile ve birden fazla çocuk profili oluşturur. K�
 
 Legacy `6_8`/`9_10` profilleri tahminle dönüştürülmez; Child Home öncesinde yeni yaş bandı açıkça seçilir. Çocuk alanından veli placeholder’ına geçiş değişken toplama sorulu ebeveyn kapısı arkasındadır.
 
-Bulut, analytics, abonelik ve satın alma kapalıdır. Backend, pet bakım sistemi, XP, ödül ekonomisi, mağaza ve bildirim yoktur. SQLite karakter anahtarını, günlük sabah/akşam durumunu, tamamlanan seans geçmişini ve temel seri/son etkileşim alanlarını tutar.
+Analytics, abonelik ve satın alma kapalıdır. Supabase veli auth/ownership foundation dışında progress local-first'tür. SQLite karakter anahtarını, XP/level/mood, günlük sabah/akşam ilerlemesi, seri, tamamlanan seans reward snapshot'ı ve kozmetik inventory/equip seçimini tutar. Mağaza ve bildirim yoktur.
 
 ### Onboarding akışı
 

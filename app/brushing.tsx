@@ -1,6 +1,19 @@
-import { router, useNavigation } from 'expo-router';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { randomUUID } from 'expo-crypto';
+import { useAudioPlayer } from 'expo-audio';
+import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
-import { AppState, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import * as Speech from 'expo-speech';
+import {
+  Animated,
+  AppState,
+  Easing,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { getChildExperienceUseCases } from '@/application/child';
@@ -14,33 +27,572 @@ import {
   colors,
   radii,
   spacing,
+  typography,
 } from '@/design-system';
 import {
   BRUSHING_SEGMENT_COUNT,
+  BRUSHING_TOTAL_SECONDS,
   getBrushingTimerSnapshot,
   pauseBrushingTimer,
   resumeBrushingTimer,
   startBrushingTimer,
   type BrushingTimerState,
 } from '@/domain/brushing';
-import { CharacterAvatar } from '@/features/character';
+import { CharacterAvatar, evolutionSequence } from '@/features/character';
+import {
+  brushPathFor,
+  brushingVoicePromptKeysFourSix,
+  brushingVoicePromptKeysSevenEleven,
+  chooseCompletionJingleIndex,
+  completionJingles,
+  growthCompletionMessageKey,
+  isBrushingVoiceGuidanceEnabled,
+  nextAlignedTickBoundary,
+  nextCompletionMessageKey,
+  shouldEmitAlignedTick,
+} from '@/features/brushing';
+import {
+  characterGrowthStageNames,
+  growthProgressForXp,
+  growthStageForXp,
+  type BrushingRewardResult,
+} from '@/domain/rewards';
+import type { BrushingPeriod, ProfileProgress } from '@/domain/family';
 
 const regionKeys = ['rightUpper', 'leftUpper', 'rightLower', 'leftLower'] as const;
+type BrushingRegion = (typeof regionKeys)[number];
+
+function SmileQuadrant({ activeRegion }: { activeRegion: BrushingRegion }) {
+  return (
+    <View style={styles.smileMap} testID={`smile-quadrant-${activeRegion}`}>
+      <Image
+        resizeMode="contain"
+        source={require('../assets/brushing/quadrant-mouth.png')}
+        style={styles.smileMapImage}
+      />
+      <View
+        testID={`quadrant-${activeRegion}`}
+        style={[
+          styles.smileActiveOverlay,
+          activeRegion === 'rightUpper' && styles.smileActiveRightUpper,
+          activeRegion === 'leftUpper' && styles.smileActiveLeftUpper,
+          activeRegion === 'rightLower' && styles.smileActiveRightLower,
+          activeRegion === 'leftLower' && styles.smileActiveLeftLower,
+        ]}
+      />
+    </View>
+  );
+}
+
+function AnimatedToothbrush({
+  characterKey,
+  growthStage,
+  progress,
+  segmentIndex,
+}: {
+  characterKey: ChildProfileViewModel['avatarId'];
+  growthStage: ReturnType<typeof growthStageForXp>;
+  progress: number;
+  segmentIndex: number;
+}) {
+  const [stroke] = useState(() => new Animated.Value(0));
+  const [pathVariant, setPathVariant] = useState(0);
+  const points = brushPathFor(characterKey, growthStage, pathVariant + segmentIndex);
+
+  useEffect(() => {
+    stroke.setValue(0);
+    const movement = Animated.timing(stroke, {
+      duration: 2900,
+      easing: Easing.inOut(Easing.sin),
+      toValue: 1,
+      useNativeDriver: true,
+    });
+    movement.start(({ finished }) => {
+      if (finished) setPathVariant((current) => (current + 1) % 3);
+    });
+    return () => movement.stop();
+  }, [pathVariant, segmentIndex, stroke]);
+
+  return (
+    <View pointerEvents="none" style={styles.brushAnimation} testID="animated-toothbrush">
+      <Animated.View
+        style={[
+          styles.brushPath,
+          {
+            transform: [
+              {
+                translateX: stroke.interpolate({
+                  inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
+                  outputRange: points.map(({ x }) => x - 118),
+                }),
+              },
+              {
+                translateY: stroke.interpolate({
+                  inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
+                  outputRange: points.map(({ y }) => y - 8),
+                }),
+              },
+              {
+                rotate: stroke.interpolate({
+                  inputRange: [0, 0.25, 0.5, 0.75, 1],
+                  outputRange: ['-14deg', '-5deg', '-11deg', '2deg', '-14deg'],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        <Animated.View
+          style={[
+            styles.foamLayer,
+            {
+              opacity: stroke.interpolate({
+                inputRange: [0, 0.35, 0.7, 1],
+                outputRange: [0.48, 1, 0.66, 0.48],
+              }),
+              transform: [
+                {
+                  translateY: stroke.interpolate({ inputRange: [0, 1], outputRange: [2, -9] }),
+                },
+                {
+                  scale: stroke.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [0.8, 1.12, 0.8],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={[styles.foamBubble, styles.foamBubbleOne]} />
+          <View style={[styles.foamBubble, styles.foamBubbleTwo]} />
+          <View style={[styles.foamBubble, styles.foamBubbleThree]} />
+          <View style={[styles.foamBubble, styles.foamBubbleFour]} />
+        </Animated.View>
+        <View style={styles.toothbrush}>
+          <View style={styles.brushHandle}>
+            <View style={styles.brushGrip} />
+          </View>
+          <View style={styles.brushNeck} />
+          <View style={styles.brushHead}>
+            <View style={styles.bristleRow}>
+              <View style={styles.bristle} />
+              <View style={styles.bristle} />
+              <View style={styles.bristle} />
+              <View style={styles.bristle} />
+            </View>
+          </View>
+        </View>
+      </Animated.View>
+      <View style={[styles.cleanShine, { opacity: 0.15 + progress * 0.85 }]}>
+        <Text style={styles.cleanShineText}>✦</Text>
+      </View>
+    </View>
+  );
+}
+
+const celebrationParticles = [
+  { color: '#FFD166', left: '8%', top: '14%' },
+  { color: '#FF6B81', left: '23%', top: '7%' },
+  { color: '#42D6C5', left: '40%', top: '13%' },
+  { color: '#FFFFFF', left: '57%', top: '6%' },
+  { color: '#FF9FC6', left: '73%', top: '15%' },
+  { color: '#FFD166', left: '87%', top: '8%' },
+  { color: '#42D6C5', left: '14%', top: '45%' },
+  { color: '#FFFFFF', left: '82%', top: '42%' },
+] as const;
+
+function CompletionCelebration({ stage }: { stage: ReturnType<typeof growthStageForXp> }) {
+  const [burst] = useState(() => new Animated.Value(0));
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(burst, {
+          duration: stage >= 3 ? 850 : 1100,
+          easing: Easing.out(Easing.cubic),
+          toValue: 1,
+          useNativeDriver: true,
+        }),
+        Animated.timing(burst, { duration: 280, toValue: 0, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [burst, stage]);
+
+  return (
+    <View
+      pointerEvents="none"
+      style={styles.celebrationEffects}
+      testID={`celebration-stage-${stage}`}
+    >
+      {celebrationParticles.map((particle, index) => (
+        <Animated.View
+          key={`${particle.left}-${particle.top}`}
+          style={[
+            styles.confettiParticle,
+            particle,
+            index % 2 === 0 ? styles.confettiRound : styles.confettiDiamond,
+            {
+              opacity: burst.interpolate({
+                inputRange: [0, 0.15, 0.82, 1],
+                outputRange: [0.35, 1, 0.8, 0.25],
+              }),
+              transform: [
+                {
+                  translateY: burst.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 18 + (index % 3) * 8],
+                  }),
+                },
+                {
+                  rotate: burst.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0deg', index % 2 === 0 ? '150deg' : '-150deg'],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
+function ResultGrowth({
+  profile,
+  result,
+}: {
+  profile: ChildProfileViewModel;
+  result: BrushingRewardResult;
+}) {
+  const { t } = useTranslation();
+  const [animation] = useState(() => new Animated.Value(0));
+  const [celebrationMotion] = useState(() => new Animated.Value(0));
+  const [evolutionReveal] = useState(() => new Animated.Value(1));
+  const [evolutionFrame, setEvolutionFrame] = useState(0);
+  const previousXp = Math.max(0, result.progress.totalXp - result.xpGranted);
+  const previousStage = growthStageForXp(previousXp);
+  const growth = growthProgressForXp(result.progress.totalXp);
+  const stage = growth.currentStage;
+  const target = growth.targetXp;
+  const ratio = growth.ratio;
+  const evolutionFrames = evolutionSequence(previousStage, stage);
+  const evolution = evolutionFrames[Math.min(evolutionFrame, evolutionFrames.length - 1)];
+  const evolutionFrameCount = evolutionFrames.length;
+
+  useEffect(() => {
+    Animated.timing(animation, { duration: 850, toValue: ratio, useNativeDriver: false }).start();
+  }, [animation, ratio]);
+
+  useEffect(() => {
+    if (evolutionFrameCount === 1) return;
+    const timers = Array.from({ length: evolutionFrameCount - 1 }, (_, index) =>
+      setTimeout(() => setEvolutionFrame(index + 1), 1050 * (index + 1)),
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [evolutionFrameCount, previousStage, stage]);
+
+  useEffect(() => {
+    evolutionReveal.setValue(0);
+    Animated.timing(evolutionReveal, {
+      duration: 520,
+      easing: Easing.out(Easing.cubic),
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  }, [evolutionFrame, evolutionReveal]);
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(celebrationMotion, {
+          duration: stage <= 1 ? 360 : 470,
+          easing: Easing.out(Easing.quad),
+          toValue: 1,
+          useNativeDriver: true,
+        }),
+        Animated.timing(celebrationMotion, {
+          duration: stage <= 1 ? 360 : 470,
+          easing: Easing.inOut(Easing.quad),
+          toValue: 0,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [celebrationMotion, stage]);
+
+  return (
+    <>
+      <Animated.View
+        style={[
+          styles.resultCharacter,
+          {
+            opacity: evolutionReveal,
+            transform: [
+              {
+                translateY: celebrationMotion.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: stage <= 1 ? [2, -3] : [2, stage === 4 ? -18 : -12],
+                }),
+              },
+              {
+                rotate: celebrationMotion.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: stage <= 1 ? ['-4deg', '4deg'] : ['-1deg', '1deg'],
+                }),
+              },
+              {
+                scale: celebrationMotion.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [1, stage === 4 ? 1.08 : stage >= 2 ? 1.04 : 1.015],
+                }),
+              },
+              {
+                scale: evolutionReveal.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.9, 1],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        <CharacterAvatar
+          characterKey={profile.avatarId}
+          growthStage={evolution?.growthStage ?? stage}
+          mood="clean"
+          phase={evolution?.phase ?? 'resting'}
+          size="hero"
+          surface="plain"
+        />
+      </Animated.View>
+      <View style={styles.resultGrowth}>
+        <View style={styles.resultXpTrack}>
+          <Animated.View
+            style={[
+              styles.resultXpFill,
+              { width: animation.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) },
+            ]}
+          />
+        </View>
+        <View style={styles.resultStageInfo}>
+          <Text style={styles.resultCurrentStage}>
+            {t('growth.currentStage', {
+              stage: t(`growth.stages.${characterGrowthStageNames[stage]}`),
+            })}
+          </Text>
+          {growth.nextStage === null ? null : (
+            <Text style={styles.resultNextStage}>
+              {t('growth.nextStage', {
+                stage: t(`growth.stages.${characterGrowthStageNames[growth.nextStage]}`),
+              })}
+            </Text>
+          )}
+        </View>
+        <Text style={styles.resultXp}>
+          {result.progress.totalXp} / {target} XP
+        </Text>
+        <Text style={styles.remainingXp}>
+          {growth.isFinalStage
+            ? t('growth.finalStage')
+            : t('growth.remainingXp', {
+                count: growth.remainingXp,
+                stage: t(`growth.stages.${characterGrowthStageNames[growth.nextStage!]}`),
+              })}
+        </Text>
+        <Text style={[styles.growthMessage, stage > previousStage && styles.growthMessageUnlocked]}>
+          {t(growthCompletionMessageKey(previousXp, result.progress.totalXp))}
+        </Text>
+      </View>
+    </>
+  );
+}
 
 export default function BrushingScreen() {
   const { t } = useTranslation();
+  const params = useLocalSearchParams<{ slot?: string }>();
+  const requestedSlot: BrushingPeriod | undefined =
+    params.slot === 'morning' || params.slot === 'evening' ? params.slot : undefined;
   const navigation = useNavigation();
   const startedAt = useRef<string | null>(null);
+  const sessionId = useRef(randomUUID());
   const completionStarted = useRef(false);
+  const completionJinglePlayed = useRef(false);
   const allowExit = useRef(false);
+  const lastAnnouncedSegment = useRef(-1);
+  const lastTickAtMonotonicMs = useRef<number | null>(null);
+  const nextTickPlayer = useRef<0 | 1>(0);
+  const voiceSpeaking = useRef(false);
   const [profile, setProfile] = useState<ChildProfileViewModel | null>(null);
+  const [initialProgress, setInitialProgress] = useState<ProfileProgress | null>(null);
   const [timer, setTimer] = useState<BrushingTimerState | null>(null);
   const [nowMs, setNowMs] = useState(0);
   const [exitConfirmation, setExitConfirmation] = useState(false);
-  const [completed, setCompleted] = useState(false);
+  const [result, setResult] = useState<BrushingRewardResult | null>(null);
+  const [rewardEquipped, setRewardEquipped] = useState(false);
+  const [completionMessageKey, setCompletionMessageKey] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const [voiceGuidanceEnabled, setVoiceGuidanceEnabled] = useState<boolean | null>(null);
+  const [speechVoice, setSpeechVoice] = useState<string | undefined>();
+  const [speechVoiceLoaded, setSpeechVoiceLoaded] = useState(false);
+  const [completionJingleIndex] = useState(chooseCompletionJingleIndex);
+  const completionJingle = useAudioPlayer(completionJingles[completionJingleIndex]?.source);
+  const timerTickA = useAudioPlayer(require('../assets/audio/soft-timer-tick.wav'));
+  const timerTickB = useAudioPlayer(require('../assets/audio/soft-timer-tick.wav'));
   const snapshot = timer ? getBrushingTimerSnapshot(timer, nowMs) : null;
   const region = regionKeys[snapshot?.segmentIndex ?? 0] ?? regionKeys[0];
+  const currentGrowthStage = growthStageForXp(initialProgress?.totalXp ?? 0);
+
+  useEffect(() => {
+    void isBrushingVoiceGuidanceEnabled()
+      .then(setVoiceGuidanceEnabled)
+      .catch(() => setVoiceGuidanceEnabled(true));
+    return () => {
+      voiceSpeaking.current = false;
+      Speech.stop();
+      timerTickA.pause();
+      timerTickB.pause();
+    };
+  }, [timerTickA, timerTickB]);
+
+  useEffect(() => {
+    void Speech.getAvailableVoicesAsync()
+      .then((voices) => {
+        const turkishVoices = (voices ?? []).filter((voice) =>
+          voice.language.toLowerCase().startsWith('tr'),
+        );
+        const naturalVoice =
+          turkishVoices.find(
+            (voice) =>
+              voice.quality === 'Enhanced' &&
+              /cem|mert|kerem|deniz|emre/i.test(`${voice.name} ${voice.identifier}`),
+          ) ??
+          turkishVoices.find((voice) => voice.quality === 'Enhanced') ??
+          turkishVoices[0];
+        setSpeechVoice(naturalVoice?.identifier);
+      })
+      .finally(() => setSpeechVoiceLoaded(true));
+  }, []);
+
+  useEffect(() => {
+    const currentSnapshot = snapshot;
+    const segmentIndex = currentSnapshot?.segmentIndex;
+    if (
+      voiceGuidanceEnabled !== true ||
+      !speechVoiceLoaded ||
+      !profile ||
+      !currentSnapshot ||
+      segmentIndex === undefined ||
+      currentSnapshot.completed ||
+      lastAnnouncedSegment.current === segmentIndex
+    ) {
+      return;
+    }
+    const promptKey = (
+      profile.ageBand === '4_6'
+        ? brushingVoicePromptKeysFourSix
+        : brushingVoicePromptKeysSevenEleven
+    )[segmentIndex];
+    if (!promptKey) return;
+    lastAnnouncedSegment.current = segmentIndex;
+    voiceSpeaking.current = true;
+    timerTickA.pause();
+    timerTickB.pause();
+    Speech.stop();
+    Speech.speak(t(promptKey), {
+      language: 'tr-TR',
+      onDone: () => {
+        voiceSpeaking.current = false;
+      },
+      onError: () => {
+        voiceSpeaking.current = false;
+      },
+      onStopped: () => {
+        voiceSpeaking.current = false;
+      },
+      pitch: 1,
+      rate: profile.ageBand === '4_6' ? 0.98 : 1,
+      voice: speechVoice,
+    });
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+  }, [
+    profile,
+    snapshot,
+    speechVoice,
+    speechVoiceLoaded,
+    t,
+    timerTickA,
+    timerTickB,
+    voiceGuidanceEnabled,
+  ]);
+
+  useEffect(() => {
+    if (!timer || timer.status !== 'running' || result) {
+      timerTickA.pause();
+      timerTickB.pause();
+      return;
+    }
+    let cancelled = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
+    const scheduleNextBoundary = (): void => {
+      const boundary = nextAlignedTickBoundary({
+        nowWallTimeMs: Date.now(),
+        pausedDurationMs: timer.pausedDurationMs,
+        startedAtMs: timer.startedAtMs,
+      });
+      const monotonicDeadlineMs = performance.now() + boundary.delayMs;
+      timeout = setTimeout(() => {
+        if (cancelled) return;
+        const firedAtMonotonicMs = performance.now();
+        const lateByMs = Math.max(0, firedAtMonotonicMs - monotonicDeadlineMs);
+        setNowMs(Date.now());
+
+        if (
+          shouldEmitAlignedTick({
+            boundarySecond: boundary.boundarySecond,
+            lateByMs,
+            totalSeconds: BRUSHING_TOTAL_SECONDS,
+            voiceGuidanceEnabled: voiceGuidanceEnabled === true,
+            voiceSpeaking: voiceSpeaking.current,
+          })
+        ) {
+          const activePlayer = nextTickPlayer.current === 0 ? timerTickA : timerTickB;
+          const standbyPlayer = nextTickPlayer.current === 0 ? timerTickB : timerTickA;
+          activePlayer.play();
+          standbyPlayer.pause();
+          void standbyPlayer.seekTo(0);
+          nextTickPlayer.current = nextTickPlayer.current === 0 ? 1 : 0;
+
+          if (__DEV__) {
+            const intervalMs =
+              lastTickAtMonotonicMs.current === null
+                ? null
+                : firedAtMonotonicMs - lastTickAtMonotonicMs.current;
+            console.info(
+              `[brushing-tick] second=${boundary.boundarySecond} at=${firedAtMonotonicMs.toFixed(3)}ms interval=${intervalMs?.toFixed(3) ?? 'first'}ms late=${lateByMs.toFixed(3)}ms`,
+            );
+            lastTickAtMonotonicMs.current = firedAtMonotonicMs;
+          }
+        }
+
+        if (boundary.boundarySecond < BRUSHING_TOTAL_SECONDS) scheduleNextBoundary();
+      }, boundary.delayMs);
+    };
+
+    scheduleNextBoundary();
+    return () => {
+      cancelled = true;
+      if (timeout) clearTimeout(timeout);
+      timerTickA.pause();
+      timerTickB.pause();
+    };
+  }, [result, timer, timerTickA, timerTickB, voiceGuidanceEnabled]);
 
   useEffect(() => {
     void Promise.resolve().then(() => {
@@ -54,22 +606,24 @@ export default function BrushingScreen() {
   useEffect(
     () =>
       navigation.addListener('beforeRemove', (event) => {
-        if (completed || allowExit.current) return;
+        if (result || allowExit.current) return;
         event.preventDefault();
         const current = Date.now();
         setTimer((state) => (state ? pauseBrushingTimer(state, current) : state));
         setNowMs(current);
         setExitConfirmation(true);
       }),
-    [completed, navigation],
+    [navigation, result],
   );
 
   useEffect(() => {
     void getFamilyUseCases()
       .then((useCases) => useCases.getActiveProfile())
-      .then((activeProfile) => {
+      .then(async (activeProfile) => {
         if (!activeProfile) return router.replace('/onboarding');
+        const progress = await (await getChildExperienceUseCases()).getProgress(activeProfile.id);
         setProfile(activeProfile);
+        setInitialProgress(progress);
       })
       .catch(() => setFailed(true));
   }, []);
@@ -88,36 +642,121 @@ export default function BrushingScreen() {
     if (!snapshot?.completed || !profile || completionStarted.current || !sessionStartedAt) return;
     completionStarted.current = true;
     void getChildExperienceUseCases()
-      .then((useCases) => useCases.completeBrushingSession(profile.id, sessionStartedAt))
-      .then(() => setCompleted(true))
+      .then((useCases) =>
+        useCases.completeBrushingSession(
+          sessionId.current,
+          profile.id,
+          sessionStartedAt,
+          requestedSlot,
+        ),
+      )
+      .then(setResult)
       .catch(() => setFailed(true));
-  }, [profile, snapshot?.completed]);
+  }, [profile, requestedSlot, snapshot?.completed]);
+
+  useEffect(() => {
+    if (!result || !profile || completionMessageKey) return;
+    void nextCompletionMessageKey(profile.ageBand).then(setCompletionMessageKey);
+  }, [completionMessageKey, profile, result]);
+
+  useEffect(() => {
+    if (!result || completionJinglePlayed.current) return;
+    completionJinglePlayed.current = true;
+    timerTickA.pause();
+    timerTickB.pause();
+    Speech.stop();
+    void completionJingle.seekTo(0).then(() => completionJingle.play());
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+  }, [completionJingle, result, timerTickA, timerTickB]);
 
   if (failed) return <ErrorState body={t('brushing.saveError')} />;
-  if (!profile || !timer || !snapshot) return <LoadingState label={t('brushing.loading')} />;
+  if (!profile || !initialProgress || !timer || !snapshot) {
+    return <LoadingState label={t('brushing.loading')} />;
+  }
 
-  if (completed) {
+  if (result) {
+    const completionStage = growthStageForXp(result.progress.totalXp);
     return (
-      <Screen style={styles.centered} testID="brushing-complete-screen">
-        <View style={styles.celebrationStage}>
-          <Text style={styles.confettiLeft}>✦</Text>
-          <Text style={styles.confettiRight}>★</Text>
-          <CharacterAvatar characterKey={profile.avatarId} size="hero" surface="plain" />
-          <View style={styles.celebrationRug} />
-        </View>
-        <View style={styles.completionCopy}>
-          <Text style={styles.centerText} variant="title">
-            {t('brushing.completeTitle')}
-          </Text>
-          <Text style={styles.centerText}>{t('brushing.completeBody')}</Text>
-        </View>
-        <Button
-          label={t('brushing.home')}
-          onPress={() => {
-            allowExit.current = true;
-            router.replace('/(child)');
-          }}
-        />
+      <Screen style={styles.completionScreen} testID="brushing-complete-screen">
+        <ScrollView
+          contentContainerStyle={styles.completionContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.celebrationStage}>
+            <CompletionCelebration stage={completionStage} />
+            <Text style={styles.confettiLeft}>✦</Text>
+            <Text style={styles.confettiRight}>★</Text>
+            <ResultGrowth profile={profile} result={result} />
+            <View style={styles.celebrationRug} />
+          </View>
+          <View style={styles.completionCopy}>
+            <Text style={styles.centerText} variant="title">
+              {t(completionMessageKey ?? 'brushing.completeTitle')}
+            </Text>
+            <Text style={styles.centerText}>
+              {t(
+                profile.ageBand === '4_6'
+                  ? 'brushing.completeBodyFourSix'
+                  : 'brushing.completeBody',
+              )}
+            </Text>
+            <View style={styles.rewardRow}>
+              <View style={styles.rewardChip}>
+                <Text style={styles.rewardValue}>+{result.xpGranted} XP</Text>
+              </View>
+              <View style={styles.rewardChip}>
+                <Text style={styles.rewardValue}>
+                  {t('brushing.moodGain', { count: result.moodDelta })}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.centerText}>
+              {t('brushing.dailyResult', {
+                evening: result.dailyProgress.eveningCompleted ? '✓' : '•',
+                morning: result.dailyProgress.morningCompleted ? '✓' : '•',
+              })}
+            </Text>
+            {result.streakAdvanced ? (
+              <Text style={styles.streakResult}>
+                {t('brushing.streakResult', { count: result.dailyProgress.streakAfterDay })}
+              </Text>
+            ) : null}
+            {result.unlockedItemKey ? (
+              <View style={styles.unlockCard}>
+                <Text style={styles.unlockResult}>{t('brushing.newReward')}</Text>
+                <Text style={styles.rewardItemName}>
+                  {t(`rewards.items.${result.unlockedItemKey}`)}
+                </Text>
+                <View style={styles.rewardActions}>
+                  <Button
+                    disabled={rewardEquipped}
+                    label={t(rewardEquipped ? 'brushing.equipped' : 'brushing.equipNow')}
+                    onPress={() => {
+                      void getChildExperienceUseCases()
+                        .then((useCases) => useCases.equipItem(profile.id, result.unlockedItemKey!))
+                        .then(() => setRewardEquipped(true));
+                    }}
+                  />
+                  <Button
+                    label={t('brushing.openCollection')}
+                    onPress={() => {
+                      allowExit.current = true;
+                      router.replace('/(child)/collection');
+                    }}
+                    variant="secondary"
+                  />
+                </View>
+              </View>
+            ) : null}
+          </View>
+          <Button
+            label={t('brushing.home')}
+            onPress={() => {
+              allowExit.current = true;
+              router.replace('/(child)');
+            }}
+          />
+        </ScrollView>
       </Screen>
     );
   }
@@ -187,21 +826,24 @@ export default function BrushingScreen() {
             <Text style={styles.bubbleOne}>✦</Text>
             <Text style={styles.bubbleTwo}>✦</Text>
             <View style={styles.stageRug} />
-            <CharacterAvatar characterKey={profile.avatarId} size="large" surface="plain" />
+            <View style={styles.brushingCharacterZone}>
+              <CharacterAvatar
+                characterKey={profile.avatarId}
+                growthStage={growthStageForXp(initialProgress.totalXp)}
+                mood="energetic"
+                phase="resting"
+                size="large"
+                surface="plain"
+              />
+            </View>
+            <AnimatedToothbrush
+              characterKey={profile.avatarId}
+              growthStage={currentGrowthStage}
+              progress={Math.max(0, Math.min(1, snapshot.elapsedSeconds / 120))}
+              segmentIndex={snapshot.segmentIndex}
+            />
             <View accessibilityLabel={t(`brushing.regions.${region}`)} style={styles.mouthMap}>
-              {regionKeys.map((key, index) => (
-                <View
-                  key={key}
-                  style={[
-                    styles.mouthQuadrant,
-                    index === 0 && styles.mouthRightUpper,
-                    index === 1 && styles.mouthLeftUpper,
-                    index === 2 && styles.mouthRightLower,
-                    index === 3 && styles.mouthLeftLower,
-                    index === snapshot.segmentIndex && styles.mouthQuadrantActive,
-                  ]}
-                />
-              ))}
+              <SmileQuadrant activeRegion={region} />
             </View>
           </View>
           <Text style={styles.instruction}>
@@ -265,6 +907,45 @@ export default function BrushingScreen() {
 }
 
 const styles = StyleSheet.create({
+  bristle: { backgroundColor: '#FFFFFF', borderRadius: 2, height: 11, width: 4 },
+  bristleRow: { flexDirection: 'row', gap: 2, position: 'absolute', right: 3, top: -8 },
+  brushAnimation: {
+    height: 190,
+    left: 0,
+    overflow: 'hidden',
+    position: 'absolute',
+    top: 0,
+    width: 195,
+    zIndex: 5,
+  },
+  brushGrip: {
+    backgroundColor: '#7256CF',
+    borderRadius: 6,
+    height: 8,
+    marginLeft: 12,
+    marginTop: 5,
+    width: 48,
+  },
+  brushHandle: {
+    backgroundColor: '#42D6C5',
+    borderColor: '#FFFFFF',
+    borderBottomLeftRadius: 13,
+    borderTopLeftRadius: 13,
+    borderWidth: 3,
+    height: 24,
+    width: 78,
+  },
+  brushHead: {
+    backgroundColor: '#FF6B81',
+    borderColor: '#FFFFFF',
+    borderBottomRightRadius: 9,
+    borderTopRightRadius: 9,
+    borderWidth: 3,
+    height: 22,
+    width: 32,
+  },
+  brushNeck: { backgroundColor: '#42D6C5', height: 12, width: 24 },
+  brushPath: { left: 0, position: 'absolute', top: 0 },
   bubbleOne: {
     color: colors.brandHighlight,
     fontSize: 24,
@@ -280,33 +961,54 @@ const styles = StyleSheet.create({
     top: 52,
   },
   brushingStage: {
-    alignItems: 'center',
     backgroundColor: '#F9D7E5',
     borderRadius: 28,
     height: 190,
-    justifyContent: 'center',
     overflow: 'hidden',
+    position: 'relative',
   },
+  brushingCharacterZone: {
+    alignItems: 'center',
+    bottom: 8,
+    justifyContent: 'center',
+    left: 8,
+    position: 'absolute',
+    top: 8,
+    width: 188,
+  },
+  cleanShine: { position: 'absolute', right: 22, top: 28 },
+  cleanShineText: { color: '#FFD166', fontSize: 32 },
   celebrationRug: {
     backgroundColor: '#D783C1',
     borderRadius: radii.pill,
-    bottom: 24,
     height: 28,
     position: 'absolute',
+    top: 250,
     width: 180,
+  },
+  celebrationEffects: {
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
   },
   celebrationStage: {
     alignItems: 'center',
     backgroundColor: '#D9C7FF',
     borderRadius: 34,
-    height: 330,
-    justifyContent: 'center',
+    gap: spacing.md,
+    minHeight: 590,
     overflow: 'hidden',
+    paddingBottom: spacing.lg,
+    paddingTop: spacing.lg,
     width: '100%',
   },
-  centered: { alignItems: 'center', justifyContent: 'space-between' },
   centerText: { textAlign: 'center' },
-  completionCopy: { gap: spacing.sm },
+  completionContent: { gap: spacing.lg, paddingBottom: spacing.xl },
+  completionCopy: { gap: spacing.sm, width: '100%' },
+  completionScreen: { justifyContent: 'flex-start' },
+  confettiDiamond: { borderRadius: 2 },
   confettiLeft: {
     color: colors.brandHighlight,
     fontSize: 34,
@@ -321,6 +1023,8 @@ const styles = StyleSheet.create({
     right: spacing.lg,
     top: 72,
   },
+  confettiParticle: { height: 11, position: 'absolute', width: 11 },
+  confettiRound: { borderRadius: radii.pill },
   controls: { gap: spacing.md },
   dialog: {
     backgroundColor: colors.white,
@@ -360,33 +1064,26 @@ const styles = StyleSheet.create({
     width: 48,
   },
   exitIcon: { color: colors.brandPrimary, fontSize: 34, fontWeight: '700', lineHeight: 38 },
-  instruction: { fontSize: 22, fontWeight: '700', lineHeight: 30, textAlign: 'center' },
-  mouthLeftLower: { borderBottomLeftRadius: 18, bottom: 7, left: 7 },
-  mouthLeftUpper: { borderTopLeftRadius: 18, left: 7, top: 7 },
-  mouthMap: {
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderRadius: 24,
-    bottom: spacing.sm,
-    height: 62,
-    position: 'absolute',
-    right: spacing.sm,
-    width: 86,
-  },
-  mouthQuadrant: {
-    backgroundColor: '#F8DCE6',
-    borderColor: colors.white,
+  foamBubble: {
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderColor: '#D7F8F4',
+    borderRadius: 20,
     borderWidth: 2,
-    height: 24,
     position: 'absolute',
-    width: 34,
   },
-  mouthQuadrantActive: {
-    backgroundColor: colors.brandHighlight,
-    borderColor: colors.brandSecondary,
-    borderWidth: 3,
+  foamBubbleFour: { height: 12, left: 33, top: 23, width: 12 },
+  foamBubbleOne: { height: 23, left: 12, top: 28, width: 23 },
+  foamBubbleThree: { height: 15, left: 27, top: 5, width: 15 },
+  foamBubbleTwo: { height: 17, left: 1, top: 12, width: 17 },
+  foamLayer: { height: 48, left: 100, position: 'absolute', top: -24, width: 40 },
+  instruction: { fontSize: 22, fontWeight: '700', lineHeight: 30, textAlign: 'center' },
+  mouthMap: {
+    bottom: 16,
+    height: 112,
+    position: 'absolute',
+    right: 8,
+    width: 126,
   },
-  mouthRightLower: { borderBottomRightRadius: 18, bottom: 7, right: 7 },
-  mouthRightUpper: { borderTopRightRadius: 18, right: 7, top: 7 },
   modalBackdrop: {
     backgroundColor: 'rgba(38,50,56,0.36)',
     bottom: 0,
@@ -400,6 +1097,46 @@ const styles = StyleSheet.create({
   },
   progress: { color: colors.brandSecondary, fontSize: 20, fontWeight: '800', lineHeight: 26 },
   pressed: { opacity: 0.7 },
+  rewardChip: {
+    backgroundColor: '#FFF0C9',
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  rewardRow: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'center' },
+  rewardValue: { color: colors.brandPrimary, fontWeight: '900' },
+  resultCharacter: { height: 286, zIndex: 1 },
+  resultCurrentStage: { color: colors.brandPrimary, fontSize: 16, fontWeight: '900' },
+  resultGrowth: { gap: spacing.sm, width: '84%' },
+  resultNextStage: { color: colors.navy, fontSize: 14, fontWeight: '700', lineHeight: 19 },
+  resultStageInfo: { gap: 2 },
+  resultXp: { color: colors.navy, fontSize: 13, fontWeight: '700', textAlign: 'right' },
+  resultXpFill: { backgroundColor: colors.brandAccent, borderRadius: radii.pill, height: '100%' },
+  resultXpTrack: {
+    backgroundColor: '#E9E2F7',
+    borderRadius: radii.pill,
+    height: 13,
+    overflow: 'hidden',
+  },
+  remainingXp: {
+    color: colors.navy,
+    fontSize: 15,
+    fontWeight: '700',
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  growthMessage: {
+    backgroundColor: 'rgba(255,255,255,0.58)',
+    borderRadius: radii.md,
+    color: colors.navy,
+    fontSize: 15,
+    fontWeight: '700',
+    lineHeight: 21,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    textAlign: 'center',
+  },
+  growthMessageUnlocked: { color: colors.brandPrimary, fontWeight: '900' },
   regionTitle: { fontSize: 30, fontWeight: '900', lineHeight: 36 },
   segment: {
     backgroundColor: '#E4DED9',
@@ -424,6 +1161,24 @@ const styles = StyleSheet.create({
     paddingTop: 68,
   },
   sessionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  smileActiveLeftLower: { bottom: 8, right: 8 },
+  smileActiveLeftUpper: { right: 8, top: 8 },
+  smileActiveOverlay: {
+    backgroundColor: 'rgba(129,80,230,0.28)',
+    borderColor: '#9E6BFF',
+    borderRadius: 12,
+    borderWidth: 2,
+    height: 48,
+    position: 'absolute',
+    shadowColor: '#7D4DE8',
+    shadowOpacity: 0.85,
+    shadowRadius: 7,
+    width: 55,
+  },
+  smileActiveRightLower: { bottom: 8, left: 8 },
+  smileActiveRightUpper: { left: 8, top: 8 },
+  smileMap: { flex: 1, overflow: 'hidden' },
+  smileMapImage: { height: '100%', width: '100%' },
   screen: { justifyContent: 'flex-start', padding: 0 },
   stageRug: {
     backgroundColor: '#ED91BB',
@@ -433,6 +1188,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 140,
   },
+  streakResult: { color: colors.brandSecondary, fontWeight: '900', textAlign: 'center' },
   timerBadge: {
     alignItems: 'center',
     backgroundColor: colors.brandHighlight,
@@ -443,4 +1199,22 @@ const styles = StyleSheet.create({
   },
   timerText: { fontSize: 30, fontWeight: '900', lineHeight: 34 },
   totalRemaining: { fontSize: 15, lineHeight: 20, opacity: 0.68, textAlign: 'center' },
+  toothbrush: { alignItems: 'center', flexDirection: 'row' },
+  unlockResult: { color: colors.brandPrimary, fontWeight: '900', textAlign: 'center' },
+  unlockCard: {
+    backgroundColor: '#FFF0C9',
+    borderColor: colors.brandHighlight,
+    borderRadius: radii.lg,
+    borderWidth: 2,
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  rewardActions: { gap: spacing.sm },
+  rewardItemName: {
+    color: colors.textPrimary,
+    fontFamily: typography.family.display,
+    fontSize: 22,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
 });

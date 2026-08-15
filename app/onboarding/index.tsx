@@ -21,7 +21,7 @@ export default function WelcomeScreen() {
         <View style={styles.cloudLeft} />
         <View style={styles.cloudRight} />
         <View style={styles.rug} />
-        <CharacterAvatar characterKey="cheerful-incisor" size="hero" surface="plain" />
+        <CharacterAvatar characterKey="inci" size="hero" surface="plain" />
       </View>
       <View style={styles.copy}>
         <Text style={styles.title} variant="title">

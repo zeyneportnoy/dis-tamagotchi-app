@@ -1,5 +1,5 @@
-import { router, type Href } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, type Href, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
@@ -19,6 +19,12 @@ import {
 } from '@/design-system';
 import type { ProfileProgress } from '@/domain/family';
 import { isLegacyAgeBand } from '@/domain/family';
+import {
+  characterGrowthStageNames,
+  estimatedBrushingsToNextStage,
+  growthProgressForXp,
+  type InventoryItem,
+} from '@/domain/rewards';
 import { CharacterAvatar } from '@/features/character';
 
 type TaskCardProps = {
@@ -28,11 +34,15 @@ type TaskCardProps = {
   tone: 'morning' | 'evening';
   status: string;
   testID: string;
+  onPress(): void;
+  onReminderPress(): void;
+  reminderLabel: string;
 };
 type HomeData = Readonly<{
   active: ChildProfileViewModel;
   profiles: readonly ChildProfileViewModel[];
   progress: ProfileProgress;
+  equipped: readonly InventoryItem[];
 }>;
 
 async function readHomeData(): Promise<HomeData | 'onboarding' | 'age-band-update'> {
@@ -44,25 +54,57 @@ async function readHomeData(): Promise<HomeData | 'onboarding' | 'age-band-updat
   if (!active) return 'onboarding';
   if (isLegacyAgeBand(active.ageBand)) return 'age-band-update';
   const childUseCases = await getChildExperienceUseCases();
-  return { active, profiles, progress: await childUseCases.getProgress(active.id) };
+  const [progress, equipped] = await Promise.all([
+    childUseCases.getProgress(active.id),
+    childUseCases.getEquippedItems
+      ? childUseCases.getEquippedItems(active.id)
+      : childUseCases.getEquippedItem
+        ? childUseCases.getEquippedItem(active.id).then((item) => (item ? [item] : []))
+        : Promise.resolve([]),
+  ]);
+  return { active, equipped, profiles, progress };
 }
 
-function TaskCard({ completed, icon, label, status, testID, tone }: TaskCardProps) {
+function TaskCard({
+  completed,
+  icon,
+  label,
+  onPress,
+  onReminderPress,
+  reminderLabel,
+  status,
+  testID,
+  tone,
+}: TaskCardProps) {
   return (
-    <View
-      accessibilityLabel={`${label}. ${status}`}
-      accessible
-      style={[styles.taskCard, tone === 'morning' ? styles.morningCard : styles.eveningCard]}
-      testID={testID}
-    >
-      <View style={styles.taskTopRow}>
+    <View style={styles.taskCardShell}>
+      <Pressable
+        accessibilityLabel={`${label}. ${status}`}
+        accessibilityRole="button"
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.taskCard,
+          tone === 'morning' ? styles.morningCard : styles.eveningCard,
+          completed && styles.taskCardCompleted,
+          pressed && styles.pressed,
+        ]}
+        testID={testID}
+      >
         <Text style={styles.taskIcon}>{icon}</Text>
+        <Text style={styles.taskTitle}>{label}</Text>
         <View style={[styles.statusDot, completed && styles.statusDotCompleted]}>
-          <Text style={styles.statusIcon}>{completed ? '✓' : '•'}</Text>
+          <Text style={styles.statusIcon}>{completed ? '✓' : '○'}</Text>
         </View>
-      </View>
-      <Text style={styles.taskTitle}>{label}</Text>
-      <Text style={styles.taskStatus}>{status}</Text>
+      </Pressable>
+      <Pressable
+        accessibilityLabel={reminderLabel}
+        accessibilityRole="button"
+        hitSlop={8}
+        onPress={onReminderPress}
+        style={styles.reminderBell}
+      >
+        <Text style={styles.reminderBellIcon}>🔔</Text>
+      </Pressable>
     </View>
   );
 }
@@ -72,11 +114,13 @@ export default function ChildHomeScreen() {
   const [active, setActive] = useState<ChildProfileViewModel | null>(null);
   const [profiles, setProfiles] = useState<readonly ChildProfileViewModel[]>([]);
   const [progress, setProgress] = useState<ProfileProgress | null>(null);
+  const [equipped, setEquipped] = useState<readonly InventoryItem[]>([]);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [failed, setFailed] = useState(false);
 
   const applyData = (data: HomeData): void => {
     setProgress(data.progress);
+    setEquipped(data.equipped);
     setActive(data.active);
     setProfiles(data.profiles);
   };
@@ -92,25 +136,45 @@ export default function ChildHomeScreen() {
     }
   };
 
-  useEffect(() => {
-    let mounted = true;
-    void readHomeData()
-      .then((data) => {
-        if (!mounted) return;
-        if (data === 'onboarding') return router.replace('/onboarding');
-        if (data === 'age-band-update') return router.replace('/age-band-update' as Href);
-        applyData(data);
-      })
-      .catch(() => {
-        if (mounted) setFailed(true);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      void readHomeData()
+        .then((data) => {
+          if (!mounted) return;
+          if (data === 'onboarding') return router.replace('/onboarding');
+          if (data === 'age-band-update') return router.replace('/age-band-update' as Href);
+          applyData(data);
+        })
+        .catch(() => {
+          if (mounted) setFailed(true);
+        });
+      return () => {
+        mounted = false;
+      };
+    }, []),
+  );
 
   if (failed) return <ErrorState />;
   if (!active || !progress) return <LoadingState />;
+  const growth = growthProgressForXp(progress.totalXp);
+  const growthStage = growth.currentStage;
+  const isYoungerExperience = active.ageBand === '4_6';
+  const roomBackground = equipped.find((item) => item.slot === 'background');
+  const roomDecor = equipped.find((item) => item.slot === 'decor');
+  const roomEffect = equipped.find((item) => item.slot === 'effect');
+  const roomTone =
+    roomBackground?.key === 'space-room' || roomBackground?.key === 'night-room'
+      ? '#343064'
+      : roomBackground?.key === 'forest-room'
+        ? '#D6EDCE'
+        : roomBackground?.key === 'undersea-room'
+          ? '#BCECE8'
+          : roomBackground?.key === 'rainbow-cape' || roomBackground?.key === 'rainbow-room'
+            ? '#F4D7F5'
+            : roomBackground
+              ? '#E9E0FF'
+              : undefined;
 
   return (
     <Screen style={styles.screen} testID="child-home-screen">
@@ -126,12 +190,12 @@ export default function ChildHomeScreen() {
             style={({ pressed }) => [styles.profileTrigger, pressed && styles.pressed]}
             testID="profile-switcher-trigger"
           >
-            <CharacterAvatar characterKey={active.avatarId} size="tiny" />
+            <CharacterAvatar characterKey={active.avatarId} growthStage={growthStage} size="tiny" />
             <Text style={styles.chevron}>⌄</Text>
           </Pressable>
         </View>
 
-        <View style={styles.characterStage}>
+        <View style={[styles.characterStage, roomTone ? { backgroundColor: roomTone } : null]}>
           <View style={styles.window}>
             <View style={styles.windowVertical} />
             <View style={styles.windowHorizontal} />
@@ -160,10 +224,68 @@ export default function ChildHomeScreen() {
             <View style={styles.pot} />
           </View>
           <View style={styles.rug} />
+          {roomEffect ? (
+            <View pointerEvents="none" style={styles.selectedRoomEffect}>
+              <Text style={styles.effectOne}>{roomEffect.icon}</Text>
+              <Text style={styles.effectTwo}>{roomEffect.icon}</Text>
+              <Text style={styles.effectThree}>{roomEffect.icon}</Text>
+            </View>
+          ) : null}
+          {roomDecor ? (
+            <Text
+              style={[
+                styles.selectedRoomDecor,
+                roomDecor.key === 'cozy-scarf' && styles.selectedCloudCushion,
+              ]}
+            >
+              {roomDecor.icon}
+            </Text>
+          ) : null}
           <Text style={[styles.sceneSparkle, styles.sceneSparkleLeft]}>✦</Text>
           <Text style={[styles.sceneSparkle, styles.sceneSparkleRight]}>✦</Text>
           <View style={styles.heroCharacter}>
-            <CharacterAvatar characterKey={active.avatarId} size="hero" surface="plain" />
+            <CharacterAvatar
+              accessoryKeys={equipped
+                .filter((item) => item.slot === 'wearable')
+                .map((item) => item.key)}
+              characterKey={active.avatarId}
+              growthStage={growthStage}
+              mood={
+                progress.morningCompleted && progress.eveningCompleted
+                  ? 'proud'
+                  : progress.morningCompleted || progress.eveningCompleted
+                    ? 'happy'
+                    : 'sleepy'
+              }
+              size="hero"
+              surface="plain"
+            />
+          </View>
+        </View>
+
+        <View style={styles.growthCard}>
+          <View style={styles.growthCopy}>
+            <Text style={styles.levelLabel}>
+              {t(`growth.stages.${characterGrowthStageNames[growthStage]}`)}
+            </Text>
+            <Text style={styles.xpLabel}>
+              {growth.isFinalStage
+                ? t('growth.finalStageShort')
+                : t('growth.remainingXp', {
+                    count: growth.remainingXp,
+                    stage: t(`growth.stages.${characterGrowthStageNames[growth.nextStage!]}`),
+                  })}
+            </Text>
+            {!growth.isFinalStage ? (
+              <Text style={styles.brushingEstimate}>
+                {t('growth.remainingBrushesApprox', {
+                  count: estimatedBrushingsToNextStage(progress.totalXp),
+                })}
+              </Text>
+            ) : null}
+          </View>
+          <View style={styles.xpTrack}>
+            <View style={[styles.xpFill, { width: `${growth.ratio * 100}%` }]} />
           </View>
         </View>
 
@@ -179,7 +301,14 @@ export default function ChildHomeScreen() {
           <TaskCard
             completed={progress.morningCompleted}
             icon="☀️"
-            label={t('childHome.morning')}
+            label={t('childHome.morningShort')}
+            onPress={() =>
+              router.push({ pathname: '/brushing', params: { slot: 'morning' } } as Href)
+            }
+            onReminderPress={() =>
+              router.push({ pathname: '/parent-gate', params: { next: 'reminders' } } as Href)
+            }
+            reminderLabel={t('childHome.openReminders')}
             status={t(progress.morningCompleted ? 'childHome.completed' : 'childHome.waiting')}
             testID="morning-task"
             tone="morning"
@@ -187,15 +316,24 @@ export default function ChildHomeScreen() {
           <TaskCard
             completed={progress.eveningCompleted}
             icon="🌙"
-            label={t('childHome.evening')}
+            label={t('childHome.eveningShort')}
+            onPress={() =>
+              router.push({ pathname: '/brushing', params: { slot: 'evening' } } as Href)
+            }
+            onReminderPress={() =>
+              router.push({ pathname: '/parent-gate', params: { next: 'reminders' } } as Href)
+            }
+            reminderLabel={t('childHome.openReminders')}
             status={t(progress.eveningCompleted ? 'childHome.completed' : 'childHome.waiting')}
             testID="evening-task"
             tone="evening"
           />
         </View>
-        <Text style={styles.streak}>
-          {t('childHome.streak', { count: progress.currentStreak })}
-        </Text>
+        {!isYoungerExperience ? (
+          <Text style={styles.streak}>
+            {t('childHome.streak', { count: progress.currentStreak })}
+          </Text>
+        ) : null}
       </ScrollView>
 
       <Modal
@@ -253,6 +391,25 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 18,
   },
+  selectedRoomDecor: {
+    bottom: 38,
+    fontSize: 48,
+    left: 18,
+    lineHeight: 66,
+    position: 'absolute',
+    zIndex: 1,
+  },
+  selectedCloudCushion: {
+    bottom: 4,
+    fontSize: 76,
+    left: '34%',
+    lineHeight: 94,
+    transform: [{ scaleX: 1.4 }],
+  },
+  selectedRoomEffect: { height: '100%', position: 'absolute', width: '100%', zIndex: 2 },
+  effectOne: { fontSize: 25, left: 45, lineHeight: 34, position: 'absolute', top: 120 },
+  effectTwo: { fontSize: 30, lineHeight: 40, position: 'absolute', right: 48, top: 82 },
+  effectThree: { bottom: 92, fontSize: 22, lineHeight: 31, position: 'absolute', right: 70 },
   chevron: { color: colors.brandPrimary, fontSize: 24, fontWeight: '800', lineHeight: 26 },
   cloudOne: {
     backgroundColor: colors.white,
@@ -302,8 +459,12 @@ const styles = StyleSheet.create({
   floorLineThree: { left: '75%' },
   floorLineTwo: { left: '50%' },
   greeting: { flex: 1 },
+  growthCard: { gap: spacing.sm, paddingHorizontal: spacing.sm },
+  growthCopy: { alignItems: 'flex-start', gap: 2 },
+  brushingEstimate: { color: '#667078', fontSize: 13, fontWeight: '700', lineHeight: 18 },
   header: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, minHeight: 66 },
-  heroCharacter: { bottom: 24, position: 'absolute' },
+  heroCharacter: { bottom: 24, position: 'absolute', zIndex: 3 },
+  levelLabel: { color: colors.brandPrimary, fontSize: 20, fontWeight: '900' },
   leaf: {
     backgroundColor: colors.brandAccent,
     borderRadius: radii.pill,
@@ -411,22 +572,32 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   taskCard: {
-    alignItems: 'flex-start',
-    borderRadius: 24,
-    flex: 1,
-    minHeight: 118,
-    padding: 14,
-  },
-  taskIcon: { fontSize: 25, lineHeight: 30 },
-  taskRow: { flexDirection: 'row', gap: spacing.sm },
-  taskStatus: { fontSize: 14, lineHeight: 19, opacity: 0.72 },
-  taskTitle: { fontSize: 15, fontWeight: '800', lineHeight: 20 },
-  taskTopRow: {
     alignItems: 'center',
+    borderRadius: 24,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
+    gap: spacing.sm,
+    minHeight: minimumTouchTarget,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
+  taskCardShell: { flex: 1, position: 'relative' },
+  taskCardCompleted: { borderColor: colors.brandAccent, borderWidth: 3 },
+  reminderBell: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderRadius: radii.pill,
+    height: 34,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 6,
+    top: 6,
+    width: 34,
+    zIndex: 3,
+  },
+  reminderBellIcon: { fontSize: 15 },
+  taskIcon: { fontSize: 25, lineHeight: 30 },
+  taskRow: { alignSelf: 'center', flexDirection: 'row', gap: spacing.sm },
+  taskTitle: { fontSize: 15, fontWeight: '800', lineHeight: 20 },
   window: {
     backgroundColor: '#AEE7ED',
     borderColor: colors.white,
@@ -454,6 +625,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     width: 5,
+  },
+  xpFill: { backgroundColor: colors.brandAccent, borderRadius: radii.pill, height: '100%' },
+  xpLabel: { color: colors.navy, fontSize: 14, fontWeight: '800', lineHeight: 19 },
+  xpTrack: {
+    backgroundColor: '#E9E2F7',
+    borderRadius: radii.pill,
+    height: 12,
+    overflow: 'hidden',
   },
   windowHill: {
     backgroundColor: '#8AD7B8',

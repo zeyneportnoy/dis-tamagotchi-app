@@ -94,6 +94,26 @@ export class SQLiteChildProfileRepository implements ChildProfileRepository {
         parentId,
         profile.id,
       );
+      await this.database.runAsync(
+        `INSERT OR IGNORE INTO inventory_items(child_profile_id, item_key, unlocked_at, equipped, slot)
+         VALUES (?, 'cozy-scarf', ?, 1, 'decor')`,
+        profile.id,
+        profile.createdAt,
+      );
+      for (const [key, slot] of [
+        ['pastel-playroom', 'background'],
+        ['bubble-glow', 'effect'],
+        ['classic-brush', 'brush'],
+      ] as const) {
+        await this.database.runAsync(
+          `INSERT OR IGNORE INTO inventory_items(child_profile_id, item_key, unlocked_at, equipped, slot)
+           VALUES (?, ?, ?, 1, ?)`,
+          profile.id,
+          key,
+          profile.createdAt,
+          slot,
+        );
+      }
     });
     return profile;
   }

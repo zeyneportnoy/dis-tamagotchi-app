@@ -19,10 +19,15 @@ describe('database migrations', () => {
       'active_profile',
       'brushing_sessions',
       'child_profiles',
+      'daily_progress',
       'families',
+      'inventory_items',
       'profile_progress',
       'schema_migrations',
     ]);
+    await expect(
+      database.getAllAsync<{ name: string }>('PRAGMA table_info(inventory_items)'),
+    ).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ name: 'slot' })]));
     database.close();
   });
 
@@ -41,6 +46,13 @@ describe('database migrations', () => {
       { version: 5 },
       { version: 6 },
       { version: 7 },
+      { version: 8 },
+      { version: 9 },
+      { version: 10 },
+      { version: 11 },
+      { version: 12 },
+      { version: 13 },
+      { version: 14 },
     ]);
     database.close();
   });
@@ -89,10 +101,10 @@ describe('database migrations', () => {
     await migrateDatabase(database as unknown as SQLiteDatabase);
 
     await expect(
-      database.getAllAsync<{ age_band: string; id: string; nickname: string }>(
-        'SELECT id, nickname, age_band FROM child_profiles ORDER BY id',
+      database.getAllAsync<{ age_band: string; avatar_id: string; id: string; nickname: string }>(
+        'SELECT id, nickname, age_band, avatar_id FROM child_profiles ORDER BY id',
       ),
-    ).resolves.toEqual([{ age_band: '6_8', id: 'profile-1', nickname: 'Ege' }]);
+    ).resolves.toEqual([{ age_band: '6_8', avatar_id: 'inci', id: 'profile-1', nickname: 'Ege' }]);
     await expect(
       database.getFirstAsync<{ child_profile_id: string }>(
         'SELECT child_profile_id FROM active_profile WHERE singleton = 1',
@@ -110,6 +122,13 @@ describe('database migrations', () => {
       { version: 5 },
       { version: 6 },
       { version: 7 },
+      { version: 8 },
+      { version: 9 },
+      { version: 10 },
+      { version: 11 },
+      { version: 12 },
+      { version: 13 },
+      { version: 14 },
     ]);
     await expect(
       database.getFirstAsync<{
@@ -122,6 +141,61 @@ describe('database migrations', () => {
       sync_status: 'legacy_local',
       updated_at: '2026-08-02T12:00:00.000Z',
     });
+    database.close();
+  });
+
+  it('upgrades an M3.5 database without losing profile or brushing progress', async () => {
+    const database = new NodeSQLiteDatabase();
+    await database.execAsync('PRAGMA foreign_keys = ON;');
+    await database.execAsync(
+      'CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY NOT NULL, name TEXT NOT NULL, applied_at TEXT NOT NULL);',
+    );
+    for (const migration of migrations.slice(0, 7)) {
+      for (const statement of migration.statements) await database.execAsync(statement);
+      await database.runAsync(
+        'INSERT INTO schema_migrations(version, name, applied_at) VALUES (?, ?, ?)',
+        migration.version,
+        migration.name,
+        '2026-08-09T00:00:00.000Z',
+      );
+    }
+    await database.runAsync(
+      `INSERT INTO families(id, created_at, locale, timezone)
+       VALUES ('family-1', '2026-08-08T00:00:00.000Z', 'tr', 'Europe/Istanbul')`,
+    );
+    await database.runAsync(
+      `INSERT INTO child_profiles
+        (id, family_id, nickname, age_band, avatar_id, created_at, parent_auth_user_id,
+         sync_status, updated_at)
+       VALUES ('profile-1', 'family-1', 'Ege', '4_6', 'inci',
+         '2026-08-08T00:00:00.000Z', 'parent-1', 'synced', '2026-08-08T00:00:00.000Z')`,
+    );
+    await database.runAsync(
+      `INSERT INTO profile_progress
+        (child_profile_id, status_date, morning_completed, evening_completed, current_streak)
+       VALUES ('profile-1', '2026-08-08', 1, 0, 3)`,
+    );
+
+    await migrateDatabase(database as unknown as SQLiteDatabase);
+
+    await expect(
+      database.getFirstAsync<{ nickname: string }>(
+        `SELECT nickname FROM child_profiles WHERE id = 'profile-1'`,
+      ),
+    ).resolves.toEqual({ nickname: 'Ege' });
+    await expect(
+      database.getFirstAsync<{
+        level: number;
+        mood: number;
+        total_xp: number;
+      }>(`SELECT total_xp, level, mood FROM profile_progress WHERE child_profile_id = 'profile-1'`),
+    ).resolves.toEqual({ total_xp: 0, level: 1, mood: 50 });
+    await expect(
+      database.getFirstAsync<{ morning_completed: number; streak_after_day: number }>(
+        `SELECT morning_completed, streak_after_day FROM daily_progress
+         WHERE child_profile_id = 'profile-1' AND local_day_key = '2026-08-08'`,
+      ),
+    ).resolves.toEqual({ morning_completed: 1, streak_after_day: 3 });
     database.close();
   });
 });
