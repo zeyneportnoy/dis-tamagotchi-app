@@ -9,6 +9,9 @@ type ProgressRow = {
   morning_completed: number;
   evening_completed: number;
   current_streak: number;
+  total_xp: number;
+  level: number;
+  mood: number;
   last_interaction_at: string | null;
   last_brushing_at: string | null;
 };
@@ -19,6 +22,9 @@ const mapProgress = (row: ProgressRow): ProfileProgress => ({
   morningCompleted: row.morning_completed === 1,
   eveningCompleted: row.evening_completed === 1,
   currentStreak: row.current_streak,
+  totalXp: row.total_xp,
+  level: row.level,
+  mood: row.mood,
   lastInteractionAt: row.last_interaction_at,
   lastBrushingAt: row.last_brushing_at,
 });
@@ -41,12 +47,23 @@ export class SQLiteProfileProgressRepository implements ProfileProgressRepositor
       today,
     );
     await this.database.runAsync(
-      `UPDATE profile_progress
-       SET status_date = ?, morning_completed = 0, evening_completed = 0
-       WHERE child_profile_id = ? AND status_date <> ?`,
+      `INSERT OR IGNORE INTO daily_progress(child_profile_id, local_day_key) VALUES (?, ?)`,
+      profileId,
+      today,
+    );
+    await this.database.runAsync(
+      `UPDATE profile_progress SET status_date = ?,
+        morning_completed = (SELECT morning_completed FROM daily_progress
+          WHERE child_profile_id = ? AND local_day_key = ?),
+        evening_completed = (SELECT evening_completed FROM daily_progress
+          WHERE child_profile_id = ? AND local_day_key = ?)
+       WHERE child_profile_id = ?`,
       today,
       profileId,
       today,
+      profileId,
+      today,
+      profileId,
     );
   }
 
@@ -69,12 +86,25 @@ export class SQLiteProfileProgressRepository implements ProfileProgressRepositor
     const timestamp = this.now().toISOString();
     const column = period === 'morning' ? 'morning_completed' : 'evening_completed';
     await this.database.runAsync(
-      `UPDATE profile_progress
-       SET ${column} = ?, status_date = ?, last_interaction_at = ?,
-           last_brushing_at = CASE WHEN ? = 1 THEN ? ELSE last_brushing_at END
-       WHERE child_profile_id = ?`,
+      `UPDATE daily_progress SET ${column} = ?,
+        full_day_completed = CASE
+          WHEN (CASE WHEN ? = 'morning_completed' THEN ? ELSE morning_completed END) = 1
+           AND (CASE WHEN ? = 'evening_completed' THEN ? ELSE evening_completed END) = 1
+          THEN 1 ELSE 0 END
+       WHERE child_profile_id = ? AND local_day_key = ?`,
       completed ? 1 : 0,
+      column,
+      completed ? 1 : 0,
+      column,
+      completed ? 1 : 0,
+      profileId,
       this.today(),
+    );
+    await this.ensure(profileId);
+    await this.database.runAsync(
+      `UPDATE profile_progress SET last_interaction_at = ?,
+        last_brushing_at = CASE WHEN ? = 1 THEN ? ELSE last_brushing_at END
+       WHERE child_profile_id = ?`,
       timestamp,
       completed ? 1 : 0,
       timestamp,

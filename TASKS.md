@@ -1,5 +1,10 @@
 # Milestone Takibi
 
+- [ ] M3.5: Supabase Dashboard project, email confirmation ve redirect URL ayarlarını tamamla.
+- [ ] M3.5: Production öncesi custom SMTP ve final marka email template’lerini yapılandır.
+- [ ] M3.5: Server-side güvenli account deletion endpoint’ini release öncesi uygula.
+- [ ] M3.5: Gerçek credentials ile signup, verification, reset ve iki kullanıcı RLS E2E testini tamamla.
+
 ## M0 — Proje iskeleti
 
 - [x] Expo SDK 57 / React Native / TypeScript strict
@@ -35,7 +40,7 @@
 - [x] Ana Sayfa, Görevler, Koleksiyon ve Profil tab route’ları
 - [x] Migration, repository, kalıcılık, route ve component testleri
 - [x] Gerçek 2 dakikalık timer — M3 kapsamında tamamlandı
-- [ ] XP, ödül ve koleksiyon ekonomisi — sonraki milestone kapsamı
+- [x] XP, ödül ve koleksiyon ekonomisi — M4
 
 ## M3 — Brushing Session
 
@@ -48,7 +53,7 @@
 - [x] Migration 5 ve profil bazlı tamamlanmış seans geçmişi
 - [x] Yerel saatle morning/evening görevinin transaction içinde güncellenmesi
 - [x] Test clock, SQLite kalıcılık ve route testleri
-- [ ] XP, coin, reward, achievement ve gerçek streak — M4 kapsamı
+- [x] XP, deterministic reward inventory ve gerçek streak — M4 (coin/achievement eklenmedi)
 
 ## Milestone dışı — UI/UX refinement
 
@@ -66,3 +71,11 @@
 - `npm audit --audit-level=critical` geçer; Expo/Metro geliştirme zincirinde 15 high `image-size` ve 8 moderate `uuid` transitif bulgusu kalır. Önerilen zorunlu düzeltme Expo 53’e geri dönüş olduğundan upstream uyumlu çözüm izlenir.
 - 4–6 ebeveyn destekli ve 7–11 bağımsız deneyim ayrımları sonraki milestone’larda tasarlanacaktır; bu güncelleme iki ayrı UI modu eklemez.
 - Arka planda geçirilen süre timestamp hesabına dahil edilir; uygulamanın işletim sistemi tarafından tamamen sonlandırıldığı yarım seans M3’te geri yüklenmez ve tamamlanmış sayılmaz.
+
+# M4 — Ödül, Seri ve Koleksiyon
+
+- [x] Session-bazlı idempotent XP/mood reward transaction'ı
+- [x] Sabah/akşam daily progress ve full-day streak
+- [x] Deterministic kozmetik katalog, unlock ve kalıcı equip
+- [x] Candy Tech result ve Collection ekranları
+- [x] Migration/rollback/ownership regresyon testleri

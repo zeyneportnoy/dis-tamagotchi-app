@@ -13,7 +13,7 @@ jest.mock('@/application/family', () => ({
           id: 'profile-legacy',
           nickname: 'Ege',
           ageBand: '6_8',
-          avatarId: 'cheerful-incisor',
+          avatarId: 'inci',
         }),
       updateProfile: mockUpdateProfile,
     }),

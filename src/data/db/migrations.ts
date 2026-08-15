@@ -107,4 +107,186 @@ export const migrations: readonly Migration[] = [
         ON brushing_sessions(profile_id, completed_at);`,
     ],
   },
+  {
+    version: 6,
+    name: 'add_parent_ownership_and_profile_sync_metadata',
+    statements: [
+      `ALTER TABLE child_profiles ADD COLUMN remote_id TEXT;`,
+      `ALTER TABLE child_profiles ADD COLUMN parent_auth_user_id TEXT;`,
+      `ALTER TABLE child_profiles ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'legacy_local'
+        CHECK(sync_status IN ('legacy_local', 'pending', 'synced', 'failed'));`,
+      `ALTER TABLE child_profiles ADD COLUMN updated_at TEXT;`,
+      `UPDATE child_profiles SET updated_at = created_at WHERE updated_at IS NULL;`,
+      `CREATE UNIQUE INDEX child_profiles_remote_id_uq
+        ON child_profiles(remote_id) WHERE remote_id IS NOT NULL;`,
+      `CREATE INDEX child_profiles_parent_auth_user_idx
+        ON child_profiles(parent_auth_user_id);`,
+    ],
+  },
+  {
+    version: 7,
+    name: 'isolate_active_profiles_by_parent',
+    statements: [
+      `CREATE TABLE active_parent_profile (
+        parent_auth_user_id TEXT PRIMARY KEY NOT NULL,
+        child_profile_id TEXT NOT NULL UNIQUE,
+        FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+      );`,
+      `INSERT OR IGNORE INTO active_parent_profile(parent_auth_user_id, child_profile_id)
+       SELECT child_profiles.parent_auth_user_id, active_profile.child_profile_id
+       FROM active_profile
+       INNER JOIN child_profiles ON child_profiles.id = active_profile.child_profile_id
+       WHERE active_profile.singleton = 1
+         AND child_profiles.parent_auth_user_id IS NOT NULL;`,
+    ],
+  },
+  {
+    version: 8,
+    name: 'add_rewards_daily_progress_and_inventory',
+    statements: [
+      `ALTER TABLE profile_progress ADD COLUMN total_xp INTEGER NOT NULL DEFAULT 0 CHECK(total_xp >= 0);`,
+      `ALTER TABLE profile_progress ADD COLUMN level INTEGER NOT NULL DEFAULT 1 CHECK(level BETWEEN 1 AND 3);`,
+      `ALTER TABLE profile_progress ADD COLUMN mood INTEGER NOT NULL DEFAULT 50 CHECK(mood BETWEEN 0 AND 100);`,
+      `ALTER TABLE brushing_sessions ADD COLUMN reward_granted_at TEXT;`,
+      `ALTER TABLE brushing_sessions ADD COLUMN xp_granted INTEGER NOT NULL DEFAULT 0 CHECK(xp_granted >= 0);`,
+      `ALTER TABLE brushing_sessions ADD COLUMN mood_delta INTEGER NOT NULL DEFAULT 0;`,
+      `ALTER TABLE brushing_sessions ADD COLUMN unlocked_item_key TEXT;`,
+      `ALTER TABLE brushing_sessions ADD COLUMN local_day_key TEXT;`,
+      `CREATE TABLE daily_progress (
+        child_profile_id TEXT NOT NULL,
+        local_day_key TEXT NOT NULL,
+        morning_completed INTEGER NOT NULL DEFAULT 0 CHECK(morning_completed IN (0, 1)),
+        evening_completed INTEGER NOT NULL DEFAULT 0 CHECK(evening_completed IN (0, 1)),
+        full_day_completed INTEGER NOT NULL DEFAULT 0 CHECK(full_day_completed IN (0, 1)),
+        streak_after_day INTEGER NOT NULL DEFAULT 0 CHECK(streak_after_day >= 0),
+        PRIMARY KEY (child_profile_id, local_day_key),
+        FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+      );`,
+      `CREATE TABLE inventory_items (
+        child_profile_id TEXT NOT NULL,
+        item_key TEXT NOT NULL,
+        unlocked_at TEXT NOT NULL,
+        equipped INTEGER NOT NULL DEFAULT 0 CHECK(equipped IN (0, 1)),
+        PRIMARY KEY (child_profile_id, item_key),
+        FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+      );`,
+      `CREATE UNIQUE INDEX inventory_one_equipped_per_profile_uq
+        ON inventory_items(child_profile_id) WHERE equipped = 1;`,
+      `INSERT OR IGNORE INTO inventory_items(child_profile_id, item_key, unlocked_at, equipped)
+       SELECT id, 'cozy-scarf', COALESCE(updated_at, created_at), 1 FROM child_profiles;`,
+      `INSERT OR IGNORE INTO daily_progress
+        (child_profile_id, local_day_key, morning_completed, evening_completed,
+         full_day_completed, streak_after_day)
+       SELECT child_profile_id, status_date, morning_completed, evening_completed,
+         CASE WHEN morning_completed = 1 AND evening_completed = 1 THEN 1 ELSE 0 END,
+         current_streak
+       FROM profile_progress;`,
+    ],
+  },
+  {
+    version: 9,
+    name: 'seed_starter_inventory_for_existing_profiles',
+    statements: [
+      `INSERT OR IGNORE INTO inventory_items(child_profile_id, item_key, unlocked_at, equipped)
+       SELECT id, 'cozy-scarf', COALESCE(updated_at, created_at), 1 FROM child_profiles;`,
+    ],
+  },
+  {
+    version: 10,
+    name: 'persist_session_reward_result_snapshot',
+    statements: [
+      `ALTER TABLE brushing_sessions ADD COLUMN first_slot_completion INTEGER NOT NULL DEFAULT 0 CHECK(first_slot_completion IN (0, 1));`,
+      `ALTER TABLE brushing_sessions ADD COLUMN streak_advanced INTEGER NOT NULL DEFAULT 0 CHECK(streak_advanced IN (0, 1));`,
+      `ALTER TABLE brushing_sessions ADD COLUMN morning_completed_after INTEGER NOT NULL DEFAULT 0 CHECK(morning_completed_after IN (0, 1));`,
+      `ALTER TABLE brushing_sessions ADD COLUMN evening_completed_after INTEGER NOT NULL DEFAULT 0 CHECK(evening_completed_after IN (0, 1));`,
+      `ALTER TABLE brushing_sessions ADD COLUMN streak_after INTEGER NOT NULL DEFAULT 0 CHECK(streak_after >= 0);`,
+    ],
+  },
+  {
+    version: 11,
+    name: 'rename_character_identity_keys',
+    statements: [
+      `UPDATE child_profiles SET avatar_id = CASE avatar_id
+        WHEN 'cheerful-incisor' THEN 'inci'
+        WHEN 'curious-tooth' THEN 'piril'
+        WHEN 'brave-canine' THEN 'kaan'
+        WHEN 'sunny-tooth' THEN 'milo'
+        WHEN 'starry-tooth' THEN 'zipzip'
+        WHEN 'shy-tooth' THEN 'topi'
+        WHEN 'sleepy-molar' THEN 'akil'
+        WHEN 'giggle-tooth' THEN 'uyku'
+        ELSE avatar_id END;`,
+    ],
+  },
+  {
+    version: 12,
+    name: 'add_inventory_accessory_slots',
+    statements: [
+      `ALTER TABLE inventory_items ADD COLUMN slot TEXT NOT NULL DEFAULT 'front'
+        CHECK(slot IN ('head', 'face', 'front', 'effect'));`,
+      `UPDATE inventory_items SET slot = CASE item_key
+        WHEN 'sparkle-crown' THEN 'head'
+        WHEN 'star-glasses' THEN 'face'
+        WHEN 'rainbow-cape' THEN 'effect'
+        ELSE 'front' END;`,
+      `DROP INDEX inventory_one_equipped_per_profile_uq;`,
+      `CREATE UNIQUE INDEX inventory_one_equipped_per_profile_slot_uq
+        ON inventory_items(child_profile_id, slot) WHERE equipped = 1;`,
+    ],
+  },
+  {
+    version: 13,
+    name: 'focus_inventory_on_room_rewards',
+    statements: [
+      `ALTER TABLE inventory_items RENAME TO inventory_items_accessory_legacy;`,
+      `CREATE TABLE inventory_items (
+        child_profile_id TEXT NOT NULL,
+        item_key TEXT NOT NULL,
+        unlocked_at TEXT NOT NULL,
+        equipped INTEGER NOT NULL DEFAULT 0 CHECK(equipped IN (0, 1)),
+        slot TEXT NOT NULL CHECK(slot IN ('wearable', 'background', 'decor', 'effect', 'brush')),
+        PRIMARY KEY(child_profile_id, item_key),
+        FOREIGN KEY(child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+      );`,
+      `INSERT INTO inventory_items(child_profile_id, item_key, unlocked_at, equipped, slot)
+       SELECT child_profile_id, item_key, unlocked_at, equipped, CASE item_key
+         WHEN 'cozy-scarf' THEN 'decor'
+         WHEN 'sparkle-crown' THEN 'wearable'
+         WHEN 'star-crown' THEN 'wearable'
+         WHEN 'mini-hat' THEN 'wearable'
+         WHEN 'star-glasses' THEN 'wearable'
+         WHEN 'super-glasses' THEN 'wearable'
+         WHEN 'color-glasses' THEN 'wearable'
+         WHEN 'heart-badge' THEN 'decor'
+         WHEN 'star-badge' THEN 'decor'
+         WHEN 'mini-cape' THEN 'brush'
+         WHEN 'rainbow-cape' THEN 'background'
+         ELSE 'effect' END
+       FROM inventory_items_accessory_legacy;`,
+      `DROP TABLE inventory_items_accessory_legacy;`,
+      `CREATE UNIQUE INDEX inventory_one_equipped_per_profile_slot_uq
+        ON inventory_items(child_profile_id, slot) WHERE equipped = 1;`,
+    ],
+  },
+  {
+    version: 14,
+    name: 'add_starter_room_personalization_rewards',
+    statements: [
+      `INSERT OR IGNORE INTO inventory_items(child_profile_id, item_key, unlocked_at, equipped, slot)
+       SELECT id, 'pastel-playroom', COALESCE(updated_at, created_at),
+         CASE WHEN EXISTS (SELECT 1 FROM inventory_items i WHERE i.child_profile_id = child_profiles.id AND i.slot = 'background' AND i.equipped = 1) THEN 0 ELSE 1 END,
+         'background'
+       FROM child_profiles WHERE archived_at IS NULL;`,
+      `INSERT OR IGNORE INTO inventory_items(child_profile_id, item_key, unlocked_at, equipped, slot)
+       SELECT id, 'bubble-glow', COALESCE(updated_at, created_at),
+         CASE WHEN EXISTS (SELECT 1 FROM inventory_items i WHERE i.child_profile_id = child_profiles.id AND i.slot = 'effect' AND i.equipped = 1) THEN 0 ELSE 1 END,
+         'effect'
+       FROM child_profiles WHERE archived_at IS NULL;`,
+      `INSERT OR IGNORE INTO inventory_items(child_profile_id, item_key, unlocked_at, equipped, slot)
+       SELECT id, 'classic-brush', COALESCE(updated_at, created_at),
+         CASE WHEN EXISTS (SELECT 1 FROM inventory_items i WHERE i.child_profile_id = child_profiles.id AND i.slot = 'brush' AND i.equipped = 1) THEN 0 ELSE 1 END,
+         'brush'
+       FROM child_profiles WHERE archived_at IS NULL;`,
+    ],
+  },
 ];

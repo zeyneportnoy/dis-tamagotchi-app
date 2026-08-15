@@ -23,6 +23,7 @@ const profileIds = [
   '00000000-0000-4000-8000-000000000013',
 ] as const;
 const now = () => '2026-08-02T12:00:00.000Z';
+const parentId = '10000000-0000-4000-8000-000000000001';
 
 function repositories(database: NodeSQLiteDatabase) {
   let profileIndex = 0;
@@ -33,6 +34,7 @@ function repositories(database: NodeSQLiteDatabase) {
       sqlite,
       () => profileIds[profileIndex++] ?? '00000000-0000-4000-8000-000000000099',
       now,
+      async () => parentId,
     ),
   };
 }
@@ -47,17 +49,17 @@ describe('family repositories', () => {
     await useCases.createProfile({
       nickname: 'Ege',
       ageBand: '4_6',
-      avatarId: 'cheerful-incisor',
+      avatarId: 'inci',
     });
     await useCases.createProfile({
       nickname: 'Ada',
       ageBand: '7_11',
-      avatarId: 'sleepy-molar',
+      avatarId: 'akil',
     });
     await useCases.createProfile({
       nickname: 'Can',
       ageBand: '4_6',
-      avatarId: 'brave-canine',
+      avatarId: 'kaan',
     });
 
     expect((await useCases.listProfiles()).map((profile) => profile.nickname)).toEqual([
@@ -85,12 +87,12 @@ describe('family repositories', () => {
     await firstUseCases.createProfile({
       nickname: 'Ege',
       ageBand: '4_6',
-      avatarId: 'cheerful-incisor',
+      avatarId: 'inci',
     });
     await firstUseCases.createProfile({
       nickname: 'Ada',
       ageBand: '7_11',
-      avatarId: 'sleepy-molar',
+      avatarId: 'akil',
     });
     await firstUseCases.selectActiveProfile(profileIds[0]);
     first.close();
@@ -105,7 +107,7 @@ describe('family repositories', () => {
     await expect(reopenedUseCases.getActiveProfile()).resolves.toMatchObject({
       id: profileIds[0],
       nickname: 'Ege',
-      avatarId: 'cheerful-incisor',
+      avatarId: 'inci',
     });
     reopened.close();
     rmSync(directory, { recursive: true, force: true });
@@ -120,19 +122,19 @@ describe('family repositories', () => {
       familyId: family.id,
       nickname: 'Ege',
       ageBand: '4_6',
-      avatarId: 'cheerful-incisor',
+      avatarId: 'inci',
     });
     const second = await profiles.create({
       familyId: family.id,
       nickname: 'Ada',
       ageBand: '7_11',
-      avatarId: 'brave-canine',
+      avatarId: 'kaan',
     });
 
     await profiles.selectActive(first.id);
-    await expect(profiles.getActive()).resolves.toMatchObject({ avatarId: 'cheerful-incisor' });
+    await expect(profiles.getActive()).resolves.toMatchObject({ avatarId: 'inci' });
     await profiles.selectActive(second.id);
-    await expect(profiles.getActive()).resolves.toMatchObject({ avatarId: 'brave-canine' });
+    await expect(profiles.getActive()).resolves.toMatchObject({ avatarId: 'kaan' });
     database.close();
   });
 
@@ -147,7 +149,7 @@ describe('family repositories', () => {
       familyId: family.id,
       nickname: 'Ege',
       ageBand: '4_6',
-      avatarId: 'cheerful-incisor',
+      avatarId: 'inci',
     });
     const now = () => new Date('2026-08-08T07:30:00.000Z');
     const progress = new SQLiteProfileProgressRepository(first as unknown as SQLiteDatabase, now);
@@ -171,6 +173,44 @@ describe('family repositories', () => {
     rmSync(directory, { recursive: true, force: true });
   });
 
+  it('reads card completion from daily progress and starts a new day waiting', async () => {
+    const database = new NodeSQLiteDatabase();
+    await migrateDatabase(database as unknown as SQLiteDatabase);
+    const { families, profiles } = repositories(database);
+    const family = await families.createLocal();
+    const profile = await profiles.create({
+      familyId: family.id,
+      nickname: 'Ege',
+      ageBand: '4_6',
+      avatarId: 'inci',
+    });
+    let current = new Date(2026, 7, 8, 8, 30);
+    const progress = new SQLiteProfileProgressRepository(
+      database as unknown as SQLiteDatabase,
+      () => current,
+    );
+    await progress.setBrushingCompleted(profile.id, 'morning', true);
+    await expect(progress.get(profile.id)).resolves.toMatchObject({
+      statusDate: '2026-08-08',
+      morningCompleted: true,
+      eveningCompleted: false,
+    });
+    current = new Date(2026, 7, 9, 8, 30);
+    await expect(progress.get(profile.id)).resolves.toMatchObject({
+      statusDate: '2026-08-09',
+      morningCompleted: false,
+      eveningCompleted: false,
+    });
+    await expect(
+      database.getFirstAsync<{ morning_completed: number }>(
+        `SELECT morning_completed FROM daily_progress
+         WHERE child_profile_id = ? AND local_day_key = '2026-08-08'`,
+        profile.id,
+      ),
+    ).resolves.toEqual({ morning_completed: 1 });
+    database.close();
+  });
+
   it('persists a required legacy age-band update and keeps the active profile', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'dis-tamagotchi-legacy-db-'));
     const path = join(directory, 'test.db');
@@ -186,8 +226,15 @@ describe('family repositories', () => {
       family.id,
       'Ege',
       '6_8',
-      'cheerful-incisor',
+      'inci',
       now(),
+    );
+    await first.runAsync(
+      `UPDATE child_profiles
+       SET parent_auth_user_id = ?, sync_status = 'synced'
+       WHERE id = ?`,
+      parentId,
+      profileIds[0],
     );
     await firstRepositories.profiles.selectActive(profileIds[0]);
     const firstUseCases = new FamilyUseCases(
@@ -223,13 +270,13 @@ describe('family repositories', () => {
       familyId: family.id,
       nickname: 'Ege',
       ageBand: '4_6',
-      avatarId: 'cheerful-incisor',
+      avatarId: 'inci',
     });
     const second = await profiles.create({
       familyId: family.id,
       nickname: 'Ege',
       ageBand: '7_11',
-      avatarId: 'sleepy-molar',
+      avatarId: 'akil',
     });
 
     expect(first.id).not.toBe(second.id);
@@ -250,7 +297,7 @@ describe('family repositories', () => {
         familyId: '00000000-0000-4000-8000-000000000099',
         nickname: 'Ege',
         ageBand: '4_6',
-        avatarId: 'cheerful-incisor',
+        avatarId: 'inci',
       }),
     ).rejects.toThrow();
     database.close();
@@ -265,7 +312,7 @@ describe('family repositories', () => {
       familyId: family.id,
       nickname: 'Ege',
       ageBand: '4_6',
-      avatarId: 'cheerful-incisor',
+      avatarId: 'inci',
     });
     await expect(profiles.update(profile.id, { nickname: 'Ege 2' })).resolves.toMatchObject({
       nickname: 'Ege 2',
@@ -278,6 +325,50 @@ describe('family repositories', () => {
       'SELECT count(*) AS count FROM child_profiles',
     );
     expect(count?.count).toBe(0);
+    database.close();
+  });
+
+  it('isolates list, active selection, update, archive and delete by active parent', async () => {
+    const database = new NodeSQLiteDatabase();
+    await migrateDatabase(database as unknown as SQLiteDatabase);
+    const sqlite = database as unknown as SQLiteDatabase;
+    const families = new SQLiteFamilyRepository(sqlite, () => familyId, now);
+    const family = await families.createLocal();
+    let activeParentId = 'parent-a';
+    let nextId = 0;
+    const profiles = new SQLiteChildProfileRepository(
+      sqlite,
+      () => `00000000-0000-4000-8000-00000000002${++nextId}`,
+      now,
+      async () => activeParentId,
+    );
+
+    const profileA = await profiles.create({
+      familyId: family.id,
+      nickname: 'A child',
+      ageBand: '4_6',
+      avatarId: 'inci',
+    });
+    activeParentId = 'parent-b';
+    await expect(profiles.list(family.id)).resolves.toEqual([]);
+    await expect(profiles.getActive()).resolves.toBeNull();
+    await expect(profiles.selectActive(profileA.id)).rejects.toThrow('PROFILE_NOT_FOUND');
+    await expect(profiles.update(profileA.id, { nickname: 'Changed' })).rejects.toThrow(
+      'PROFILE_NOT_FOUND',
+    );
+    await expect(profiles.archive(profileA.id)).rejects.toThrow('PROFILE_NOT_FOUND');
+    await expect(profiles.delete(profileA.id)).rejects.toThrow('PROFILE_NOT_FOUND');
+
+    const profileB = await profiles.create({
+      familyId: family.id,
+      nickname: 'B child',
+      ageBand: '7_11',
+      avatarId: 'kaan',
+    });
+    await expect(profiles.list(family.id)).resolves.toEqual([profileB]);
+    activeParentId = 'parent-a';
+    await expect(profiles.list(family.id)).resolves.toEqual([profileA]);
+    await expect(profiles.getActive()).resolves.toEqual(profileA);
     database.close();
   });
 });

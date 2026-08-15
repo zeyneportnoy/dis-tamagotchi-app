@@ -1,5 +1,9 @@
 # Gizlilik ve Çocuk Güvenliği
 
+M3.5 ile veli için display name ve e-posta cloud-backed Supabase Auth kapsamında işlenir; authentication credential’ları Supabase Auth tarafından yönetilir. Child profile recovery amacıyla takma ad, `4_6`/`7_11` yaş bandı ve karakter seçimi veli hesabına bağlı Supabase Postgres kaydına sync edilir.
+
+Çocuktan e-posta, telefon, tam ad, soyad, kesin doğum tarihi, konum, okul, kamera, mikrofon veya kişi listesi alınmaz. M1–M3 brushing history M3.5 kapsamında cloud’a sync edilmez ve SQLite’da kalır.
+
 ## M1 veri davranışı
 
 M1 yalnızca çocuk takma adı, yeni profiller için `4_6`/`7_11` yaş bandı ve başlangıç avatar anahtarını cihazdaki SQLite veritabanında saklar. Kesin yaş ve doğum tarihi toplanmaz. Tam ad, e-posta, kamera, mikrofon, hassas konum, kişiler veya reklam kimliği kullanılmaz. Analytics, bulut, abonelik ve satın alma kapalıdır; backend yoktur.

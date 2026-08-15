@@ -1,5 +1,13 @@
 # Teknik Kararlar
 
+## 2026-08-09 — Yerel fırçalama hatırlatıcıları ve development Mood Lab
+
+- Sabah ve akşam hatırlatıcıları, veli hesabı kimliğiyle ayrılmış AsyncStorage ayarları ve `expo-notifications` günlük local notification kayıtları olarak tutulur; bir backend alarm servisi kurulmaz.
+- Bildirim izni uygulama açılışında değil, veli ilgili hatırlatıcı toggle'ını ilk kez açtığında istenir. Reddedilirse toggle kapalı kalır.
+- Hatırlatıcılar `Ayarlar → Fırçalama Hatırlatıcıları` rotasında görünür; çocuk Home zil kısayolu veli kontrolünden sonra aynı rotaya gider.
+- Character Mood Lab yalnız `__DEV__` çalışma zamanında menüde görünür ve rota düzeyinde korunur. Seçimleri yalnız component state'inde yaşar; profil, XP, inventory veya senkronizasyon verisi yazmaz.
+- Character carousel mobil swipe için native yatay ScrollView snapping kullanır. Web wheel girdisinde `deltaX` ve `deltaY`, eşik ve cooldown ile tek karakterlik geçişe çevrilir; carousel dışındaki sayfa scroll'u engellenmez.
+
 ## 2026-08-02 — ADR-001: Expo SDK 57 toolchain
 
 Expo `~57.0.9`, React Native `0.86.2`, React `19.2.3` ve TypeScript `~6.0.3` seçildi. Bunlar kurulum tarihinde resmi Expo template ve SDK uyumluluk tablosundaki güncel kararlı kombinasyondur. SDK 57’nin minimum Node 22.13 şartı `engines` ve CI’da sabitlendi; npm lockfile tek paket kaynağıdır.
@@ -117,3 +125,106 @@ Tab ikonları yeni bir bağımlılık veya görsel asset eklemeden, anlamlı pla
 ## 2026-08-08 — ADR-028: Brushing kadran sırası ve görsel yönlendirme
 
 Mevcut timestamp tabanlı 4 × 30 saniyelik timer korunur; segment indeksleri sunum katmanında sırasıyla `Sağ üst`, `Sol üst`, `Sağ alt` ve `Sol alt` ağız bölgelerine eşlenir. Her segmentte dört parçalı ağız göstergesinin ilgili kadranı renk ve çerçeveyle birlikte vurgulanır. Yardımcı metin 4–6 yaşta daha somut, 7–11 yaşta yüzey terminolojisini kullanan tek bir yaş-bandı koşuluyla seçilir. Session kaydı, pause/resume ve sabah/akşam kalıcılığı değiştirilmez.
+
+## 2026-08-08 — ADR-029: Veli auth ve local-first cloud ownership
+
+Hesapsız kullanım kaldırılır; çocuk kendi hesabını oluşturmaz. Supabase Auth doğrulanmış veli kimliği, Postgres/RLS cloud ownership ve profile recovery foundation sağlar. SQLite hızlı/offline child ve brushing çalışma kaynağı olarak kalır. Local child UUID’si cloud primary key olarak yeniden kullanılır; bu duplicate profil riskini azaltır ve legacy brushing FK’larını korur. Sync başarısızlığı local profili silmez.
+
+Logout local çocuk verisini otomatik silmez fakat auth guard child route erişimini kapatır. Shared-device gizlilik riski nedeniyle bu karar parent gate arkasında açık logout UX’iyle uygulanır. Gerçek hesap silme, service-role anahtarını mobil client’a koymayan server-side endpoint tamamlanana kadar sahte başarı göstermez.
+
+## 2026-08-09 — ADR-030: Yerel profil ownership izolasyonu
+
+Supabase RLS tek başına cihazdaki SQLite cache’ini izole etmez. Bu nedenle profil oluşturma, listeleme, aktif profil seçimi, güncelleme, arşivleme ve silme işlemleri her çağrıda aktif doğrulanmış veli kimliğiyle sınırlanır. Migration 7, aktif profil seçimini veli kimliğiyle anahtarlanan `active_parent_profile` tablosuna taşır. `parent_auth_user_id` değeri olmayan `legacy_local` kayıtlar otomatik gösterilmez; yalnızca açık claim akışıyla mevcut veliye bağlanır. Başka bir veliye bağlı `pending` veya `failed` kayıtlar claim kapsamına alınmaz.
+
+## 2026-08-09 — ADR-031: M4 deterministic reward ekonomisi ve transaction sınırı
+
+Karakter ilerlemesi ikinci bir kaynak oluşturmaz; mevcut `profile_progress` satırı `total_xp`, `level` ve `mood` ile genişletilir. Her tamamlanmış benzersiz seans 10 XP, günün ilgili ana slotunun ilk tamamlanması ek 10 XP ve en fazla 5 mood verir. Seviyeler 0/60/140 XP eşiklerinde 1/2/3'tür. Kozmetik katalog merkezi ve deterministiktir: Yumuşak Atkı 0, Işıltılı Taç 40, Yıldız Gözlük 80, Gökkuşağı Pelerini 140 XP.
+
+Migration 8, immutable `local_day_key` taşıyan `daily_progress`, profil bazlı `inventory_items` ve `brushing_sessions.reward_granted_at` sonuç snapshot alanlarını ekler. Session insert, idempotency kontrolü, XP/mood, daily slot, full-day streak ve item unlock aynı SQLite transaction'ındadır. Aynı session kimliği tekrar okunduğunda saklanan sonuç snapshot'ı döner; yeni ödül üretilmez. Inventory ve reward sorguları aktif veli ownership kontrolünü korur.
+
+## 2026-08-09 — ADR-032: Home görev kartlarında açık slot niyeti
+
+Home'daki sabah ve akşam kartları, aynı brushing route'una sırasıyla `morning` ve `evening` slot niyetiyle gider; büyük “Fırçalayalım!” eylemi saatten slot belirleyen mevcut davranışını korur. Her iki giriş de tek session completion transaction'ını kullanır; paralel ödül veya ilerleme sistemi yoktur.
+
+Home her odaklandığında güncel günün `daily_progress` kaydını yeniden okur. Böylece tamamlanma tiki, metni ve full-day sonrası seri değeri uygulama yeniden açıldığında ve brushing'den dönüldüğünde kalıcı kaynaktan gösterilir. Aynı slotun tekrarı session geçmişine izin verir fakat daily slot bonusunu, full-day geçişini veya tiki ikinci kez üretmez.
+
+## 2026-08-09 — ADR-033: Character-first M4 sunumu ve merkezi rounded typography
+
+M4 ilerleme döngüsünün ana görseli görev listesi değil, profilin kalıcı `avatar_id` değeriyle seçilen bebek diştir. Başlangıç kataloğu sekiz diş kişiliğine genişletilir. Aynı ortak avatar renderer'ı level 1/2/3 için gövde oranı, ifade alanı, parlaklık ve gelişim detaylarını; inventory `equipped` kaydı için aksesuar katmanını Home, Collection ve sonuç yüzeylerinde tutarlı sunar. XP, inventory ve session kuralları değiştirilmez.
+
+Yeni font paketi ve runtime font yükleme hatası eklememek için merkezi typography token'ları iOS'ta `Avenir Next Rounded`/`Avenir Next`, Android'de `sans-serif-rounded`/`sans-serif` kullanır. Bu platform fontları Türkçe glifleri destekler; başlık/ödül metni ile body metni arasındaki karakter farkı ekran bazlı rastgele font ataması olmadan korunur.
+
+## 2026-08-09 — ADR-034: Yumurta başlangıçlı görsel karakter yaşam döngüsü
+
+Yeni çocuk profili, seçtiği diş morfolojisini korur fakat Home'da 0 XP iken doğrudan diş göstermez; sevimli diş yumurtasıyla başlar. İlk fırçalama sırasında yumurta çatlama görünümüne geçer ve başarılı ilk bakımın mevcut ödül transaction'ı 20 XP ürettiğinde seçilen karakterin bebek formu görünür. Görsel aşamalar mevcut kalıcı `total_xp` değerinden deterministik türetilir: yumurta 0–19, bebek 20–59, büyüyen 60–139, gelişmiş 140–239 ve güçlü diş 240+ XP. Çatlama yalnızca ilk aktif brushing seansının geçici sunum durumudur; erken çıkış kalıcı büyüme yaratmaz.
+
+Yeni tablo veya ikinci bir ilerleme kaynağı eklenmez. M4'ün session idempotency, daily slot, XP, inventory ve SQLite transaction kuralları kaynak doğruluğu olarak kalır; dolayısıyla uygulama yeniden açıldığında yaşam aşaması aynı XP'den geri yüklenir.
+
+## 2026-08-08 — Auth e-posta bağlantıları kalıcı custom scheme ve PKCE kullanır
+
+- Doğrulama ve şifre yenileme yönlendirmeleri ortam-dependent Expo Go URL'si yerine `distamagotchi://` uygulama şemasını kullanır.
+- Mobil auth callback'i PKCE `code` değerini Supabase oturumuna çevirir; erişim veya yenileme token'ları loglanmaz ya da uygulama koduna yazılmaz.
+- Custom scheme'in işletim sistemine kaydolması gerektiğinden gerçek e-posta bağlantısı development/production native build üzerinde doğrulanır; Expo Go bu test için yeterli değildir.
+- Aynı cihazda birden fazla signup/resend PKCE akışının verifier'ı karışmaması için Supabase istemcisinin `appendPkceFlowIdToRedirects` seçeneği açıktır. Callback'teki `sb_flow_id` yalnızca doğru yerel verifier slotunu seçmek için kullanılır; token veya verifier loglanmaz.
+- Password recovery deep link'i de callback `code` ve `sb_flow_id` değerlerini aynı PKCE session sınırında değiştirir; doğrulanmış recovery session oluşmadan yeni şifre yazılamaz.
+
+## 2026-08-09 — Fırçalama bölge geçişlerinde isteğe bağlı cihaz içi Türkçe ses
+
+- Görsel bölge adı ve yaşa uyarlanmış yardımcı metinler korunur; ses bunların yerine geçmez.
+- Her yeni 30 saniyelik bölge başladığında `expo-speech` ile `tr-TR` cihaz içi konuşma ve `expo-haptics` ile hafif geri bildirim bir kez tetiklenir.
+- Tercih varsayılan olarak açıktır ve yalnızca cihazdaki AsyncStorage içinde saklanır; çocuk veya hesap verisi olarak buluta gönderilmez.
+- Ses sunum katmanında bölüm indeksini gözlemler. Timer, seans tamamlama, XP, ödül ve idempotency kuralları değiştirilmez.
+
+## 2026-08-09 — M4 brushing motion, completion SFX and growth pacing
+
+Brushing animation uses character-specific visible-body bounds plus growth-stage insets rather than one fixed path. Three six-point motion patterns rotate without immediate repetition; the brush head and foam share the same transformed container. This keeps contact aligned across all eight characters and egg, cracking, baby, growing and developed silhouettes without changing timer/session logic.
+
+Successful completion uses a four-item locally generated WAV SFX pool (rise/sparkle, ta-da, ding/chime and level-up). Selection avoids the previously played index, and only the persisted successful result triggers playback; partial/abandoned sessions remain silent. Quadrant voice guidance is unchanged.
+
+Reward amounts remain idempotent and unchanged: a completed session grants 10 XP, with an additional 10 XP only for that day's first completion of its morning/evening slot. Visual growth thresholds are now 0/60/120/320/640 XP for egg/cracking/baby/growing/developed. At two first-slot completions per day (40 XP/day), stages arrive at approximately days 1.5, 3, 8 and 16. Existing XP, inventory and equipped-item rows are not rewritten. XP continues increasing after 640, so final-stage profiles retain mood, streak, collection and future reward progression.
+
+Existing unlocked inventory is preserved; future Star Glasses and Rainbow Cape unlocks are paced at 200 and 800 XP. The 800 XP cape deliberately provides a post-developed-stage collection goal.
+
+Character selection uses one horizontally scrolling native `ScrollView` with measured card width, `snapToInterval`, fast deceleration and centered content insets. Touch/trackpad dragging, arrow controls and thumbnail controls all write the same onboarding draft `avatarId`; only the carousel region owns the gesture. Partial and fast offsets resolve to the nearest clamped one of eight indexes.
+
+Completion SFX expands to six deliberately different local synth profiles: fanfare, bell rise, metallic chime, pulse-wave arcade, percussive marimba and magic sparkle. Every ID imports a distinct WAV asset, and an in-memory two-item history excludes both recent selections from the next runtime random pool.
+
+Profile onboarding treats the successful local SQLite `createProfile` transaction as its offline-first completion boundary. A subsequent cloud claim/sync failure must not strand the child on the summary screen or cause duplicate local profiles on repeated taps; sync remains retryable after navigation. The create control is disabled only during an active save and reports incomplete draft state rather than becoming silently untappable.
+
+## 2026-08-15 — Growth estimates use guaranteed session XP
+
+Home shows exact XP remaining and labels brushing count as approximate. The estimate uses the
+guaranteed base session XP rather than the conditional first-slot bonus, so “one brushing” always
+means the next completed session reaches the stage threshold. Evolution playback is one-way and
+holds its final stage; egg-to-cracking includes intermediate crack frames instead of looping assets.
+
+## 2026-08-15 — Countdown ticks use absolute timer boundaries
+
+Brushing tick playback has no repeating interval and is not driven by React render cadence. Each
+one-shot timeout targets the next absolute 1000 ms boundary derived from the brushing timer's start
+and accumulated pause duration, using a monotonic deadline to measure callback lateness. Late or
+voice-muted boundaries are dropped rather than replayed. Two preloaded players alternate so
+playback begins without a seek wait while the inactive player rewinds.
+
+## 2026-08-15 — Accessories equip by persistent visual slot
+
+Collection uses tap-to-equip rather than drag-and-drop. Inventory keeps existing item keys and
+unlock history, while migration 12 classifies each row as head, face, front or effect and enforces
+at most one equipped item per profile and slot. Selecting an item replaces only its own slot;
+
+## 2026-08-15 — Koleksiyon oda ve ödül kişiselleştirmesine odaklanır
+
+Koleksiyon bir karakter giydirme sistemi değildir. Kalıcı seçim alanları `wearable`,
+`background`, `decor`, `effect` ve `brush` olarak ayrılır. Karakter üzerinde yalnızca diş
+formuna oturan tek bir küçük aksesuar gösterilebilir; ana ödül ekonomisi oda, arka plan,
+efekt ve fırça görünümlerine dayanır. Migration 13 eski inventory anahtarlarını ve
+kilit açma geçmişini koruyarak yeni kategorilere taşır.
+
+## 2026-08-15 — Premium çocuk UI tipografisi merkezileştirilir
+
+Fredoka ve Nunito Sans yerine Latin Extended/Türkçe gliflerini içeren Baloo 2 display/CTA,
+Manrope ise body/UI fontu olarak kullanılır. Boyut, satır yüksekliği ve font ailesi
+`design-system/theme` token'larından gelir; ekranlarda font ailesi sabit metin olarak tekrar edilmez.
+Koleksiyon kataloğu beş kategoride sekizer ödüle genişler. Migration 14 mevcut profillere
+birer başlangıç arka planı, efekti ve fırçası ekler; mevcut seçimleri ezmez.
+effect accessories render behind the character and all other slots use fixed, face-safe anchors.

@@ -1,14 +1,22 @@
 import { Stack } from 'expo-router';
+import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 
 import { ErrorState, LoadingState } from '@/design-system';
 import { initializeDatabase } from '@/data/db';
+import { AuthProvider } from '@/features/auth';
+import { configureNotificationPresentation } from '@/features/reminders/configureNotifications';
 import '@/i18n';
 
 void SplashScreen.preventAutoHideAsync();
+configureNotificationPresentation();
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    Baloo2: require('../assets/fonts/Baloo2-Variable.ttf'),
+    Manrope: require('../assets/fonts/Manrope-Variable.ttf'),
+  });
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -19,11 +27,15 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (ready || failed) void SplashScreen.hideAsync();
-  }, [failed, ready]);
+    if ((ready && fontsLoaded) || failed || fontError) void SplashScreen.hideAsync();
+  }, [failed, fontError, fontsLoaded, ready]);
 
-  if (failed) return <ErrorState />;
-  if (!ready) return <LoadingState />;
+  if (failed || fontError) return <ErrorState />;
+  if (!ready || !fontsLoaded) return <LoadingState />;
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <AuthProvider>
+      <Stack screenOptions={{ headerShown: false }} />
+    </AuthProvider>
+  );
 }

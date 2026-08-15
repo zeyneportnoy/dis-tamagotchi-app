@@ -8,7 +8,7 @@ Local-first modüler monolit. UI/routes → application use-cases → domain →
 
 - `app/onboarding`: hesap gerektirmeyen kısa aile/profil kurulumu
 - `app/age-band-update`: legacy yaş bandı bulunan aktif profil için zorunlu açık yeniden seçim
-- `app/(child)`: tab tabanlı çocuk alanı; işlevsel karakter Home ile Görevler, Koleksiyon ve Profil placeholder route’ları
+- `app/(child)`: tab tabanlı çocuk alanı; karakter Home, kalıcı Collection/equip ile Görevler ve Profil route’ları
 - `app/brushing`: tab alanının üzerinde açılan 120 saniyelik seans ve completion görünümü
 - `app/parent-gate`: her açılışta değişen toplama sorusu
 - `app/(parent)`: ebeveyn kapısından sonra açılan placeholder ve yeni profil başlangıcı
@@ -35,13 +35,21 @@ Migration 4, profil kimliğine `ON DELETE CASCADE` ile bağlı `profile_progress
 
 Migration 5, `brushing_sessions` tablosunu ve profil/tamamlanma zamanı index’ini ekler. Yalnız başarıyla biten seans yazılır. Session insert ile `profile_progress` morning/evening, `last_interaction_at` ve `last_brushing_at` güncellemesi aynı SQLite transaction’ındadır. Period yerel tamamlanma saatinden belirlenir: 04:00–15:59 morning, diğer saatler evening.
 
+Migration 8, M4 için `daily_progress` ve `inventory_items` tablolarını ekler; `profile_progress` mevcut karakter XP/level/mood kaynağı olarak genişler. `brushing_sessions` reward snapshot alanları session idempotency anahtarıdır. Daily kaydı `(child_profile_id, local_day_key)` birincil anahtarıyla tutulur; timezone değişikliği geçmiş day key'lerini yeniden yazmaz. Tüm M4 kalıcı verisi child profile FK'sıyla silme/ownership zincirini korur.
+
+Migration 9, geliştirme sırasında Migration 8'in ilk varyantını almış veritabanları dahil tüm mevcut profillere başlangıç atkısını idempotent olarak seed eder; yeni profiller aynı item'ı create transaction'ında alır.
+
+Migration 10, bir result ekranı tekrar açıldığında o seansın ilk oluşan daily/streak sonucunu göstermek için immutable session reward snapshot kolonlarını ekler.
+
 Repository yazma işlemleri transaction kullanır. Application katmanı aile/profil use-case’lerine ek olarak profil ilerlemesini okuma, tamamlanan brushing session kaydetme ve geçmişi listeleme use-case’lerini sunar. UI doğrudan SQLite çağırmaz.
+
+M3.5, `ParentAuthService` adapter sınırı üzerinden Supabase Auth ekler. SQLite cihazdaki çalışma kaynağı olmaya devam eder; Supabase yalnız veli kimliği, ownership ve child profile recovery foundation kaynağıdır. Migration 6 local profile’a `remote_id`, `parent_auth_user_id`, `sync_status` ve `updated_at` ekler. Local UUID cloud UUID olarak korunur; cloud hata verirse profil silinmez. Brushing history bu milestone’da cloud sync kapsamında değildir.
 
 Brushing timer kalıcı veri modelinden ayrıdır. Saf domain fonksiyonları başlangıç timestamp’i, toplam pause süresi ve güncel timestamp üzerinden elapsed/remaining/segment snapshot’ı üretir. Render sayısı süre kaynağı değildir; 250 ms interval yalnız ekranı yeniler. AppState değişiminde timestamp yeniden okunur, dolayısıyla kısa background geçişi sayacı bozmaz. Yarım kalan transient seans uygulama process’i sonlandırılırsa geri yüklenmez ve completion kaydı oluşturmaz.
 
 ## Genişleme sınırları
 
-Bulut, analytics, abonelik ve satın alma yalnızca kapalı feature flag’tir. Bu milestone’da SDK, backend, ağ isteği, hesap veya event toplama yoktur. Pet bakım durumu, XP, ödül dağıtımı, gerçek streak, mağaza ve koleksiyon ekonomisi de yoktur.
+Analytics, abonelik ve satın alma yalnızca kapalı feature flag’tir. M3.5 Supabase auth/ownership sınırı dışında M4 progress ve inventory local-first çalışır; yeni backend, event toplama veya mağaza eklenmez.
 
 ## Güvenlik ve gizlilik
 

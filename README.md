@@ -1,5 +1,7 @@
 # Diş Tamagotchi
 
+M3.5 auth foundation, doğrulanmış veli hesabı ve child profile recovery için Supabase kullanır; SQLite local-first kaynak olarak korunur. Dashboard kurulumu için `docs/SUPABASE_SETUP.md`, auth sınırları için `docs/AUTH.md` dosyasına bakın. Gerçek `.env` ve service-role secret commit etmeyin.
+
 4–11 yaş çocukları için güvenli, local-first diş fırçalama rutin uygulaması.
 
 Birincil hedef 4–11 yaştır: 4–6 yaş yaklaşımı ebeveyn destekli/birlikte fırçalamayı, 7–11 yaş yaklaşımı daha bağımsız kullanımı temel alır. Bu aşamada ayrı UI modları, ses sistemi veya oyun mekaniği yoktur; kesin yaş ve doğum tarihi toplanmaz. 12+ MVP kapsamı dışındadır.
@@ -46,7 +48,7 @@ Uygulama hesap açmadan yerel aile ve birden fazla çocuk profili oluşturur. K�
 
 Legacy `6_8`/`9_10` profilleri tahminle dönüştürülmez; Child Home öncesinde yeni yaş bandı açıkça seçilir. Çocuk alanından veli placeholder’ına geçiş değişken toplama sorulu ebeveyn kapısı arkasındadır.
 
-Bulut, analytics, abonelik ve satın alma kapalıdır. Backend, pet bakım sistemi, XP, ödül ekonomisi, mağaza ve bildirim yoktur. SQLite karakter anahtarını, günlük sabah/akşam durumunu, tamamlanan seans geçmişini ve temel seri/son etkileşim alanlarını tutar.
+Analytics, abonelik ve satın alma kapalıdır. Supabase veli auth/ownership foundation dışında progress local-first'tür. SQLite karakter anahtarını, XP/level/mood, günlük sabah/akşam ilerlemesi, seri, tamamlanan seans reward snapshot'ı ve kozmetik inventory/equip seçimini tutar. Mağaza ve bildirim yoktur.
 
 ### Onboarding akışı
 

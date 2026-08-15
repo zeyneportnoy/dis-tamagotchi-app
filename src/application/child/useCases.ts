@@ -6,11 +6,20 @@ import type {
   ProfileProgressRepository,
 } from '@/domain/family';
 import { BRUSHING_TOTAL_SECONDS } from '@/domain/brushing';
+import type {
+  BrushingRewardResult,
+  AccessorySlot,
+  InventoryItem,
+  InventoryRepository,
+  RewardItemKey,
+  RewardSessionRepository,
+} from '@/domain/rewards';
 
 export class ChildExperienceUseCases {
   constructor(
     private readonly progress: ProfileProgressRepository,
-    private readonly sessions: BrushingSessionRepository,
+    private readonly sessions: BrushingSessionRepository & RewardSessionRepository,
+    private readonly inventory: InventoryRepository,
   ) {}
 
   getProgress(profileId: string): Promise<ProfileProgress> {
@@ -25,15 +34,42 @@ export class ChildExperienceUseCases {
     return this.progress.setBrushingCompleted(profileId, period, completed);
   }
 
-  completeBrushingSession(profileId: string, startedAt: string): Promise<BrushingSession> {
-    return this.sessions.complete({
+  completeBrushingSession(
+    sessionId: string,
+    profileId: string,
+    startedAt: string,
+    period?: BrushingPeriod,
+  ): Promise<BrushingRewardResult> {
+    return this.sessions.finish({
+      sessionId,
       profileId,
       startedAt,
       durationSeconds: BRUSHING_TOTAL_SECONDS,
+      period,
     });
   }
 
   listCompletedSessions(profileId: string): Promise<readonly BrushingSession[]> {
     return this.sessions.listCompleted(profileId);
+  }
+
+  listInventory(profileId: string): Promise<readonly InventoryItem[]> {
+    return this.inventory.list(profileId);
+  }
+
+  equipItem(profileId: string, itemKey: RewardItemKey): Promise<void> {
+    return this.inventory.equip(profileId, itemKey);
+  }
+
+  unequipAccessorySlot(profileId: string, slot: AccessorySlot): Promise<void> {
+    return this.inventory.unequipSlot(profileId, slot);
+  }
+
+  getEquippedItem(profileId: string): Promise<InventoryItem | null> {
+    return this.inventory.getEquipped(profileId);
+  }
+
+  getEquippedItems(profileId: string): Promise<readonly InventoryItem[]> {
+    return this.inventory.getEquippedItems(profileId);
   }
 }

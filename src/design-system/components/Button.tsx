@@ -41,7 +41,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   disabled: { opacity: 0.5 },
-  label: { color: colors.white, fontSize: typography.button, fontWeight: '700' },
+  label: {
+    color: colors.white,
+    fontFamily: typography.family.display,
+    fontSize: typography.button,
+    fontWeight: '700',
+  },
   primary: { backgroundColor: colors.brandPrimary },
   pressed: { opacity: 0.8 },
   secondary: { backgroundColor: colors.white, borderColor: colors.brandPrimary, borderWidth: 2 },

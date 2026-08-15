@@ -1,7 +1,18 @@
 export type AgeBand = '4_6' | '7_11';
 export type LegacyAgeBand = '6_8' | '9_10';
 export type StoredAgeBand = AgeBand | LegacyAgeBand;
-export type StarterAvatarKey = 'cheerful-incisor' | 'sleepy-molar' | 'brave-canine';
+export const starterAvatarKeys = [
+  'inci',
+  'piril',
+  'kaan',
+  'milo',
+  'zipzip',
+  'topi',
+  'akil',
+  'uyku',
+] as const;
+export type StarterAvatarKey = (typeof starterAvatarKeys)[number];
+export type ProfileSyncStatus = 'legacy_local' | 'pending' | 'synced' | 'failed';
 
 export type Family = Readonly<{
   id: string;
@@ -19,6 +30,10 @@ export type ChildProfile = Readonly<{
   avatarId: StarterAvatarKey;
   createdAt: string;
   archivedAt: string | null;
+  remoteId: string | null;
+  parentAuthUserId: string | null;
+  syncStatus: ProfileSyncStatus;
+  updatedAt: string;
 }>;
 
 export type CreateChildProfileInput = Readonly<{
@@ -42,6 +57,9 @@ export type ProfileProgress = Readonly<{
   morningCompleted: boolean;
   eveningCompleted: boolean;
   currentStreak: number;
+  totalXp: number;
+  level: number;
+  mood: number;
   lastInteractionAt: string | null;
   lastBrushingAt: string | null;
 }>;
@@ -55,9 +73,15 @@ export type BrushingSession = Readonly<{
   completed: boolean;
   period: BrushingPeriod;
   createdAt: string;
+  rewardGrantedAt: string | null;
+  xpGranted: number;
+  moodDelta: number;
+  unlockedItemKey: string | null;
+  localDayKey: string | null;
 }>;
 
 export type CompleteBrushingSessionInput = Readonly<{
+  sessionId?: string;
   profileId: string;
   startedAt: string;
   durationSeconds: number;

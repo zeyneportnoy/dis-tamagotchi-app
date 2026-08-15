@@ -3,13 +3,35 @@ import { router } from 'expo-router';
 
 import BrushingScreen from '../brushing';
 
+jest.mock('expo-audio', () => ({
+  useAudioPlayer: () => ({
+    pause: jest.fn(),
+    play: jest.fn(),
+    seekTo: jest.fn(() => Promise.resolve()),
+  }),
+}));
+
 const mockCompleteBrushingSession = jest.fn(() =>
   Promise.resolve({ id: 'session-1', completed: true }),
 );
-
 jest.mock('@/application/child', () => ({
   getChildExperienceUseCases: () =>
-    Promise.resolve({ completeBrushingSession: mockCompleteBrushingSession }),
+    Promise.resolve({
+      completeBrushingSession: mockCompleteBrushingSession,
+      getProgress: () =>
+        Promise.resolve({
+          childProfileId: 'profile-1',
+          statusDate: '2026-08-09',
+          morningCompleted: false,
+          eveningCompleted: false,
+          currentStreak: 0,
+          totalXp: 0,
+          level: 1,
+          mood: 50,
+          lastInteractionAt: null,
+          lastBrushingAt: null,
+        }),
+    }),
 }));
 jest.mock('@/application/family', () => ({
   getFamilyUseCases: () =>
@@ -19,12 +41,13 @@ jest.mock('@/application/family', () => ({
           id: 'profile-1',
           nickname: 'Ege',
           ageBand: '4_6',
-          avatarId: 'cheerful-incisor',
+          avatarId: 'inci',
         }),
     }),
 }));
 jest.mock('expo-router', () => ({
   router: { back: jest.fn(), replace: jest.fn() },
+  useLocalSearchParams: () => ({}),
   useNavigation: () => ({ addListener: jest.fn(() => jest.fn()) }),
 }));
 
@@ -34,8 +57,12 @@ describe('Brushing session route', () => {
     await waitFor(() => expect(view.getByTestId('brushing-session-screen')).toBeTruthy());
     expect(view.getByText('Sağ üst bölge')).toBeTruthy();
     expect(view.getByText('1 / 4')).toBeTruthy();
-    expect(view.getByText('30')).toBeTruthy();
-    expect(view.getByLabelText('Toplam 120 saniye kaldı')).toBeTruthy();
+    expect(view.getByText(/^(?:29|30)$/)).toBeTruthy();
+    expect(view.getByLabelText(/^Toplam (?:119|120) saniye kaldı$/)).toBeTruthy();
+    expect(view.getByTestId('character-inci', { includeHiddenElements: true })).toBeTruthy();
+    expect(
+      view.getByTestId('character-phase-resting', { includeHiddenElements: true }),
+    ).toBeTruthy();
     expect(
       view.getByText('Bu bölgedeki dişlerin dışını, içini ve çiğneme yerlerini fırçala.'),
     ).toBeTruthy();

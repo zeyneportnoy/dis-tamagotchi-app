@@ -1,1 +1,2 @@
-export { CharacterAvatar } from './CharacterAvatar';
+export { CharacterAccessory, CharacterAvatar } from './CharacterAvatar';
+export { evolutionSequence } from './evolutionSequence';
