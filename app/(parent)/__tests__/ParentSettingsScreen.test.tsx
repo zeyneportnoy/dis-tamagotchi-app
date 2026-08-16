@@ -48,7 +48,7 @@ describe('Parent Settings navigation header', () => {
     expect(StyleSheet.flatten(back.props.style).height).toBeGreaterThanOrEqual(minimumTouchTarget);
     expect(StyleSheet.flatten(back.props.style).width).toBeGreaterThanOrEqual(minimumTouchTarget);
 
-    fireEvent.press(back);
+    await fireEvent.press(back);
     expect(router.replace).toHaveBeenCalledWith('/(parent)');
   });
 
@@ -60,7 +60,7 @@ describe('Parent Settings navigation header', () => {
         true,
       ),
     );
-    fireEvent.press(view.getByRole('radio', { name: 'Samet' }));
+    await fireEvent.press(view.getByRole('radio', { name: 'Samet' }));
     expect(mockSetBrushingVoiceProfile).toHaveBeenCalledWith('parent-a', 'samet');
     await waitFor(() =>
       expect(view.getByRole('radio', { name: 'Samet' }).props.accessibilityState.checked).toBe(
@@ -70,7 +70,7 @@ describe('Parent Settings navigation header', () => {
     expect(view.getByRole('radio', { name: 'Kapalı' })).toBeTruthy();
     expect(view.queryByText('Sıcak ve neşeli kadın sesi')).toBeNull();
     expect(view.queryByText('Dostça erkek sesi')).toBeNull();
-    fireEvent.press(view.getByRole('button', { name: 'Gökçe sesini dinle' }));
+    await fireEvent.press(view.getByRole('button', { name: 'Gökçe sesini dinle' }));
     await waitFor(() => expect(mockPreviewPlay).toHaveBeenCalledTimes(1));
   });
 });

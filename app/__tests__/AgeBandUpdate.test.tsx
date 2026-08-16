@@ -29,7 +29,7 @@ describe('age-band update route', () => {
     const view = await render(<AgeBandUpdateScreen />);
     await waitFor(() => expect(view.getByTestId('age-band-update-screen')).toBeTruthy());
 
-    fireEvent.press(view.getByRole('radio', { name: '4–6 yaş' }));
+    await fireEvent.press(view.getByRole('radio', { name: '4–6 yaş' }));
 
     await waitFor(() => {
       expect(mockUpdateProfile).toHaveBeenCalledWith('profile-legacy', { ageBand: '4_6' });

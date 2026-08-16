@@ -14,7 +14,7 @@ describe('Welcome route', () => {
 
   it('offers parent signup without a guest action', async () => {
     const view = await render(<WelcomeScreen />);
-    fireEvent.press(view.getByRole('button', { name: 'Hesap Oluştur' }));
+    await fireEvent.press(view.getByRole('button', { name: 'Hesap Oluştur' }));
     expect(router.push).toHaveBeenCalledWith('/auth/signup');
     expect(view.queryByText(/hesapsız/i)).toBeNull();
   });

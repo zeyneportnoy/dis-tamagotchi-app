@@ -32,7 +32,7 @@ describe('profile summary', () => {
     mockClaimLegacyProfiles.mockResolvedValue(undefined);
     const view = await render(<SummaryScreen />);
 
-    fireEvent.press(view.getByTestId('create-profile-button'));
+    await fireEvent.press(view.getByTestId('create-profile-button'));
 
     await waitFor(() =>
       expect(mockCreateProfile).toHaveBeenCalledWith({
@@ -50,7 +50,7 @@ describe('profile summary', () => {
     mockClaimLegacyProfiles.mockRejectedValue(new Error('OFFLINE'));
     const view = await render(<SummaryScreen />);
 
-    fireEvent.press(view.getByTestId('create-profile-button'));
+    await fireEvent.press(view.getByTestId('create-profile-button'));
 
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/(child)'));
   });
@@ -60,7 +60,7 @@ describe('profile summary', () => {
     mockClaimLegacyProfiles.mockReturnValue(new Promise(() => undefined));
     const view = await render(<SummaryScreen />);
 
-    fireEvent.press(view.getByTestId('create-profile-button'));
+    await fireEvent.press(view.getByTestId('create-profile-button'));
 
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/(child)'));
   });
