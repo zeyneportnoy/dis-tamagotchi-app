@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Animated, Easing, Image, StyleSheet, View, type ImageSourcePropType } from 'react-native';
+import { Animated, Image, StyleSheet, View, type ImageSourcePropType } from 'react-native';
 
 import { Text, radii } from '@/design-system';
 import type { StarterAvatarKey } from '@/domain/family';
 import { rewardItemForKey, type CharacterGrowthStage, type RewardItemKey } from '@/domain/rewards';
+
+import { moodSources, type MoodKey } from './assets/moodSources';
 
 type Size = 'tiny' | 'small' | 'large' | 'hero';
 type Props = {
@@ -13,7 +15,7 @@ type Props = {
   growthStage?: CharacterGrowthStage;
   level?: number;
   mood?:
-    'neutral' | 'happy' | 'proud' | 'sleepy' | 'dirty' | 'sad' | 'crying' | 'clean' | 'energetic';
+    'neutral' | 'happy' | 'proud' | 'sleepy' | 'waiting' | 'sad' | 'crying' | 'clean' | 'energetic';
   size?: Size;
   surface?: 'badge' | 'plain';
   phase?: 'resting' | 'crack-start' | 'cracking';
@@ -81,28 +83,6 @@ const sources: Record<StarterAvatarKey, LifecycleSources> = {
   },
 };
 
-type MoodKey = 'neutral' | 'happy' | 'sleepy' | 'dirty' | 'sad' | 'crying' | 'proud';
-const moodSources: Partial<Record<StarterAvatarKey, Record<MoodKey, ImageSourcePropType>>> = {
-  inci: {
-    neutral: require('../../../assets/characters/moods/inci/neutral.png'),
-    happy: require('../../../assets/characters/moods/inci/happy.png'),
-    sleepy: require('../../../assets/characters/moods/inci/sleepy.png'),
-    dirty: require('../../../assets/characters/moods/inci/dirty.png'),
-    sad: require('../../../assets/characters/moods/inci/sad.png'),
-    crying: require('../../../assets/characters/moods/inci/crying.png'),
-    proud: require('../../../assets/characters/moods/inci/proud.png'),
-  },
-  zipzip: {
-    neutral: require('../../../assets/characters/moods/zipzip/neutral.png'),
-    happy: require('../../../assets/characters/moods/zipzip/happy.png'),
-    sleepy: require('../../../assets/characters/moods/zipzip/sleepy.png'),
-    dirty: require('../../../assets/characters/moods/zipzip/dirty.png'),
-    sad: require('../../../assets/characters/moods/zipzip/sad.png'),
-    crying: require('../../../assets/characters/moods/zipzip/crying.png'),
-    proud: require('../../../assets/characters/moods/zipzip/proud.png'),
-  },
-};
-
 const idlePersonality: Record<StarterAvatarKey, { duration: number; lift: number; tilt: number }> =
   {
     inci: { duration: 1050, lift: 5, tilt: 0.8 },
@@ -120,6 +100,18 @@ const dimensions: Record<Size, { height: number; width: number }> = {
   small: { height: 78, width: 64 },
   large: { height: 224, width: 186 },
   hero: { height: 294, width: 244 },
+};
+
+/**
+ * Motion-safe scene viewport for the complete character composition (artwork, mood and rewards).
+ * The artwork keeps its original display size; this extra transparent space prevents parent scenes
+ * from clipping rotated/scaled animation frames or accessory/effect layers.
+ */
+export const characterSafeViewport: Record<Size, { height: number; width: number }> = {
+  tiny: { height: 52, width: 42 },
+  small: { height: 78, width: 64 },
+  large: { height: 282, width: 250 },
+  hero: { height: 354, width: 320 },
 };
 
 export function CharacterAccessory({
@@ -234,9 +226,8 @@ export function CharacterAvatar({
   const moodKey: MoodKey =
     mood === 'clean' || mood === 'proud' ? 'proud' : mood === 'energetic' ? 'happy' : mood;
   const personality = idlePersonality[characterKey];
-  const moodSource = stage === 3 ? moodSources[characterKey]?.[moodKey] : undefined;
+  const moodSource = moodSources[characterKey][lifecycleKey][moodKey];
   const [motion] = useState(() => new Animated.Value(0));
-  const [tearMotion] = useState(() => new Animated.Value(0));
   const animated = size === 'large' || size === 'hero';
   const equippedKeys = accessoryKeys ?? (accessoryKey ? [accessoryKey] : []);
   const effectKeys = equippedKeys.filter((key) => rewardItemForKey(key).slot === 'effect');
@@ -286,31 +277,13 @@ export function CharacterAvatar({
     return () => loop.stop();
   }, [animated, mood, motion, stageMotionDuration, stageRestDuration]);
 
-  useEffect(() => {
-    if (!animated || mood !== 'crying') {
-      tearMotion.setValue(0);
-      return;
-    }
-
-    const loop = Animated.loop(
-      Animated.timing(tearMotion, {
-        duration: 900,
-        easing: Easing.in(Easing.quad),
-        toValue: 1,
-        useNativeDriver: true,
-      }),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [animated, mood, tearMotion]);
-
   return (
     <View
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       style={[
         styles.base,
-        dimensions[size],
+        characterSafeViewport[size],
         surface === 'badge' && styles.badge,
         stage === 2 && styles.baby,
         stage === 3 && styles.growing,
@@ -318,74 +291,18 @@ export function CharacterAvatar({
       ]}
       testID={`character-${characterKey}`}
     >
-      {!isEgg && (stage >= 2 || mood === 'clean' || mood === 'proud') ? (
-        <Text style={styles.sparkle}> ✦ </Text>
-      ) : null}
-      {mood === 'crying' ? (
-        <View pointerEvents="none" style={styles.tearLayer} testID="character-animated-tears">
-          <Animated.View
-            style={[
-              styles.tearDrop,
-              styles.tearLeft,
-              {
-                opacity: tearMotion.interpolate({
-                  inputRange: [0, 0.15, 0.82, 1],
-                  outputRange: [0, 1, 1, 0],
-                }),
-                transform: [
-                  {
-                    translateY: tearMotion.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0, 28],
-                    }),
-                  },
-                  { rotate: '45deg' },
-                ],
-              },
-            ]}
-          />
-          <Animated.View
-            style={[
-              styles.tearDrop,
-              styles.tearRight,
-              {
-                opacity: tearMotion.interpolate({
-                  inputRange: [0, 0.25, 0.9, 1],
-                  outputRange: [0, 1, 1, 0],
-                }),
-                transform: [
-                  {
-                    translateY: tearMotion.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [3, 33],
-                    }),
-                  },
-                  { rotate: '45deg' },
-                ],
-              },
-            ]}
-          />
-        </View>
-      ) : null}
-      {mood === 'dirty' ? (
-        <View style={styles.dirtLayer}>
-          <View style={[styles.dirtSpot, styles.dirtSpotOne]} />
-          <View style={[styles.dirtSpot, styles.dirtSpotTwo]} />
-          <View style={[styles.dirtSpot, styles.dirtSpotThree]} />
-        </View>
-      ) : null}
-      {!isEgg ? effectKeys.map((key) => <CharacterAccessory itemKey={key} key={key} />) : null}
       <Animated.View
         testID={isEgg ? `character-phase-${phase}` : `character-growth-stage-${stage}`}
         style={[
           styles.animatedCharacter,
+          dimensions[size],
           animated && {
             transform: [
               {
                 translateX: motion.interpolate({
                   inputRange: [0, 1],
                   outputRange:
-                    mood === 'crying' ? [-3, 3] : mood === 'dirty' ? [-1.5, 1.5] : [0, 0],
+                    mood === 'crying' ? [-3, 3] : mood === 'waiting' ? [-1.5, 1.5] : [0, 0],
                 }),
               },
               {
@@ -409,7 +326,7 @@ export function CharacterAvatar({
                   outputRange:
                     mood === 'crying'
                       ? ['-2.5deg', '2.5deg']
-                      : mood === 'dirty'
+                      : mood === 'waiting'
                         ? ['-1.8deg', '1.8deg']
                         : mood === 'sleepy'
                           ? ['-0.3deg', '0.3deg']
@@ -434,10 +351,16 @@ export function CharacterAvatar({
           },
         ]}
       >
+        {!isEgg &&
+        (size === 'large' || size === 'hero') &&
+        (stage >= 2 || mood === 'clean' || mood === 'proud') ? (
+          <Text style={styles.sparkle}> ✦ </Text>
+        ) : null}
+        {!isEgg ? effectKeys.map((key) => <CharacterAccessory itemKey={key} key={key} />) : null}
         <Image
           resizeMode="contain"
           source={moodSource ?? sources[characterKey][lifecycleKey]}
-          style={[styles.image, mood === 'dirty' && styles.dirtyImage]}
+          style={styles.image}
           testID={`character-mood-${moodKey}`}
         />
         {stage === 0 && phase === 'crack-start' ? (
@@ -447,8 +370,10 @@ export function CharacterAvatar({
             <View style={[styles.crackLine, styles.crackLineThree]} />
           </View>
         ) : null}
+        {!isEgg
+          ? foregroundKeys.map((key) => <CharacterAccessory itemKey={key} key={key} />)
+          : null}
       </Animated.View>
-      {!isEgg ? foregroundKeys.map((key) => <CharacterAccessory itemKey={key} key={key} />) : null}
     </View>
   );
 }
@@ -510,7 +435,13 @@ const styles = StyleSheet.create({
     width: 60,
   },
   hairBandStar: { color: '#FFD166', fontSize: 24, left: 19, position: 'absolute', top: -18 },
-  animatedCharacter: { height: '100%', width: '100%', zIndex: 1 },
+  animatedCharacter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'visible',
+    position: 'relative',
+    zIndex: 1,
+  },
   badgeMedal: {
     alignItems: 'center',
     backgroundColor: '#FFD166',
@@ -526,7 +457,7 @@ const styles = StyleSheet.create({
   badgePurple: { backgroundColor: '#B89AF4' },
   badge: { backgroundColor: '#FFF0C9', borderRadius: radii.pill },
   baby: {},
-  base: { alignItems: 'center', justifyContent: 'center' },
+  base: { alignItems: 'center', justifyContent: 'center', overflow: 'visible' },
   bowCenter: {
     backgroundColor: '#FF6B9A',
     borderColor: '#FFF',
@@ -656,31 +587,7 @@ const styles = StyleSheet.create({
   crackLineOne: { transform: [{ rotate: '54deg' }], width: '12%' },
   crackLineTwo: { left: '56%', transform: [{ rotate: '128deg' }], width: '9%' },
   crackLineThree: { left: '54%', top: '40%', transform: [{ rotate: '82deg' }], width: '8%' },
-  dirtLayer: { height: '100%', position: 'absolute', width: '100%', zIndex: 4 },
-  dirtSpot: {
-    backgroundColor: 'rgba(139,105,75,0.34)',
-    borderRadius: radii.pill,
-    position: 'absolute',
-  },
-  dirtSpotOne: { height: 13, left: '25%', top: '42%', width: 17 },
-  dirtSpotThree: { bottom: '24%', height: 10, left: '45%', width: 12 },
-  dirtSpotTwo: { height: 16, right: '22%', top: '55%', width: 12 },
-  dirtyImage: { opacity: 0.76 },
   growing: {},
   image: { height: '100%', width: '100%' },
   sparkle: { color: '#FFD166', fontSize: 30, position: 'absolute', right: -3, top: 8, zIndex: 4 },
-  tearDrop: {
-    backgroundColor: '#61C9F5',
-    borderBottomRightRadius: 9,
-    borderColor: 'rgba(255,255,255,0.88)',
-    borderRadius: 7,
-    borderWidth: 1.5,
-    height: 14,
-    position: 'absolute',
-    top: '43%',
-    width: 14,
-  },
-  tearLayer: { height: '100%', position: 'absolute', width: '100%', zIndex: 5 },
-  tearLeft: { left: '30%' },
-  tearRight: { right: '30%' },
 });

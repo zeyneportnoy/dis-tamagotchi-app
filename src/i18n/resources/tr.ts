@@ -283,7 +283,8 @@ export const tr = {
       pause: 'Duraklat',
       resume: 'Devam et',
       finish: 'Seansı bitir',
-      exitQuestion: 'Fırçalamayı bırakmak istiyor musun?',
+      exitQuestion: 'Fırçalamadan çıkmak istiyor musun?',
+      exitDescription: 'Bu fırçalama tamamlanmadı olarak kalacak.',
       exit: 'Çık',
       stay: 'Devam et',
       helperFourSix: 'Bu bölgedeki dişlerin dışını, içini ve çiğneme yerlerini fırçala.',
@@ -369,6 +370,23 @@ export const tr = {
         open: 'Ayarlar',
         title: 'Ayarlar',
         developerTools: 'Geliştirici Araçları',
+        voiceGuide: {
+          title: 'Sesli Rehber',
+          body: 'Fırçalama sırasında duyulacak rehber sesini seçin.',
+          listen: 'Dinle',
+          listenTo: '{{name}} sesini dinle',
+          options: {
+            gokce: {
+              title: 'Gökçe',
+            },
+            samet: {
+              title: 'Samet',
+            },
+            off: {
+              title: 'Kapalı',
+            },
+          },
+        },
       },
       reminders: {
         title: 'Fırçalama Hatırlatıcıları',
@@ -427,7 +445,7 @@ export const tr = {
           happy: 'Happy',
           proud: 'Proud',
           sleepy: 'Sleepy',
-          dirty: 'Dirty / Uncomfortable',
+          waiting: 'Bekliyor',
           sad: 'Sad',
           crying: 'Crying',
         },

@@ -1,2 +1,2 @@
-export { CharacterAccessory, CharacterAvatar } from './CharacterAvatar';
+export { CharacterAccessory, CharacterAvatar, characterSafeViewport } from './CharacterAvatar';
 export { evolutionSequence } from './evolutionSequence';

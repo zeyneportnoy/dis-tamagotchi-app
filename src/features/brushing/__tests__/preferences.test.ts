@@ -1,37 +1,40 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import i18n from '@/i18n';
-
 import {
-  brushingVoicePromptKeysFourSix,
-  brushingVoicePromptKeysSevenEleven,
-  isBrushingVoiceGuidanceEnabled,
-  setBrushingVoiceGuidanceEnabled,
+  getBrushingVoiceProfile,
+  getNicknamePersonalizationEnabled,
+  setBrushingVoiceProfile,
+  setNicknamePersonalizationEnabled,
 } from '../preferences';
 
-describe('brushing voice guidance preferences', () => {
+describe('parent-scoped brushing voice profile', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
   });
 
-  it('is enabled by default and persists an explicit choice', async () => {
-    await expect(isBrushingVoiceGuidanceEnabled()).resolves.toBe(true);
-    await setBrushingVoiceGuidanceEnabled(false);
-    await expect(isBrushingVoiceGuidanceEnabled()).resolves.toBe(false);
+  it('defaults to Gökçe and persists across reads', async () => {
+    await expect(getBrushingVoiceProfile('parent-a')).resolves.toBe('gokce');
+    await setBrushingVoiceProfile('parent-a', 'samet');
+    await expect(getBrushingVoiceProfile('parent-a')).resolves.toBe('samet');
   });
 
-  it('keeps one Turkish prompt for each brushing quadrant in order', () => {
-    expect(brushingVoicePromptKeysFourSix.map((key) => i18n.t(key))).toEqual([
-      'Şimdi sağ üst bölgeyi fırçalayalım.',
-      'Harika! Şimdi sol üst bölgeye geçelim.',
-      'Süper gidiyorsun! Şimdi sağ alt bölgeyi fırçalayalım.',
-      'Son bölüm! Şimdi sol alt bölgeyi fırçalayalım.',
-    ]);
-    expect(brushingVoicePromptKeysSevenEleven.map((key) => i18n.t(key))).toEqual([
-      'Şimdi sağ üst bölgeyi fırçalayalım.',
-      'Harika! Şimdi sol üst bölgeye geçelim.',
-      'Süper gidiyorsun! Şimdi sağ alt bölgeyi fırçalayalım.',
-      'Son bölüm! Şimdi sol alt bölgeyi fırçalayalım.',
-    ]);
+  it('keeps each parent choice isolated and persists the off choice', async () => {
+    await setBrushingVoiceProfile('parent-a', 'off');
+    await setBrushingVoiceProfile('parent-b', 'samet');
+    await expect(getBrushingVoiceProfile('parent-a')).resolves.toBe('off');
+    await expect(getBrushingVoiceProfile('parent-b')).resolves.toBe('samet');
+  });
+
+  it('migrates the legacy disabled choice without enabling audio', async () => {
+    await AsyncStorage.setItem('preferences.brushing.voice-guidance-enabled', 'false');
+    await expect(getBrushingVoiceProfile('parent-a')).resolves.toBe('off');
+  });
+
+  it('defaults nickname personalization off and isolates it by parent and child', async () => {
+    await expect(getNicknamePersonalizationEnabled('parent-a', 'child-a')).resolves.toBe(false);
+    await setNicknamePersonalizationEnabled('parent-a', 'child-a', true);
+    await expect(getNicknamePersonalizationEnabled('parent-a', 'child-a')).resolves.toBe(true);
+    await expect(getNicknamePersonalizationEnabled('parent-a', 'child-b')).resolves.toBe(false);
+    await expect(getNicknamePersonalizationEnabled('parent-b', 'child-a')).resolves.toBe(false);
   });
 });

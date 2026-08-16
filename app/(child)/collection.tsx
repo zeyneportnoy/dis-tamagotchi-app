@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
     width: 250,
   },
   intro: { paddingHorizontal: spacing.md, textAlign: 'center' },
-  characterPreview: { bottom: 42, position: 'absolute', zIndex: 3 },
+  characterPreview: { bottom: 32, overflow: 'visible', position: 'absolute', zIndex: 3 },
   previewFloor: {
     backgroundColor: 'rgba(255,255,255,0.38)',
     bottom: 0,
