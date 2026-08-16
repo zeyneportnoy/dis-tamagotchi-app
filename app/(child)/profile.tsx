@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Switch, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { getFamilyUseCases, type ChildProfileViewModel } from '@/application/family';
@@ -13,31 +13,19 @@ import {
   colors,
   radii,
   spacing,
-  typography,
 } from '@/design-system';
 import { CharacterAvatar } from '@/features/character';
-import {
-  isBrushingVoiceGuidanceEnabled,
-  setBrushingVoiceGuidanceEnabled,
-} from '@/features/brushing';
 
 export default function ProfileScreen() {
   const { t } = useTranslation();
   const [profile, setProfile] = useState<ChildProfileViewModel | null>(null);
   const [failed, setFailed] = useState(false);
-  const [voiceGuidanceEnabled, setVoiceGuidanceEnabledState] = useState(true);
 
   useEffect(() => {
     void getFamilyUseCases()
       .then((useCases) => useCases.getActiveProfile())
       .then((active) => setProfile(active))
       .catch(() => setFailed(true));
-  }, []);
-
-  useEffect(() => {
-    void isBrushingVoiceGuidanceEnabled()
-      .then(setVoiceGuidanceEnabledState)
-      .catch(() => setVoiceGuidanceEnabledState(true));
   }, []);
 
   if (failed) return <ErrorState />;
@@ -71,26 +59,6 @@ export default function ProfileScreen() {
           </Text>
         </View>
       </View>
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>{t('settings.title')}</Text>
-        <View style={styles.row}>
-          <View style={styles.settingCopy}>
-            <Text style={styles.label}>{t('settings.brushingVoice')}</Text>
-            <Text style={styles.settingBody}>{t('settings.brushingVoiceBody')}</Text>
-          </View>
-          <Switch
-            accessibilityLabel={t('settings.brushingVoice')}
-            onValueChange={(enabled) => {
-              setVoiceGuidanceEnabledState(enabled);
-              void setBrushingVoiceGuidanceEnabled(enabled).catch(() => {
-                setVoiceGuidanceEnabledState(!enabled);
-              });
-            }}
-            trackColor={{ false: '#D8D3CF', true: '#B9A5F7' }}
-            value={voiceGuidanceEnabled}
-          />
-        </View>
-      </View>
       <Button
         label={t('childHome.parentArea')}
         onPress={() => router.push('/parent-gate')}
@@ -113,7 +81,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#BFEFEB',
     borderRadius: 34,
-    height: 260,
+    height: 290,
     justifyContent: 'center',
     overflow: 'hidden',
     width: '100%',
@@ -133,9 +101,6 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     justifyContent: 'space-between',
   },
-  sectionTitle: { fontFamily: typography.family.display, fontSize: 20, fontWeight: '700' },
-  settingBody: { color: colors.textPrimary, fontSize: 14, lineHeight: 19, opacity: 0.72 },
-  settingCopy: { flex: 1, gap: spacing.xs },
   screen: { alignItems: 'center', gap: spacing.md },
   sparkleLeft: {
     color: colors.brandHighlight,

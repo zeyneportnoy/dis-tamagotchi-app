@@ -168,10 +168,10 @@ Yeni tablo veya ikinci bir ilerleme kaynağı eklenmez. M4'ün session idempoten
 - Aynı cihazda birden fazla signup/resend PKCE akışının verifier'ı karışmaması için Supabase istemcisinin `appendPkceFlowIdToRedirects` seçeneği açıktır. Callback'teki `sb_flow_id` yalnızca doğru yerel verifier slotunu seçmek için kullanılır; token veya verifier loglanmaz.
 - Password recovery deep link'i de callback `code` ve `sb_flow_id` değerlerini aynı PKCE session sınırında değiştirir; doğrulanmış recovery session oluşmadan yeni şifre yazılamaz.
 
-## 2026-08-09 — Fırçalama bölge geçişlerinde isteğe bağlı cihaz içi Türkçe ses
+## 2026-08-09 — Fırçalama bölge geçişlerinde isteğe bağlı Türkçe ses (yerine geçildi)
 
 - Görsel bölge adı ve yaşa uyarlanmış yardımcı metinler korunur; ses bunların yerine geçmez.
-- Her yeni 30 saniyelik bölge başladığında `expo-speech` ile `tr-TR` cihaz içi konuşma ve `expo-haptics` ile hafif geri bildirim bir kez tetiklenir.
+- Her yeni 30 saniyelik bölge başladığında Türkçe ses ve `expo-haptics` ile hafif geri bildirim bir kez tetiklenir. Cihaz içi TTS tercihi ADR-040 ile yerel kayıtlı ses lehine kaldırılmıştır.
 - Tercih varsayılan olarak açıktır ve yalnızca cihazdaki AsyncStorage içinde saklanır; çocuk veya hesap verisi olarak buluta gönderilmez.
 - Ses sunum katmanında bölüm indeksini gözlemler. Timer, seans tamamlama, XP, ödül ve idempotency kuralları değiştirilmez.
 
@@ -228,3 +228,70 @@ Manrope ise body/UI fontu olarak kullanılır. Boyut, satır yüksekliği ve fon
 Koleksiyon kataloğu beş kategoride sekizer ödüle genişler. Migration 14 mevcut profillere
 birer başlangıç arka planı, efekti ve fırçası ekler; mevcut seçimleri ezmez.
 effect accessories render behind the character and all other slots use fixed, face-safe anchors.
+
+## 2026-08-15 — Brushing bölge yönlendirmeleri yerel kayıtlı sestir
+
+Brushing'in 0, 30, 60 ve 90. saniye yönlendirmeleri cihaz TTS'i yerine sırasıyla
+`right-upper`, `left-upper`, `right-lower` ve `left-lower` adlı bundle içi MP3 kayıtlarını
+çalar. Böylece ses karakteri cihaz sesine bağlı değildir ve internet olmadan çalışır.
+Görsel quadrant indeksi ile ses kaynağı aynı sabit sıralamayı kullanır; her segment
+bir oturumda en fazla bir kez anons edilir. Kullanıcı tercihi, tick ducking, timer, completion
+jingle, session, XP ve ödül davranışları değiştirilmez.
+
+## 2026-08-16 — Sesli rehber veliye göre Gökçe, Samet veya Kapalı olarak saklanır
+
+Sesli rehber tercihi aktif Supabase veli kullanıcı kimliğiyle adlandırılmış yerel
+AsyncStorage anahtarında tutulur; farklı veli hesapları birbirinin tercihini devralmaz.
+Varsayılan profil Gökçe'dir. Eski global kapalı tercihi ilk okumada `off` olarak taşınır;
+kullanıcının sessiz tercihi otomatik açılmaz.
+
+Gökçe ve Samet'in her biri 0/30/60/90 sınırlarına bağlı dört farklı bundle içi
+ses kaydı kullanır. Samet'in kaynak MP4 dosyaları tek AAC ses track'i içerdiğinden projeye
+video olarak değil ses-only M4A asset olarak alınır. Cihaz TTS'i veya ağ fallback'i yoktur.
+
+## 2026-08-16 — Parent araç ekranları tek sabit header geometrisi kullanır
+
+Veli Hesabı, Ayarlar/Sesli Rehber, Fırçalama Hatırlatıcıları ve geliştirici Mood Lab
+ekranları `Screen` safe area içinde aynı `ScreenHeader` bileşenini kullanır. Header yüksekliği
+56 dp, sol kontrol ve sağ denge alanı 48 dp'dir. Ekrana özel absolute `top` veya ek
+`paddingTop` kullanılmaz; bu sayede route geçişlerinde chevron ve başlık baseline'ı değişmez.
+
+## 2026-08-16 — Mood ifadeleri karaktere özel yerel asset ve merkezi durum kuralı kullanır
+
+Neutral, happy, proud, sleepy, waiting, sad ve crying ifadeleri sekiz karakterin beş
+gelişim evresinin her biri için ayrı, şeffaf ve bundle içi görsellerdir (toplam 280 kombinasyon).
+Ortak emoji/yüz katmanı kullanılmaz;
+göz, ağız, kaş, yanak, gözyaşı ve duruş karakterin kendi görseline işlenir.
+`dirty` durumu kaldırılmış, yerine suçlayıcı olmayan `waiting` kullanılmıştır.
+Yumurta evresinde de karaktere özel desen ve daha sade, bebeksi bir yüz korunur; çatlama
+evresinde ifade kabuk ve çatlak geometrisiyle birlikte çizilir.
+
+Home mood kararı React bileşeninden ayrı bir domain fonksiyonudur. Kalıcı günlük ilerleme,
+yerel saat ve son fırçalama zamanından neutral/waiting/happy/proud/sleepy/sad sonucunu
+üretir. Crying aynı gün cezası değildir; yalnızca en az 48 saatlik uzun ilgisizlikte
+kullanılır. Completion, tam gün/seri/ödül/evre başarısında proud, normal başarıda
+happy gösterir.
+
+## 2026-08-16 — Takma ad ses kişiselleştirmesi açık rıza tercihi ve güvenli proxy gerektirir
+
+“Takma adını söylesin” varsayılan olarak kapalıdır ve veli ile aktif çocuk profilinin birleşik
+kimliği altında yerel olarak saklanır. Yalnız Gökçe profilinin 0 ve 60 saniye cue'ları
+kişiselleştirmeye adaydır; Samet kendi izinli bundle kayıtlarını kullanır, Kapalı seçeneği sessizdir.
+
+Mobil istemci ElevenLabs anahtarı taşımaz ve servisi doğrudan çağırmaz. Üretim, Supabase oturum
+token'ıyla yetkilendirilen güvenilir bir proxy'nin kısa ömürlü indirme URL'sini döndürmesiyle
+yapılır. Cache kimliği çocuk profil ID'si, normalize takma ad, ses profili, cue ve model/ses
+sürümünü birlikte hash'ler. Cache ya da ağ yoksa brushing beklemeden bundle içi Gökçe kaydına
+döner. Proxy kurulmadan istemci kişiselleştirmeyi başarılı olmuş gibi göstermez.
+
+## 2026-08-16 — Karakter render alanı animasyon güvenlik payı taşır
+
+Karakter PNG'leri kendi doğal oranında `contain` ile çizilir ve rastgele karakter bazlı scale/offset
+uygulanmaz. Ortak `characterSafeViewport`, büyük ve hero görünümlerinde idle zıplama, tilt, scale,
+gözyaşı, effect ve küçük baş aksesuarları için yatay/dikey hareket payını tanımlar. Artwork, mood,
+effect ve wearable katmanları aynı transform grubunda birleşir; bu grubun çevresindeki şeffaf
+viewport gerçek çizim boyutunu değiştirmeden en geniş animasyon karesini korur. 8 karakter × 5 evre
+× 7 mood için alfa sınırı programatik kontrol edilir; kaynak görsellerde en az 24 px şeffaf pay
+korunur. `CharacterAvatar` ve animasyon katmanı taşmayı kesmez; sahne kartları karakter boyutunu
+küçültmek yerine bu güvenli viewport yüksekliğini ayırır. Home, collection, brushing, completion,
+onboarding ve Mood Lab aynı render bileşenini kullanır.

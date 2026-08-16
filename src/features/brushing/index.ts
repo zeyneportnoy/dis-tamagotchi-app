@@ -1,9 +1,10 @@
 export {
-  brushingVoicePromptKeysFourSix,
-  brushingVoicePromptKeysSevenEleven,
-  isBrushingVoiceGuidanceEnabled,
-  setBrushingVoiceGuidanceEnabled,
+  getBrushingVoiceProfile,
+  getNicknamePersonalizationEnabled,
+  setBrushingVoiceProfile,
+  setNicknamePersonalizationEnabled,
 } from './preferences';
+export * from './personalizedVoice';
 export { nextAlignedTickBoundary, shouldEmitAlignedTick } from './timerTick';
 export { growthCompletionMessageKey } from './growthMessage';
 export {
@@ -13,3 +14,4 @@ export {
 } from './completionMessages';
 export * from './brushMotion';
 export * from './completionJingles';
+export * from './voiceGuidance';

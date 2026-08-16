@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { StyleSheet } from 'react-native';
 
@@ -64,10 +64,6 @@ jest.mock('expo-router', () => {
 });
 
 describe('Child Home route', () => {
-  afterEach(async () => {
-    await cleanup();
-  });
-
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetProgress.mockResolvedValue(defaultProgress);
@@ -98,7 +94,7 @@ describe('Child Home route', () => {
     expect(StyleSheet.flatten(trigger.props.style).minHeight).toBeGreaterThanOrEqual(
       minimumTouchTarget,
     );
-    fireEvent.press(view.getByTestId('profile-switcher-trigger'));
+    await fireEvent.press(view.getByTestId('profile-switcher-trigger'));
     await waitFor(() => expect(view.getByTestId('profile-switcher-modal')).toBeTruthy());
     expect(view.getByText('Profili değiştir')).toBeTruthy();
     expect(view.getByRole('radio', { name: 'Ada' })).toBeTruthy();
@@ -107,7 +103,7 @@ describe('Child Home route', () => {
   it('opens the real brushing session route', async () => {
     const view = await render(<ChildHomeScreen />);
     await waitFor(() => expect(view.getByRole('button', { name: 'Fırçalayalım!' })).toBeTruthy());
-    fireEvent.press(view.getByRole('button', { name: 'Fırçalayalım!' }));
+    await fireEvent.press(view.getByRole('button', { name: 'Fırçalayalım!' }));
     expect(router.push).toHaveBeenCalledWith('/brushing');
   });
 
@@ -117,12 +113,12 @@ describe('Child Home route', () => {
     const evening = view.getByRole('button', { name: 'Akşam. Seni bekliyor' });
     expect(StyleSheet.flatten(morning.props.style).minHeight).toBeGreaterThanOrEqual(48);
     expect(StyleSheet.flatten(evening.props.style).minHeight).toBeGreaterThanOrEqual(48);
-    fireEvent.press(morning);
+    await fireEvent.press(morning);
     expect(router.push).toHaveBeenCalledWith({
       pathname: '/brushing',
       params: { slot: 'morning' },
     });
-    fireEvent.press(evening);
+    await fireEvent.press(evening);
     expect(router.push).toHaveBeenCalledWith({
       pathname: '/brushing',
       params: { slot: 'evening' },

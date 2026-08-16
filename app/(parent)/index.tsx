@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { getFamilyUseCases, type ChildProfileViewModel } from '@/application/family';
-import { BackButton, Button, Screen, Text, colors, radii, spacing } from '@/design-system';
+import { Button, Screen, ScreenHeader, Text, colors, radii, spacing } from '@/design-system';
 import { useAuth } from '@/features/auth';
 
 export default function ParentAccountScreen() {
@@ -26,12 +26,14 @@ export default function ParentAccountScreen() {
   };
 
   return (
-    <Screen style={styles.screen}>
-      <View style={styles.back}>
-        <BackButton onPress={() => router.replace('/(child)/profile')} />
-      </View>
+    <Screen style={styles.screen} testID="parent-account-screen">
+      <ScreenHeader
+        backTestID="parent-account-back-button"
+        fallbackHref="/(child)/profile"
+        onBackPress={() => router.replace('/(child)/profile')}
+        title={t('parent.accountTitle')}
+      />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text variant="title">{t('parent.accountTitle')}</Text>
         <View style={styles.accountCard}>
           <Text style={styles.name}>{session?.displayName || t('parent.title')}</Text>
           <Text>{session?.email}</Text>
@@ -80,7 +82,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.lg,
   },
-  back: { left: spacing.lg, position: 'absolute', top: spacing.xl + spacing.lg },
   content: { gap: spacing.md, paddingBottom: spacing.xl },
   name: { fontWeight: '900' },
   profileCard: {
@@ -89,6 +90,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.lg,
   },
-  screen: { justifyContent: 'flex-start', paddingTop: 96 },
+  screen: { justifyContent: 'flex-start' },
   warning: { backgroundColor: '#FFF0C9', borderRadius: radii.md, padding: spacing.md },
 });

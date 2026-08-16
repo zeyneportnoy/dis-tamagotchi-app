@@ -1,26 +1,50 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const voiceGuidanceKey = 'preferences.brushing.voice-guidance-enabled';
+import { brushingVoiceProfiles, type BrushingVoiceProfile } from './voiceGuidance';
 
-export async function isBrushingVoiceGuidanceEnabled(): Promise<boolean> {
-  const stored = await AsyncStorage.getItem(voiceGuidanceKey);
-  return stored !== 'false';
+const legacyVoiceGuidanceKey = 'preferences.brushing.voice-guidance-enabled';
+const voiceProfileKey = (parentUserId: string): string =>
+  `preferences.parent.${parentUserId}.brushing.voice-profile`;
+const nicknamePersonalizationKey = (parentUserId: string, childProfileId: string): string =>
+  `preferences.parent.${parentUserId}.child.${childProfileId}.brushing.nickname-personalization`;
+
+const isVoiceProfile = (value: string | null): value is BrushingVoiceProfile =>
+  value !== null && brushingVoiceProfiles.some((profile) => profile === value);
+
+export async function getBrushingVoiceProfile(parentUserId: string): Promise<BrushingVoiceProfile> {
+  const stored = await AsyncStorage.getItem(voiceProfileKey(parentUserId));
+  if (isVoiceProfile(stored)) return stored;
+
+  const legacyEnabled = await AsyncStorage.getItem(legacyVoiceGuidanceKey);
+  const migrated: BrushingVoiceProfile = legacyEnabled === 'false' ? 'off' : 'gokce';
+  await AsyncStorage.setItem(voiceProfileKey(parentUserId), migrated);
+  return migrated;
 }
 
-export async function setBrushingVoiceGuidanceEnabled(enabled: boolean): Promise<void> {
-  await AsyncStorage.setItem(voiceGuidanceKey, String(enabled));
+export async function setBrushingVoiceProfile(
+  parentUserId: string,
+  profile: BrushingVoiceProfile,
+): Promise<void> {
+  await AsyncStorage.setItem(voiceProfileKey(parentUserId), profile);
 }
 
-export const brushingVoicePromptKeysFourSix = [
-  'brushing.voiceGuidance.fourSix.rightUpper',
-  'brushing.voiceGuidance.fourSix.leftUpper',
-  'brushing.voiceGuidance.fourSix.rightLower',
-  'brushing.voiceGuidance.fourSix.leftLower',
-] as const;
+export async function getNicknamePersonalizationEnabled(
+  parentUserId: string,
+  childProfileId: string,
+): Promise<boolean> {
+  return (
+    (await AsyncStorage.getItem(nicknamePersonalizationKey(parentUserId, childProfileId))) ===
+    'true'
+  );
+}
 
-export const brushingVoicePromptKeysSevenEleven = [
-  'brushing.voiceGuidance.sevenEleven.rightUpper',
-  'brushing.voiceGuidance.sevenEleven.leftUpper',
-  'brushing.voiceGuidance.sevenEleven.rightLower',
-  'brushing.voiceGuidance.sevenEleven.leftLower',
-] as const;
+export async function setNicknamePersonalizationEnabled(
+  parentUserId: string,
+  childProfileId: string,
+  enabled: boolean,
+): Promise<void> {
+  await AsyncStorage.setItem(
+    nicknamePersonalizationKey(parentUserId, childProfileId),
+    enabled ? 'true' : 'false',
+  );
+}

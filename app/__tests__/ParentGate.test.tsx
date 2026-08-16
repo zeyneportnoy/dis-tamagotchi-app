@@ -5,6 +5,7 @@ import ParentGateScreen from '../parent-gate';
 
 jest.mock('expo-router', () => ({
   router: { back: jest.fn(), canGoBack: jest.fn(() => true), replace: jest.fn() },
+  useLocalSearchParams: jest.fn(() => ({})),
 }));
 jest.mock('@/features/parent-gate/challenge', () => ({
   createParentChallenge: () => ({ left: 2, right: 3, answer: 5 }),

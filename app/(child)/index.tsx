@@ -19,6 +19,7 @@ import {
 } from '@/design-system';
 import type { ProfileProgress } from '@/domain/family';
 import { isLegacyAgeBand } from '@/domain/family';
+import { deriveHomeCharacterMood } from '@/domain/character';
 import {
   characterGrowthStageNames,
   estimatedBrushingsToNextStage,
@@ -250,13 +251,7 @@ export default function ChildHomeScreen() {
                 .map((item) => item.key)}
               characterKey={active.avatarId}
               growthStage={growthStage}
-              mood={
-                progress.morningCompleted && progress.eveningCompleted
-                  ? 'proud'
-                  : progress.morningCompleted || progress.eveningCompleted
-                    ? 'happy'
-                    : 'sleepy'
-              }
+              mood={deriveHomeCharacterMood(progress)}
               size="hero"
               surface="plain"
             />
@@ -382,7 +377,7 @@ const styles = StyleSheet.create({
     borderColor: colors.white,
     borderRadius: 32,
     borderWidth: 4,
-    height: 336,
+    height: 360,
     justifyContent: 'flex-end',
     overflow: 'hidden',
     position: 'relative',
@@ -463,7 +458,7 @@ const styles = StyleSheet.create({
   growthCopy: { alignItems: 'flex-start', gap: 2 },
   brushingEstimate: { color: '#667078', fontSize: 13, fontWeight: '700', lineHeight: 18 },
   header: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, minHeight: 66 },
-  heroCharacter: { bottom: 24, position: 'absolute', zIndex: 3 },
+  heroCharacter: { bottom: 3, overflow: 'visible', position: 'absolute', zIndex: 3 },
   levelLabel: { color: colors.brandPrimary, fontSize: 20, fontWeight: '900' },
   leaf: {
     backgroundColor: colors.brandAccent,

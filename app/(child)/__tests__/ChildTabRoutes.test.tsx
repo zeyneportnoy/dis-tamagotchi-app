@@ -1,4 +1,4 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import CollectionScreen from '../collection';
 import ProfileScreen from '../profile';
@@ -91,21 +91,19 @@ describe('Child tab routes', () => {
 
   it('equips an unlocked item and gently rejects a locked item', async () => {
     const view = await render(<CollectionScreen />);
-    fireEvent.press(view.getByText('Aksesuar'));
+    await fireEvent.press(view.getByText('Aksesuar'));
     await waitFor(() =>
       expect(view.getByRole('button', { name: 'Mini Taç. Seçili' })).toBeTruthy(),
     );
-    fireEvent.press(view.getByRole('button', { name: 'Yıldız Saç Bandı. Henüz kilitli 🔒' }));
+    await fireEvent.press(view.getByRole('button', { name: 'Yıldız Saç Bandı. Henüz kilitli 🔒' }));
     expect(mockEquipItem).not.toHaveBeenCalled();
     await waitFor(() => expect(view.getByText('Henüz kilitli 🔒')).toBeTruthy());
-    await act(async () => fireEvent.press(view.getByRole('button', { name: 'Mini Taç. Seçili' })));
+    await fireEvent.press(view.getByRole('button', { name: 'Mini Taç. Seçili' }));
     await waitFor(() =>
       expect(mockUnequipAccessorySlot).toHaveBeenCalledWith('profile-1', 'wearable'),
     );
     await waitFor(() => expect(view.queryByText('Seçimi kaldır')).toBeNull());
-    await act(async () =>
-      fireEvent.press(view.getByRole('button', { name: 'Uyku Şapkası. Kazanıldı' })),
-    );
+    await fireEvent.press(view.getByRole('button', { name: 'Uyku Şapkası. Kazanıldı' }));
     await waitFor(() => expect(mockEquipItem).toHaveBeenCalledWith('profile-1', 'mini-hat'));
   });
 
@@ -113,7 +111,7 @@ describe('Child tab routes', () => {
     const view = await render(<CollectionScreen />);
     await waitFor(() => expect(view.getByText('Pastel Oyun Odası')).toBeTruthy());
     expect(view.queryByText('Fırça')).toBeNull();
-    await act(async () => fireEvent.press(view.getByText('Seçimi kaldır')));
+    await fireEvent.press(view.getByText('Seçimi kaldır'));
     await waitFor(() =>
       expect(mockUnequipAccessorySlot).toHaveBeenCalledWith('profile-1', 'background'),
     );

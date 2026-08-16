@@ -49,6 +49,23 @@ export class ChildExperienceUseCases {
     });
   }
 
+  async abandonBrushingSession(
+    sessionId: string,
+    profileId: string,
+    startedAt: string,
+    durationSeconds: number,
+    period?: BrushingPeriod,
+  ): Promise<void> {
+    await this.sessions.finish({
+      sessionId,
+      profileId,
+      startedAt,
+      durationSeconds,
+      completed: false,
+      period,
+    });
+  }
+
   listCompletedSessions(profileId: string): Promise<readonly BrushingSession[]> {
     return this.sessions.listCompleted(profileId);
   }

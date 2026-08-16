@@ -301,7 +301,7 @@ const styles = StyleSheet.create({
     transform: [{ scale: 1.12 }],
   },
   screen: { justifyContent: 'space-between', paddingHorizontal: 0 },
-  slide: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  slide: { alignItems: 'center', justifyContent: 'center', overflow: 'visible' },
   sparkleLeft: {
     color: colors.brandHighlight,
     fontSize: 30,
@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 44,
     borderTopLeftRadius: 44,
     borderTopRightRadius: 44,
-    height: 320,
+    height: 348,
     overflow: 'hidden',
     position: 'relative',
   },

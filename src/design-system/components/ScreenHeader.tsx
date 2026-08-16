@@ -12,9 +12,11 @@ type Props = Readonly<{
   title: string;
 }>;
 
+export const appHeaderHeight = 56;
+
 export function ScreenHeader({ backTestID, fallbackHref, onBackPress, title }: Props) {
   return (
-    <View style={styles.header}>
+    <View style={styles.header} testID="app-screen-header">
       <BackButton fallbackHref={fallbackHref} onPress={onBackPress} testID={backTestID} />
       <Text adjustsFontSizeToFit minimumFontScale={0.72} numberOfLines={1} style={styles.title}>
         {title}
@@ -29,7 +31,8 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     flexDirection: 'row',
-    minHeight: 56,
+    flexShrink: 0,
+    height: appHeaderHeight,
     paddingVertical: spacing.xs,
     width: '100%',
   },

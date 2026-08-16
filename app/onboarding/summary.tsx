@@ -103,7 +103,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#F9D7E5',
     borderRadius: 32,
-    height: 250,
+    height: 300,
     justifyContent: 'center',
     overflow: 'hidden',
   },
