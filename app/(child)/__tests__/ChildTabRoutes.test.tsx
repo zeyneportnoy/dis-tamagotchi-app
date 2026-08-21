@@ -1,4 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { StyleSheet } from 'react-native';
 
 import CollectionScreen from '../collection';
 import ProfileScreen from '../profile';
@@ -29,6 +31,23 @@ jest.mock('@/application/child', () => ({
             equipped: true,
             unlockedAt: '2026-08-09T00:00:00.000Z',
           },
+          ...[
+            'cloud-room',
+            'rainbow-room',
+            'space-room',
+            'undersea-room',
+            'rainbow-cape',
+            'night-room',
+            'forest-room',
+          ].map((key, index) => ({
+            equipped: false,
+            icon: '🌄',
+            key,
+            slot: 'background' as const,
+            unlocked: true,
+            unlockedAt: '2026-08-09T00:00:00.000Z',
+            unlockXp: 100 + index * 100,
+          })),
           {
             key: 'cozy-scarf',
             icon: '☁️',
@@ -85,6 +104,11 @@ jest.mock('@/application/family', () => ({
 }));
 
 describe('Child tab routes', () => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    await AsyncStorage.clear();
+  });
+
   it.each([
     [TasksScreen, 'tasks-screen', 'Görevler'],
     [CollectionScreen, 'collection-screen', 'Koleksiyonum'],
@@ -96,35 +120,55 @@ describe('Child tab routes', () => {
     expect(view.queryByRole('button', { name: 'Geri' })).toBeNull();
   });
 
-  it('equips an unlocked item and gently rejects a locked item', async () => {
+  it('makes every supported item selectable in DEV without writing production inventory', async () => {
     const view = await render(<CollectionScreen />);
     await fireEvent.press(view.getByText('Aksesuar'));
     await waitFor(() =>
       expect(view.getByRole('button', { name: 'Mini Taç. Seçili' })).toBeTruthy(),
     );
-    await fireEvent.press(view.getByRole('button', { name: 'Yıldız Saç Bandı. Henüz kilitli 🔒' }));
+    await fireEvent.press(view.getByRole('button', { name: 'Yıldız Saç Bandı. Kazanıldı' }));
     expect(mockEquipItem).not.toHaveBeenCalled();
-    await waitFor(() => expect(view.getByText('Henüz kilitli 🔒')).toBeTruthy());
-    await fireEvent.press(view.getByRole('button', { name: 'Mini Taç. Seçili' }));
     await waitFor(() =>
-      expect(mockUnequipAccessorySlot).toHaveBeenCalledWith('profile-1', 'wearable'),
+      expect(view.getByRole('button', { name: 'Yıldız Saç Bandı. Seçili' })).toBeTruthy(),
     );
-    await waitFor(() => expect(view.queryByText('Seçimi kaldır')).toBeNull());
     await fireEvent.press(view.getByRole('button', { name: 'Uyku Şapkası. Kazanıldı' }));
-    await waitFor(() => expect(mockEquipItem).toHaveBeenCalledWith('profile-1', 'mini-hat'));
+    await waitFor(() =>
+      expect(view.getByRole('button', { name: 'Uyku Şapkası. Seçili' })).toBeTruthy(),
+    );
+    expect(mockEquipItem).not.toHaveBeenCalled();
+    expect(mockUnequipAccessorySlot).not.toHaveBeenCalled();
   });
 
   it('hides brush rewards and removes a selected background immediately', async () => {
     const view = await render(<CollectionScreen />);
     await waitFor(() => expect(view.getByText('Pastel Oyun Odası')).toBeTruthy());
-    expect(view.getByTestId('collection-preview-background')).toBeTruthy();
-    expect(view.getByTestId('collection-preview-decor')).toBeTruthy();
+    expect(view.getByText('Şeker Bulutlar')).toBeTruthy();
+    expect(view.getByText('Gökkuşağı Işıltısı')).toBeTruthy();
+    expect(view.getByText('Gece Işıltısı')).toBeTruthy();
+    expect(view.getByText('Deniz Altı Odası')).toBeTruthy();
+    expect(view.getByText('Gün Batımı Odası')).toBeTruthy();
+    expect(view.queryByText('Yıldızlı Uyku Odası')).toBeNull();
+    expect(view.queryByText('Orman Odası')).toBeNull();
+    fireEvent(view.getByTestId('collection-preview-scene'), 'layout', {
+      nativeEvent: { layout: { height: 386, width: 360, x: 0, y: 0 } },
+    });
+    expect(
+      StyleSheet.flatten(view.getByTestId('collection-preview-background').props.style),
+    ).toMatchObject({
+      bottom: 0,
+      height: '100%',
+      left: 0,
+      opacity: 1,
+      position: 'absolute',
+      right: 0,
+      top: 0,
+      width: '100%',
+    });
+    await waitFor(() => expect(view.getByTestId('collection-preview-decor')).toBeTruthy());
     expect(view.getByTestId('collection-item-visual-pastel-playroom')).toBeTruthy();
     expect(view.queryByText('Fırça')).toBeNull();
     await fireEvent.press(view.getByText('Seçimi kaldır'));
-    await waitFor(() =>
-      expect(mockUnequipAccessorySlot).toHaveBeenCalledWith('profile-1', 'background'),
-    );
+    expect(mockUnequipAccessorySlot).not.toHaveBeenCalled();
     expect(view.queryByText('Seçimi kaldır')).toBeNull();
   });
 });

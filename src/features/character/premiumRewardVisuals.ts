@@ -29,6 +29,21 @@ const premiumRewardSources = {
   colorGlasses: require('../../../assets/rewards/premium/color-glasses.png'),
 } as const satisfies Record<string, ImageSourcePropType>;
 
+export const collectionBackgroundKeys = [
+  'pastel-playroom',
+  'cloud-room',
+  'rainbow-room',
+  'space-room',
+  'undersea-room',
+  'rainbow-cape',
+] as const satisfies readonly RewardItemKey[];
+
+const collectionBackgroundKeySet = new Set<RewardItemKey>(collectionBackgroundKeys);
+
+export function isCollectionBackgroundKey(key: RewardItemKey): boolean {
+  return collectionBackgroundKeySet.has(key);
+}
+
 export function premiumRewardSource(key: RewardItemKey): ImageSourcePropType {
   const sourceByKey: Partial<Record<RewardItemKey, ImageSourcePropType>> = {
     'pastel-playroom': premiumRewardSources.pastelPlayroom,

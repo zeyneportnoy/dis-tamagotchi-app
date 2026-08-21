@@ -30,20 +30,25 @@ import {
   characterIconSource,
   collectionPreviewBottomForStage,
   collectionVisualPalette,
+  isCollectionBackgroundKey,
   premiumRewardSource,
   sceneBackgroundForCharacter,
   sceneToneForCharacter,
 } from '@/features/character';
+import {
+  SceneCustomizationItem,
+  defaultPlacementFor,
+  emptyCustomizationState,
+  loadCustomizationState,
+  presentCustomizationInventory,
+  saveDeveloperEquippedItem,
+  saveItemPlacement,
+  type CustomizationState,
+  type ItemPlacement,
+  type SceneSize,
+} from '@/features/customization';
 
 const categories: readonly AccessorySlot[] = ['background', 'decor', 'effect', 'wearable'];
-
-const decorStyleFor = (key: RewardItemKey) => {
-  if (key === 'heart-badge' || key === 'moon-lamp') return styles.decorWall;
-  if (key === 'heart-rug') return styles.decorRug;
-  if (key === 'cozy-scarf') return styles.decorCloudCushion;
-  if (key === 'color-pillow') return styles.decorCushion;
-  return styles.decorCorner;
-};
 
 export default function CollectionScreen() {
   const { t } = useTranslation();
@@ -51,6 +56,8 @@ export default function CollectionScreen() {
   const [growthStage, setGrowthStage] = useState<CharacterGrowthStage>(0);
   const [items, setItems] = useState<readonly InventoryItem[] | null>(null);
   const [activeSlot, setActiveSlot] = useState<AccessorySlot>('background');
+  const [customization, setCustomization] = useState<CustomizationState>(emptyCustomizationState);
+  const [sceneSize, setSceneSize] = useState<SceneSize>({ height: 0, width: 0 });
   const [lockedMessage, setLockedMessage] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -62,13 +69,15 @@ export default function CollectionScreen() {
         .then(async (activeProfile) => {
           if (!activeProfile) throw new Error('PROFILE_NOT_FOUND');
           const child = await getChildExperienceUseCases();
-          const [inventory, progress] = await Promise.all([
+          const [inventory, progress, savedCustomization] = await Promise.all([
             child.listInventory(activeProfile.id),
             child.getProgress(activeProfile.id),
+            loadCustomizationState(activeProfile.id),
           ]);
           if (!mounted) return;
           setProfile(activeProfile);
-          setItems(inventory);
+          setCustomization(savedCustomization);
+          setItems(presentCustomizationInventory(inventory, savedCustomization, __DEV__));
           setGrowthStage(growthStageForXp(progress.totalXp));
         })
         .catch(() => {
@@ -88,7 +97,7 @@ export default function CollectionScreen() {
     setLockedMessage(false);
     const selectedItem = items?.find((item) => item.key === itemKey);
     if (selectedItem?.equipped) {
-      await remove();
+      await remove(selectedItem.slot);
       return;
     }
     setItems(
@@ -98,28 +107,52 @@ export default function CollectionScreen() {
         ) ?? null,
     );
     const child = await getChildExperienceUseCases();
+    if (__DEV__) {
+      const saved = await saveDeveloperEquippedItem(profile.id, activeSlot, itemKey);
+      setCustomization(saved);
+      return;
+    }
     await child.equipItem(profile.id, itemKey);
-    setItems(await child.listInventory(profile.id));
+    setItems(
+      presentCustomizationInventory(await child.listInventory(profile.id), customization, false),
+    );
   };
 
-  const remove = async (): Promise<void> => {
+  const remove = async (slot: AccessorySlot = activeSlot): Promise<void> => {
     if (!profile) return;
     setItems(
       (current) =>
-        current?.map((item) => (item.slot === activeSlot ? { ...item, equipped: false } : item)) ??
-        null,
+        current?.map((item) => (item.slot === slot ? { ...item, equipped: false } : item)) ?? null,
     );
+    if (__DEV__) {
+      const saved = await saveDeveloperEquippedItem(profile.id, slot, null);
+      setCustomization(saved);
+      return;
+    }
     const child = await getChildExperienceUseCases();
-    await child.unequipAccessorySlot(profile.id, activeSlot);
+    await child.unequipAccessorySlot(profile.id, slot);
+  };
+
+  const updatePlacement = (itemKey: RewardItemKey, placement: ItemPlacement): void => {
+    if (!profile) return;
+    setCustomization((current) => ({
+      ...current,
+      placements: { ...current.placements, [itemKey]: placement },
+    }));
+    void saveItemPlacement(profile.id, itemKey, placement).then(setCustomization);
   };
 
   if (failed) return <ErrorState />;
   if (!items || !profile) return <LoadingState />;
-  const equippedKeys = items.filter((item) => item.equipped).map((item) => item.key);
   const selectedBackground = items.find((item) => item.equipped && item.slot === 'background');
   const selectedDecor = items.find((item) => item.equipped && item.slot === 'decor');
   const selectedEffect = items.find((item) => item.equipped && item.slot === 'effect');
-  const visibleItems = items.filter((item) => item.slot === activeSlot);
+  const selectedWearable = items.find((item) => item.equipped && item.slot === 'wearable');
+  const visibleItems = items.filter(
+    (item) =>
+      item.slot === activeSlot &&
+      (activeSlot !== 'background' || isCollectionBackgroundKey(item.key)),
+  );
   const hasEquippedInSlot = visibleItems.some((item) => item.equipped);
   const visualPalette = collectionVisualPalette[profile.avatarId];
 
@@ -136,7 +169,11 @@ export default function CollectionScreen() {
         <Text style={styles.intro} variant="caption">
           {t('collection.heroHint')}
         </Text>
-        <View style={[styles.hero, { backgroundColor: visualPalette.hero }]}>
+        <View
+          onLayout={(event) => setSceneSize(event.nativeEvent.layout)}
+          style={[styles.hero, { backgroundColor: visualPalette.hero }]}
+          testID="collection-preview-scene"
+        >
           <CharacterSceneDecor tone={sceneToneForCharacter(profile.avatarId)} />
           {selectedBackground ? (
             <Image
@@ -158,14 +195,25 @@ export default function CollectionScreen() {
             </View>
           ) : null}
           {selectedDecor ? (
-            <View pointerEvents="none" style={styles.decorPreviewLayer}>
-              <Image
-                resizeMode="contain"
-                source={premiumRewardSource(selectedDecor.key)}
-                style={[styles.decorPreview, decorStyleFor(selectedDecor.key)]}
-                testID="collection-preview-decor"
-              />
-            </View>
+            <SceneCustomizationItem
+              accessibilityLabel={t(`rewards.items.${selectedDecor.key}`)}
+              editable
+              itemKey={selectedDecor.key}
+              key={`${profile.id}:${selectedDecor.key}`}
+              kind="decor"
+              onPlacementChange={(placement) => updatePlacement(selectedDecor.key, placement)}
+              onRemove={() => void remove('decor')}
+              placement={
+                customization.placements[selectedDecor.key] ??
+                defaultPlacementFor(selectedDecor.key)
+              }
+              removeLabel={t('collection.removeItem', {
+                item: t(`rewards.items.${selectedDecor.key}`),
+              })}
+              sceneSize={sceneSize}
+              testID="collection-preview-decor"
+              zIndex={2}
+            />
           ) : null}
           <View
             style={[
@@ -174,9 +222,6 @@ export default function CollectionScreen() {
             ]}
           >
             <CharacterAvatar
-              accessoryKeys={equippedKeys.filter(
-                (key) => items.find((item) => item.key === key)?.slot === 'wearable',
-              )}
               characterKey={profile.avatarId}
               growthStage={growthStage}
               mood="proud"
@@ -184,6 +229,26 @@ export default function CollectionScreen() {
               surface="plain"
             />
           </View>
+          {selectedWearable ? (
+            <SceneCustomizationItem
+              accessibilityLabel={t(`rewards.items.${selectedWearable.key}`)}
+              editable
+              itemKey={selectedWearable.key}
+              key={`${profile.id}:${selectedWearable.key}`}
+              kind="wearable"
+              onPlacementChange={(placement) => updatePlacement(selectedWearable.key, placement)}
+              onRemove={() => void remove('wearable')}
+              placement={
+                customization.placements[selectedWearable.key] ??
+                defaultPlacementFor(selectedWearable.key)
+              }
+              removeLabel={t('collection.removeItem', {
+                item: t(`rewards.items.${selectedWearable.key}`),
+              })}
+              sceneSize={sceneSize}
+              zIndex={4}
+            />
+          ) : null}
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -344,11 +409,13 @@ const styles = StyleSheet.create({
   },
   previewBackgroundAsset: {
     bottom: 0,
+    height: '100%',
     left: 0,
-    opacity: 0.42,
+    opacity: 1,
     position: 'absolute',
     right: 0,
     top: 0,
+    width: '100%',
     zIndex: 1,
   },
   decorPreview: { position: 'absolute' },

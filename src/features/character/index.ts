@@ -15,4 +15,8 @@ export {
 export type { CharacterIconName, CharacterIconThemeSet } from './CharacterIconTheme';
 export { collectionPreviewBottomForStage, collectionVisualPalette } from './collectionVisuals';
 export type { CollectionVisualPalette } from './collectionVisuals';
-export { premiumRewardSource } from './premiumRewardVisuals';
+export {
+  collectionBackgroundKeys,
+  isCollectionBackgroundKey,
+  premiumRewardSource,
+} from './premiumRewardVisuals';

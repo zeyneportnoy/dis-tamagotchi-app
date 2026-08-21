@@ -211,6 +211,9 @@ export const tr = {
       noEquipped: 'Henüz seçili sürpriz yok',
       heroHint: 'Kazandığın ödülü seç, odanda hemen gör!',
       remove: 'Seçimi kaldır',
+      editRoom: 'Odamı Düzenle',
+      finishEditing: 'Düzenlemeyi Bitir',
+      removeItem: '{{item}} öğesini kaldır',
       categories: {
         wearable: 'Aksesuar',
         background: 'Arka Plan',
@@ -241,7 +244,7 @@ export const tr = {
         'heart-rug': 'Kalp Halı',
         'heart-flight': 'Kalp Uçuşması',
         'pink-brush': 'Pembe Fırça',
-        'rainbow-room': 'Gökkuşağı Oda',
+        'rainbow-room': 'Gökkuşağı Işıltısı',
         'toy-box': 'Oyuncak Kutusu',
         'rainbow-light': 'Gökkuşağı Işığı',
         'star-brush': 'Mavi Yıldızlı Fırça',

@@ -313,3 +313,13 @@ onboarding ve Mood Lab aynı render bileşenini kullanır.
 - Veli Hesabında bir çocuk kartı seçildiğinde aktif profil kalıcılaştırılır; tamamlanmış profil doğrudan Child Home'a gider.
 - Eksik mevcut profil, hedef `profileId` ve yalnız kendi tamamlanmış alanlarıyla ortak onboarding draft context'ine alınır ve ilk eksik adıma yönlendirilir.
 - Mevcut profil tamamlama adımları yeni profil oluşturmaz; yalnız hedef profili `updateProfile` ile günceller ve tamamlanınca Child Home'a geçer.
+
+# 2026-08-21 — Oda yerleşimleri child-specific ve DEV ekipmanı production inventory'den ayrıdır
+
+- Oda objesi ve basit baş aksesuarı konumları, sahne boyutundan bağımsız normalize `x/y`
+  koordinatları ve kontrollü scale ile child profile kimliği altında sürümlü yerel state olarak saklanır.
+- DEV ortamında katalog sunumu tüm desteklenen öğeleri kilitsiz gösterir; DEV ekipman seçimi ayrı
+  override alanına yazılır ve `inventory_items` unlock/equipped kayıtlarına dokunmaz. Production
+  ortamı mevcut inventory sonucunu aynen kullanır.
+- Gözlük ve maskeler katalog verisinden silinmez; hassas yüz hizası gerektirdiği için customization
+  sunumunda filtrelenir. Home sahnesinde drag responder yalnız açık “Odamı Düzenle” modunda etkinleşir.

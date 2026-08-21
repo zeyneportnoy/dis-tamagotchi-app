@@ -1,6 +1,6 @@
 import { router, type Href, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { getChildExperienceUseCases } from '@/application/child';
@@ -30,9 +30,22 @@ import {
   CharacterAvatar,
   CharacterSceneDecor,
   CharacterScreenBackdrop,
+  premiumRewardSource,
   sceneBackgroundForCharacter,
   sceneToneForCharacter,
 } from '@/features/character';
+import {
+  SceneCustomizationItem,
+  defaultPlacementFor,
+  emptyCustomizationState,
+  loadCustomizationState,
+  presentCustomizationInventory,
+  saveDeveloperEquippedItem,
+  saveItemPlacement,
+  type CustomizationState,
+  type ItemPlacement,
+  type SceneSize,
+} from '@/features/customization';
 
 type TaskCardProps = {
   completed: boolean;
@@ -50,6 +63,7 @@ type HomeData = Readonly<{
   profiles: readonly ChildProfileViewModel[];
   progress: ProfileProgress;
   equipped: readonly InventoryItem[];
+  customization: CustomizationState;
 }>;
 
 async function readHomeData(): Promise<HomeData | 'onboarding' | 'age-band-update'> {
@@ -61,15 +75,15 @@ async function readHomeData(): Promise<HomeData | 'onboarding' | 'age-band-updat
   if (!active) return 'onboarding';
   if (isLegacyAgeBand(active.ageBand)) return 'age-band-update';
   const childUseCases = await getChildExperienceUseCases();
-  const [progress, equipped] = await Promise.all([
+  const [progress, inventory, customization] = await Promise.all([
     childUseCases.getProgress(active.id),
-    childUseCases.getEquippedItems
-      ? childUseCases.getEquippedItems(active.id)
-      : childUseCases.getEquippedItem
-        ? childUseCases.getEquippedItem(active.id).then((item) => (item ? [item] : []))
-        : Promise.resolve([]),
+    childUseCases.listInventory(active.id),
+    loadCustomizationState(active.id),
   ]);
-  return { active, equipped, profiles, progress };
+  const equipped = presentCustomizationInventory(inventory, customization, __DEV__).filter(
+    (item) => item.equipped,
+  );
+  return { active, customization, equipped, profiles, progress };
 }
 
 function TaskCard({
@@ -122,12 +136,17 @@ export default function ChildHomeScreen() {
   const [profiles, setProfiles] = useState<readonly ChildProfileViewModel[]>([]);
   const [progress, setProgress] = useState<ProfileProgress | null>(null);
   const [equipped, setEquipped] = useState<readonly InventoryItem[]>([]);
+  const [customization, setCustomization] = useState<CustomizationState>(emptyCustomizationState);
+  const [editMode, setEditMode] = useState(false);
+  const [sceneSize, setSceneSize] = useState<SceneSize>({ height: 0, width: 0 });
   const [pickerVisible, setPickerVisible] = useState(false);
   const [failed, setFailed] = useState(false);
 
   const applyData = (data: HomeData): void => {
     setProgress(data.progress);
     setEquipped(data.equipped);
+    setCustomization(data.customization);
+    setEditMode(false);
     setActive(data.active);
     setProfiles(data.profiles);
   };
@@ -170,18 +189,25 @@ export default function ChildHomeScreen() {
   const roomBackground = equipped.find((item) => item.slot === 'background');
   const roomDecor = equipped.find((item) => item.slot === 'decor');
   const roomEffect = equipped.find((item) => item.slot === 'effect');
-  const roomTone =
-    roomBackground?.key === 'space-room' || roomBackground?.key === 'night-room'
-      ? '#343064'
-      : roomBackground?.key === 'forest-room'
-        ? '#D6EDCE'
-        : roomBackground?.key === 'undersea-room'
-          ? '#BCECE8'
-          : roomBackground?.key === 'rainbow-cape' || roomBackground?.key === 'rainbow-room'
-            ? '#F4D7F5'
-            : roomBackground
-              ? '#E9E0FF'
-              : undefined;
+  const roomWearable = equipped.find((item) => item.slot === 'wearable');
+
+  const updatePlacement = (itemKey: InventoryItem['key'], placement: ItemPlacement): void => {
+    setCustomization((current) => ({
+      ...current,
+      placements: { ...current.placements, [itemKey]: placement },
+    }));
+    void saveItemPlacement(active.id, itemKey, placement).then(setCustomization);
+  };
+
+  const removeSceneItem = async (item: InventoryItem): Promise<void> => {
+    setEquipped((current) => current.filter((equippedItem) => equippedItem.slot !== item.slot));
+    if (__DEV__) {
+      setCustomization(await saveDeveloperEquippedItem(active.id, item.slot, null));
+      return;
+    }
+    const child = await getChildExperienceUseCases();
+    await child.unequipAccessorySlot(active.id, item.slot);
+  };
 
   return (
     <Screen
@@ -206,36 +232,51 @@ export default function ChildHomeScreen() {
           </Pressable>
         </View>
 
-        <View style={[styles.characterStage, roomTone ? { backgroundColor: roomTone } : null]}>
-          <CharacterSceneDecor tone={sceneToneForCharacter(active.avatarId)} />
-          <View style={styles.window}>
-            <View style={styles.windowVertical} />
-            <View style={styles.windowHorizontal} />
-            <View style={styles.cloudOne} />
-            <View style={styles.cloudTwo} />
-            <View style={styles.windowHill} />
-          </View>
-          <View style={styles.pictureFrame}>
-            <View style={styles.pictureSky}>
-              <Text style={styles.pictureIcon}>✦</Text>
-            </View>
-          </View>
-          <View style={styles.floor}>
-            <View style={[styles.floorLine, styles.floorLineOne]} />
-            <View style={[styles.floorLine, styles.floorLineTwo]} />
-            <View style={[styles.floorLine, styles.floorLineThree]} />
-          </View>
-          <View style={[styles.plant, styles.plantLeft]}>
-            <View style={[styles.leaf, styles.leafLeft]} />
-            <View style={[styles.leaf, styles.leafRight]} />
-            <View style={styles.pot} />
-          </View>
-          <View style={[styles.plant, styles.plantRight]}>
-            <View style={[styles.leaf, styles.leafLeft]} />
-            <View style={[styles.leaf, styles.leafRight]} />
-            <View style={styles.pot} />
-          </View>
-          <View style={styles.rug} />
+        <View
+          onLayout={(event) => setSceneSize(event.nativeEvent.layout)}
+          style={styles.characterStage}
+          testID="home-character-scene"
+        >
+          {roomBackground ? (
+            <Image
+              resizeMode="cover"
+              source={premiumRewardSource(roomBackground.key)}
+              style={styles.selectedRoomBackground}
+              testID={`home-background-${roomBackground.key}`}
+            />
+          ) : (
+            <>
+              <CharacterSceneDecor tone={sceneToneForCharacter(active.avatarId)} />
+              <View style={styles.window}>
+                <View style={styles.windowVertical} />
+                <View style={styles.windowHorizontal} />
+                <View style={styles.cloudOne} />
+                <View style={styles.cloudTwo} />
+                <View style={styles.windowHill} />
+              </View>
+              <View style={styles.pictureFrame}>
+                <View style={styles.pictureSky}>
+                  <Text style={styles.pictureIcon}>✦</Text>
+                </View>
+              </View>
+              <View style={styles.floor}>
+                <View style={[styles.floorLine, styles.floorLineOne]} />
+                <View style={[styles.floorLine, styles.floorLineTwo]} />
+                <View style={[styles.floorLine, styles.floorLineThree]} />
+              </View>
+              <View style={[styles.plant, styles.plantLeft]}>
+                <View style={[styles.leaf, styles.leafLeft]} />
+                <View style={[styles.leaf, styles.leafRight]} />
+                <View style={styles.pot} />
+              </View>
+              <View style={[styles.plant, styles.plantRight]}>
+                <View style={[styles.leaf, styles.leafLeft]} />
+                <View style={[styles.leaf, styles.leafRight]} />
+                <View style={styles.pot} />
+              </View>
+              <View style={styles.rug} />
+            </>
+          )}
           {roomEffect ? (
             <View pointerEvents="none" style={styles.selectedRoomEffect}>
               <Text style={styles.effectOne}>{roomEffect.icon}</Text>
@@ -244,22 +285,29 @@ export default function ChildHomeScreen() {
             </View>
           ) : null}
           {roomDecor ? (
-            <Text
-              style={[
-                styles.selectedRoomDecor,
-                roomDecor.key === 'cozy-scarf' && styles.selectedCloudCushion,
-              ]}
-            >
-              {roomDecor.icon}
-            </Text>
+            <SceneCustomizationItem
+              accessibilityLabel={t(`rewards.items.${roomDecor.key}`)}
+              editable={editMode}
+              itemKey={roomDecor.key}
+              key={`${active.id}:${roomDecor.key}`}
+              kind="decor"
+              onPlacementChange={(placement) => updatePlacement(roomDecor.key, placement)}
+              onRemove={() => void removeSceneItem(roomDecor)}
+              placement={
+                customization.placements[roomDecor.key] ?? defaultPlacementFor(roomDecor.key)
+              }
+              removeLabel={t('collection.removeItem', {
+                item: t(`rewards.items.${roomDecor.key}`),
+              })}
+              renderMode="symbol"
+              sceneSize={sceneSize}
+              zIndex={2}
+            />
           ) : null}
           <Text style={[styles.sceneSparkle, styles.sceneSparkleLeft]}>✦</Text>
           <Text style={[styles.sceneSparkle, styles.sceneSparkleRight]}>✦</Text>
           <View style={styles.heroCharacter}>
             <CharacterAvatar
-              accessoryKeys={equipped
-                .filter((item) => item.slot === 'wearable')
-                .map((item) => item.key)}
               characterKey={active.avatarId}
               growthStage={growthStage}
               mood={deriveHomeCharacterMood(progress)}
@@ -267,6 +315,35 @@ export default function ChildHomeScreen() {
               surface="plain"
             />
           </View>
+          {roomWearable ? (
+            <SceneCustomizationItem
+              accessibilityLabel={t(`rewards.items.${roomWearable.key}`)}
+              editable={editMode}
+              itemKey={roomWearable.key}
+              key={`${active.id}:${roomWearable.key}`}
+              kind="wearable"
+              onPlacementChange={(placement) => updatePlacement(roomWearable.key, placement)}
+              onRemove={() => void removeSceneItem(roomWearable)}
+              placement={
+                customization.placements[roomWearable.key] ?? defaultPlacementFor(roomWearable.key)
+              }
+              removeLabel={t('collection.removeItem', {
+                item: t(`rewards.items.${roomWearable.key}`),
+              })}
+              sceneSize={sceneSize}
+              zIndex={4}
+            />
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setEditMode((current) => !current)}
+            style={[styles.editRoomButton, editMode && styles.editRoomButtonActive]}
+            testID="room-edit-mode-toggle"
+          >
+            <Text style={styles.editRoomButtonText}>
+              {t(editMode ? 'collection.finishEditing' : 'collection.editRoom')}
+            </Text>
+          </Pressable>
         </View>
 
         <View style={styles.growthCard}>
@@ -405,6 +482,16 @@ const styles = StyleSheet.create({
     position: 'absolute',
     zIndex: 1,
   },
+  selectedRoomBackground: {
+    bottom: 0,
+    height: '100%',
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    width: '100%',
+    zIndex: 0,
+  },
   selectedCloudCushion: {
     bottom: 4,
     fontSize: 76,
@@ -446,6 +533,22 @@ const styles = StyleSheet.create({
   closeIcon: { color: colors.brandPrimary, fontSize: 34, lineHeight: 38 },
   content: { flexGrow: 1, gap: 12, paddingBottom: spacing.md },
   eveningCard: { backgroundColor: '#EEE9FF' },
+  editRoomButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderColor: 'rgba(255,255,255,0.96)',
+    borderRadius: radii.pill,
+    borderWidth: 2,
+    justifyContent: 'center',
+    minHeight: minimumTouchTarget,
+    paddingHorizontal: spacing.md,
+    position: 'absolute',
+    right: spacing.sm,
+    top: spacing.sm,
+    zIndex: 7,
+  },
+  editRoomButtonActive: { borderColor: colors.brandPrimary },
+  editRoomButtonText: { color: colors.brandPrimary, fontSize: 13, fontWeight: '900' },
   floor: {
     backgroundColor: '#F4C7B4',
     bottom: 0,

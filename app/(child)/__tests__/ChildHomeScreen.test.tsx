@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { StyleSheet } from 'react-native';
 
 import { minimumTouchTarget } from '@/design-system';
+import type { InventoryItem } from '@/domain/rewards';
 
 import ChildHomeScreen from '../index';
 
@@ -19,6 +20,9 @@ const defaultProgress = {
   lastBrushingAt: null,
 };
 const mockGetProgress = jest.fn((_profileId: string) => Promise.resolve(defaultProgress));
+const mockListInventory = jest.fn<Promise<readonly InventoryItem[]>, []>(() =>
+  Promise.resolve([]),
+);
 const mockHomeProfiles = [
   { id: 'profile-1', nickname: 'Ege', ageBand: '4_6', avatarId: 'inci' },
   { id: 'profile-2', nickname: 'Ada', ageBand: '7_11', avatarId: 'kaan' },
@@ -32,6 +36,8 @@ jest.mock('@/application/child', () => ({
   getChildExperienceUseCases: () =>
     Promise.resolve({
       getProgress: mockGetProgress,
+      listInventory: mockListInventory,
+      unequipAccessorySlot: jest.fn(),
     }),
 }));
 jest.mock('@/application/family', () => ({
@@ -59,6 +65,7 @@ describe('Child Home route', () => {
     jest.clearAllMocks();
     mockActiveHomeProfileId = 'profile-1';
     mockGetProgress.mockResolvedValue(defaultProgress);
+    mockListInventory.mockResolvedValue([]);
   });
 
   it('reloads child-specific Home data after selecting another profile', async () => {
@@ -124,6 +131,40 @@ describe('Child Home route', () => {
     await waitFor(() => expect(view.getByRole('button', { name: 'Fırçalayalım!' })).toBeTruthy());
     await fireEvent.press(view.getByRole('button', { name: 'Fırçalayalım!' }));
     expect(router.push).toHaveBeenCalledWith('/brushing');
+  });
+
+  it('keeps room items fixed until the explicit edit mode is opened', async () => {
+    const view = await render(<ChildHomeScreen />);
+    const edit = await view.findByRole('button', { name: 'Odamı Düzenle' });
+    await fireEvent.press(edit);
+    expect(view.getByRole('button', { name: 'Düzenlemeyi Bitir' })).toBeTruthy();
+    await fireEvent.press(view.getByRole('button', { name: 'Düzenlemeyi Bitir' }));
+    expect(view.getByRole('button', { name: 'Odamı Düzenle' })).toBeTruthy();
+  });
+
+  it('renders the selected background as the full character scene backdrop', async () => {
+    mockListInventory.mockResolvedValue([
+      {
+        equipped: true,
+        icon: '🌊',
+        key: 'undersea-room',
+        slot: 'background',
+        unlocked: true,
+        unlockedAt: '2026-08-21T00:00:00.000Z',
+        unlockXp: 560,
+      },
+    ]);
+    const view = await render(<ChildHomeScreen />);
+    const background = await view.findByTestId('home-background-undersea-room');
+    expect(StyleSheet.flatten(background.props.style)).toMatchObject({
+      bottom: 0,
+      height: '100%',
+      left: 0,
+      position: 'absolute',
+      right: 0,
+      top: 0,
+      width: '100%',
+    });
   });
 
   it('opens morning and evening brushing from the full accessible task cards', async () => {
