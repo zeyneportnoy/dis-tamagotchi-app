@@ -68,6 +68,11 @@ describe('Brushing session route', () => {
     expect(view.getByText('1 / 4')).toBeTruthy();
     expect(view.getByText(/^(?:29|30)$/)).toBeTruthy();
     expect(view.getByLabelText(/^Toplam (?:119|120) saniye kaldı$/)).toBeTruthy();
+    expect(view.getByTestId('brushing-character-layer')).toHaveStyle({
+      opacity: 1,
+      overflow: 'visible',
+      zIndex: 3,
+    });
     expect(view.getByTestId('character-inci', { includeHiddenElements: true })).toBeTruthy();
     expect(
       view.getByTestId('character-phase-resting', { includeHiddenElements: true }),
@@ -87,6 +92,10 @@ describe('Brushing session route', () => {
     await fireEvent.press(view.getByTestId('brushing-exit-button'));
     expect(view.getByText('Fırçalamadan çıkmak istiyor musun?')).toBeTruthy();
     expect(view.getByText('Bu fırçalama tamamlanmadı olarak kalacak.')).toBeTruthy();
+    expect(view.getByTestId('exit-character-sad')).toBeTruthy();
+    expect(view.getAllByTestId('character-inci', { includeHiddenElements: true })).toHaveLength(2);
+    expect(view.getByTestId('character-mood-sad', { includeHiddenElements: true })).toBeTruthy();
+    expect(view.queryByText('?')).toBeNull();
     await fireEvent.press(view.getByRole('button', { name: 'Devam et' }));
     expect(view.getByRole('button', { name: 'Duraklat' })).toBeTruthy();
     await fireEvent.press(view.getByTestId('brushing-exit-button'));

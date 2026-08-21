@@ -11,6 +11,7 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { getFamilyUseCases } from '@/application/family';
 
 import {
   Button,
@@ -24,7 +25,13 @@ import {
 } from '@/design-system';
 import { starterAvatarKeys, type StarterAvatarKey } from '@/domain/family';
 import type { CharacterGrowthStage } from '@/domain/rewards';
-import { CharacterAvatar } from '@/features/character';
+import {
+  CharacterAvatar,
+  CharacterSceneDecor,
+  CharacterScreenBackdrop,
+  sceneBackgroundForCharacter,
+  sceneToneForCharacter,
+} from '@/features/character';
 import { useOnboardingDraft } from '@/features/onboarding/OnboardingDraftContext';
 import {
   carouselIndexFromOffset,
@@ -51,6 +58,7 @@ export default function CharacterScreen() {
   const wheelCooldown = useRef(false);
   const [carouselWidth, setCarouselWidth] = useState(0);
   const [previewIndex, setPreviewIndex] = useState(0);
+  const [saving, setSaving] = useState(false);
   const selectedIndex = Math.max(
     0,
     starterAvatarKeys.indexOf(draft.avatarId ?? starterAvatarKeys[0]),
@@ -144,7 +152,11 @@ export default function CharacterScreen() {
       : {};
 
   return (
-    <Screen style={styles.screen} testID="character-selection-screen">
+    <Screen
+      style={[styles.screen, { backgroundColor: sceneBackgroundForCharacter(selected) }]}
+      testID="character-selection-screen"
+    >
+      <CharacterScreenBackdrop characterKey={selected} />
       <View style={styles.copy}>
         <Text style={styles.center} variant="title">
           {t('onboarding.character.title')}
@@ -158,6 +170,7 @@ export default function CharacterScreen() {
         style={styles.world}
         testID="character-carousel-region"
       >
+        <CharacterSceneDecor tone={sceneToneForCharacter(selected)} />
         <Text style={styles.sparkleLeft}>✦</Text>
         <Text style={styles.sparkleRight}>★</Text>
         <Pressable
@@ -236,8 +249,20 @@ export default function CharacterScreen() {
       </View>
 
       <Button
+        disabled={saving}
         label={t('common.continue')}
         onPress={() => {
+          if (draft.profileId) {
+            setSaving(true);
+            void getFamilyUseCases()
+              .then((family) => family.updateProfile(draft.profileId!, { avatarId: selected }))
+              .then(() => {
+                draft.reset();
+                router.replace('/(child)');
+              })
+              .catch(() => setSaving(false));
+            return;
+          }
           router.push('/onboarding/summary');
         }}
       />
@@ -274,7 +299,13 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '700',
   },
-  copy: { gap: spacing.xs, paddingHorizontal: spacing.lg },
+  copy: {
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    borderRadius: radii.lg,
+    gap: spacing.xs,
+    marginHorizontal: spacing.lg,
+    padding: spacing.md,
+  },
   disabled: { opacity: 0.3 },
   identity: { alignItems: 'center', gap: spacing.sm },
   pedestal: {

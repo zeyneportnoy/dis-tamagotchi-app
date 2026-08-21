@@ -18,7 +18,15 @@ const defaultProgress = {
   lastInteractionAt: null,
   lastBrushingAt: null,
 };
-const mockGetProgress = jest.fn(() => Promise.resolve(defaultProgress));
+const mockGetProgress = jest.fn((_profileId: string) => Promise.resolve(defaultProgress));
+const mockHomeProfiles = [
+  { id: 'profile-1', nickname: 'Ege', ageBand: '4_6', avatarId: 'inci' },
+  { id: 'profile-2', nickname: 'Ada', ageBand: '7_11', avatarId: 'kaan' },
+] as const;
+let mockActiveHomeProfileId = 'profile-1';
+const mockSelectActiveProfile = jest.fn(async (profileId: string) => {
+  mockActiveHomeProfileId = profileId;
+});
 
 jest.mock('@/application/child', () => ({
   getChildExperienceUseCases: () =>
@@ -30,28 +38,11 @@ jest.mock('@/application/family', () => ({
   getFamilyUseCases: () =>
     Promise.resolve({
       getActiveProfile: () =>
-        Promise.resolve({
-          id: 'profile-1',
-          nickname: 'Ege',
-          ageBand: '4_6',
-          avatarId: 'inci',
-        }),
-      listProfiles: () =>
-        Promise.resolve([
-          {
-            id: 'profile-1',
-            nickname: 'Ege',
-            ageBand: '4_6',
-            avatarId: 'inci',
-          },
-          {
-            id: 'profile-2',
-            nickname: 'Ada',
-            ageBand: '7_11',
-            avatarId: 'kaan',
-          },
-        ]),
-      selectActiveProfile: jest.fn(),
+        Promise.resolve(
+          mockHomeProfiles.find((profile) => profile.id === mockActiveHomeProfileId) ?? null,
+        ),
+      listProfiles: () => Promise.resolve(mockHomeProfiles),
+      selectActiveProfile: mockSelectActiveProfile,
     }),
 }));
 jest.mock('expo-router', () => {
@@ -66,7 +57,35 @@ jest.mock('expo-router', () => {
 describe('Child Home route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockActiveHomeProfileId = 'profile-1';
     mockGetProgress.mockResolvedValue(defaultProgress);
+  });
+
+  it('reloads child-specific Home data after selecting another profile', async () => {
+    mockGetProgress.mockImplementation((profileId?: string) =>
+      Promise.resolve(
+        profileId === 'profile-2'
+          ? {
+              ...defaultProgress,
+              childProfileId: 'profile-2',
+              currentStreak: 4,
+              totalXp: 90,
+              mood: 88,
+            }
+          : defaultProgress,
+      ),
+    );
+    const view = await render(<ChildHomeScreen />);
+    await view.findByText('Merhaba, Ege! 👋');
+
+    await fireEvent.press(view.getByTestId('profile-switcher-trigger'));
+    await fireEvent.press(await view.findByRole('radio', { name: 'Ada' }));
+
+    await waitFor(() => expect(mockSelectActiveProfile).toHaveBeenCalledWith('profile-2'));
+    await waitFor(() => expect(view.getByText('Merhaba, Ada! 👋')).toBeTruthy());
+    expect(mockGetProgress).toHaveBeenLastCalledWith('profile-2');
+    expect(view.getAllByTestId('character-kaan', { includeHiddenElements: true })).toHaveLength(2);
+    expect(view.getByText('Bebek diş evresine 30 XP kaldı')).toBeTruthy();
   });
 
   it('shows the active profile character, brushing cards and primary action', async () => {

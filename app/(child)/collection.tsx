@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { getChildExperienceUseCases } from '@/application/child';
@@ -21,25 +22,20 @@ import {
   type InventoryItem,
   type RewardItemKey,
 } from '@/domain/rewards';
-import { CharacterAccessory, CharacterAvatar } from '@/features/character';
+import {
+  CharacterAvatar,
+  CharacterSceneDecor,
+  CharacterScreenBackdrop,
+  categoryIconName,
+  characterIconSource,
+  collectionPreviewBottomForStage,
+  collectionVisualPalette,
+  premiumRewardSource,
+  sceneBackgroundForCharacter,
+  sceneToneForCharacter,
+} from '@/features/character';
 
-const categories: readonly { icon: string; slot: AccessorySlot }[] = [
-  { icon: '🏠', slot: 'background' },
-  { icon: '🪴', slot: 'decor' },
-  { icon: '✨', slot: 'effect' },
-  { icon: '👑', slot: 'wearable' },
-];
-
-const backgroundColors: Partial<Record<RewardItemKey, string>> = {
-  'pastel-playroom': '#E9E0FF',
-  'cloud-room': '#DDF4FF',
-  'rainbow-room': '#F7DDF2',
-  'space-room': '#312A67',
-  'undersea-room': '#BCECE8',
-  'rainbow-cape': '#F8D4E7',
-  'night-room': '#292857',
-  'forest-room': '#D6EDCE',
-};
+const categories: readonly AccessorySlot[] = ['background', 'decor', 'effect', 'wearable'];
 
 const decorStyleFor = (key: RewardItemKey) => {
   if (key === 'heart-badge' || key === 'moon-lamp') return styles.decorWall;
@@ -58,24 +54,31 @@ export default function CollectionScreen() {
   const [lockedMessage, setLockedMessage] = useState(false);
   const [failed, setFailed] = useState(false);
 
-  const load = async (): Promise<void> => {
-    const activeProfile = await (await getFamilyUseCases()).getActiveProfile();
-    if (!activeProfile) throw new Error('PROFILE_NOT_FOUND');
-    setProfile(activeProfile);
-    const child = await getChildExperienceUseCases();
-    const [inventory, progress] = await Promise.all([
-      child.listInventory(activeProfile.id),
-      child.getProgress(activeProfile.id),
-    ]);
-    setItems(inventory);
-    setGrowthStage(growthStageForXp(progress.totalXp));
-  };
-
-  useEffect(() => {
-    void Promise.resolve()
-      .then(load)
-      .catch(() => setFailed(true));
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      void getFamilyUseCases()
+        .then((family) => family.getActiveProfile())
+        .then(async (activeProfile) => {
+          if (!activeProfile) throw new Error('PROFILE_NOT_FOUND');
+          const child = await getChildExperienceUseCases();
+          const [inventory, progress] = await Promise.all([
+            child.listInventory(activeProfile.id),
+            child.getProgress(activeProfile.id),
+          ]);
+          if (!mounted) return;
+          setProfile(activeProfile);
+          setItems(inventory);
+          setGrowthStage(growthStageForXp(progress.totalXp));
+        })
+        .catch(() => {
+          if (mounted) setFailed(true);
+        });
+      return () => {
+        mounted = false;
+      };
+    }, []),
+  );
 
   const select = async (itemKey: RewardItemKey, unlocked: boolean): Promise<void> => {
     if (!profile || !unlocked) {
@@ -118,9 +121,14 @@ export default function CollectionScreen() {
   const selectedEffect = items.find((item) => item.equipped && item.slot === 'effect');
   const visibleItems = items.filter((item) => item.slot === activeSlot);
   const hasEquippedInSlot = visibleItems.some((item) => item.equipped);
+  const visualPalette = collectionVisualPalette[profile.avatarId];
 
   return (
-    <Screen style={styles.screen} testID="collection-screen">
+    <Screen
+      style={[styles.screen, { backgroundColor: sceneBackgroundForCharacter(profile.avatarId) }]}
+      testID="collection-screen"
+    >
+      <CharacterScreenBackdrop characterKey={profile.avatarId} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.heading} variant="title">
           {t('collection.title')}
@@ -128,29 +136,43 @@ export default function CollectionScreen() {
         <Text style={styles.intro} variant="caption">
           {t('collection.heroHint')}
         </Text>
-        <View
-          style={[
-            styles.hero,
-            selectedBackground
-              ? { backgroundColor: backgroundColors[selectedBackground.key] }
-              : null,
-          ]}
-        >
-          <View style={styles.heroGlow} />
+        <View style={[styles.hero, { backgroundColor: visualPalette.hero }]}>
+          <CharacterSceneDecor tone={sceneToneForCharacter(profile.avatarId)} />
+          {selectedBackground ? (
+            <Image
+              resizeMode="cover"
+              source={premiumRewardSource(selectedBackground.key)}
+              style={styles.previewBackgroundAsset}
+              testID="collection-preview-background"
+            />
+          ) : null}
           <View style={styles.previewFloor} />
           {selectedEffect ? (
             <View pointerEvents="none" style={styles.effectLayer}>
-              <Text style={styles.effectTop}>{selectedEffect.icon}</Text>
-              <Text style={styles.effectLeft}>{selectedEffect.icon}</Text>
-              <Text style={styles.effectRight}>{selectedEffect.icon}</Text>
+              <Image
+                source={premiumRewardSource(selectedEffect.key)}
+                style={styles.effectTop}
+                testID="collection-preview-effect"
+              />
+              <Image source={premiumRewardSource(selectedEffect.key)} style={styles.effectLeft} />
             </View>
           ) : null}
           {selectedDecor ? (
-            <Text style={[styles.decorPreview, decorStyleFor(selectedDecor.key)]}>
-              {selectedDecor.icon}
-            </Text>
+            <View pointerEvents="none" style={styles.decorPreviewLayer}>
+              <Image
+                resizeMode="contain"
+                source={premiumRewardSource(selectedDecor.key)}
+                style={[styles.decorPreview, decorStyleFor(selectedDecor.key)]}
+                testID="collection-preview-decor"
+              />
+            </View>
           ) : null}
-          <View style={styles.characterPreview}>
+          <View
+            style={[
+              styles.characterPreview,
+              { bottom: collectionPreviewBottomForStage(growthStage) },
+            ]}
+          >
             <CharacterAvatar
               accessoryKeys={equippedKeys.filter(
                 (key) => items.find((item) => item.key === key)?.slot === 'wearable',
@@ -166,7 +188,7 @@ export default function CollectionScreen() {
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View accessibilityRole="tablist" style={styles.categories}>
-            {categories.map(({ icon, slot }) => (
+            {categories.map((slot) => (
               <Pressable
                 accessibilityRole="tab"
                 accessibilityState={{ selected: activeSlot === slot }}
@@ -175,11 +197,26 @@ export default function CollectionScreen() {
                   setActiveSlot(slot);
                   setLockedMessage(false);
                 }}
-                style={[styles.category, activeSlot === slot && styles.categoryActive]}
+                style={[
+                  styles.category,
+                  { backgroundColor: visualPalette.card },
+                  activeSlot === slot && styles.categoryActive,
+                  activeSlot === slot && {
+                    backgroundColor: visualPalette.selectedCard,
+                    borderColor: visualPalette.accent,
+                  },
+                ]}
               >
-                <Text style={styles.categoryIcon}>{icon}</Text>
+                <Image
+                  source={characterIconSource(profile.avatarId, categoryIconName(slot))}
+                  style={styles.categoryIcon}
+                />
                 <Text
-                  style={[styles.categoryLabel, activeSlot === slot && styles.categoryLabelActive]}
+                  style={[
+                    styles.categoryLabel,
+                    activeSlot === slot && styles.categoryLabelActive,
+                    activeSlot === slot && { color: visualPalette.accent },
+                  ]}
                 >
                   {t(`collection.categories.${slot}`)}
                 </Text>
@@ -196,7 +233,9 @@ export default function CollectionScreen() {
               onPress={() => void remove()}
               style={styles.remove}
             >
-              <Text style={styles.removeText}>{t('collection.remove')}</Text>
+              <Text style={[styles.removeText, { color: visualPalette.accent }]}>
+                {t('collection.remove')}
+              </Text>
             </Pressable>
           ) : null}
         </View>
@@ -216,21 +255,28 @@ export default function CollectionScreen() {
               onPress={() => void select(item.key, item.unlocked)}
               style={({ pressed }) => [
                 styles.itemCard,
+                { backgroundColor: visualPalette.card },
                 item.equipped && styles.itemEquipped,
+                item.equipped && {
+                  backgroundColor: visualPalette.selectedCard,
+                  borderColor: visualPalette.accent,
+                },
                 !item.unlocked && styles.itemLocked,
                 pressed && styles.pressed,
               ]}
             >
-              <View style={[styles.itemIcon, item.equipped && styles.itemIconSelected]}>
-                {item.unlocked ? (
-                  item.slot === 'wearable' ? (
-                    <CharacterAccessory itemKey={item.key} preview />
-                  ) : (
-                    <Text style={styles.rewardIcon}>{item.icon}</Text>
-                  )
-                ) : (
-                  <Text style={styles.lockIcon}>🔒</Text>
-                )}
+              <View
+                style={[
+                  styles.itemIcon,
+                  { backgroundColor: visualPalette.soft },
+                  item.equipped && styles.itemIconSelected,
+                ]}
+              >
+                <Image
+                  source={premiumRewardSource(item.key)}
+                  style={styles.rewardIcon}
+                  testID={`collection-item-visual-${item.key}`}
+                />
               </View>
               <Text style={styles.itemName}>{t(`rewards.items.${item.key}`)}</Text>
               <Text style={styles.itemStatus}>
@@ -255,17 +301,21 @@ const styles = StyleSheet.create({
   categories: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: 2 },
   category: {
     alignItems: 'center',
-    backgroundColor: colors.white,
-    borderColor: '#E8E1F1',
+    backgroundColor: 'rgba(255,255,255,0.68)',
+    borderColor: 'rgba(255,255,255,0.78)',
     borderRadius: radii.md,
     borderWidth: 2,
     justifyContent: 'center',
     minHeight: minimumTouchTarget + 12,
     paddingVertical: spacing.xs,
     width: 84,
+    shadowColor: '#7B6792',
+    shadowOffset: { height: 3, width: 0 },
+    shadowOpacity: 0.08,
+    shadowRadius: 5,
   },
   categoryActive: { backgroundColor: '#EFE8FF', borderColor: colors.brandPrimary },
-  categoryIcon: { fontSize: 20, lineHeight: 28 },
+  categoryIcon: { height: 28, width: 28 },
   categoryLabel: { fontSize: 10, fontWeight: '700', textAlign: 'center' },
   categoryLabelActive: { color: colors.brandPrimary, fontWeight: '900' },
   content: { gap: spacing.md, paddingBottom: spacing.xl },
@@ -278,17 +328,13 @@ const styles = StyleSheet.create({
     height: 386,
     overflow: 'hidden',
     position: 'relative',
-  },
-  heroGlow: {
-    backgroundColor: 'rgba(255,255,255,0.44)',
-    borderRadius: radii.pill,
-    height: 250,
-    position: 'absolute',
-    top: 24,
-    width: 250,
+    shadowColor: '#7D5FA3',
+    shadowOffset: { height: 8, width: 0 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
   },
   intro: { paddingHorizontal: spacing.md, textAlign: 'center' },
-  characterPreview: { bottom: 32, overflow: 'visible', position: 'absolute', zIndex: 3 },
+  characterPreview: { overflow: 'visible', position: 'absolute', zIndex: 3 },
   previewFloor: {
     backgroundColor: 'rgba(255,255,255,0.38)',
     bottom: 0,
@@ -296,32 +342,60 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: '100%',
   },
-  decorPreview: { fontSize: 52, lineHeight: 76, position: 'absolute', zIndex: 2 },
-  decorCorner: { bottom: 34, left: 20 },
-  decorCloudCushion: {
-    bottom: 66,
-    fontSize: 76,
-    left: '36%',
-    lineHeight: 92,
-    transform: [{ scaleX: 1.35 }],
+  previewBackgroundAsset: {
+    bottom: 0,
+    left: 0,
+    opacity: 0.42,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    zIndex: 1,
   },
-  decorCushion: { bottom: 24, left: '42%' },
-  decorRug: { bottom: 16, fontSize: 72, left: '38%', transform: [{ scaleX: 1.6 }] },
-  decorWall: { fontSize: 43, right: 30, top: 54 },
+  decorPreview: { position: 'absolute' },
+  decorPreviewLayer: {
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    zIndex: 2,
+  },
+  decorCorner: { borderRadius: 48, bottom: 18, height: 96, left: 20, width: 96 },
+  decorCloudCushion: {
+    borderRadius: 54,
+    bottom: 0,
+    height: 108,
+    left: '29%',
+    width: 150,
+  },
+  decorCushion: { borderRadius: 50, bottom: 2, height: 100, left: '32%', width: 120 },
+  decorRug: { borderRadius: 52, bottom: -2, height: 105, left: '25%', width: 160 },
+  decorWall: { borderRadius: 41, height: 82, right: 24, top: 48, width: 82 },
   effectLayer: { height: '100%', position: 'absolute', width: '100%', zIndex: 2 },
-  effectTop: { fontSize: 30, left: '45%', lineHeight: 40, position: 'absolute', top: 32 },
-  effectLeft: { fontSize: 24, left: 38, lineHeight: 34, position: 'absolute', top: 150 },
-  effectRight: { fontSize: 26, lineHeight: 36, position: 'absolute', right: 38, top: 180 },
+  effectTop: { borderRadius: 38, height: 76, position: 'absolute', right: 18, top: 28, width: 76 },
+  effectLeft: {
+    borderRadius: 28,
+    height: 56,
+    left: 18,
+    opacity: 0.78,
+    position: 'absolute',
+    top: 128,
+    width: 56,
+  },
   itemCard: {
     alignItems: 'center',
-    backgroundColor: colors.white,
-    borderColor: '#EEE7E2',
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderColor: 'rgba(255,255,255,0.8)',
     borderRadius: radii.lg,
     borderWidth: 2,
     gap: spacing.xs,
     minHeight: 170,
     padding: spacing.md,
     width: '47%',
+    shadowColor: '#735D86',
+    shadowOffset: { height: 4, width: 0 },
+    shadowOpacity: 0.08,
+    shadowRadius: 7,
   },
   itemEquipped: { backgroundColor: '#FFF5D9', borderColor: colors.brandHighlight },
   itemIcon: {
@@ -342,8 +416,7 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     textAlign: 'center',
   },
-  lockIcon: { fontSize: 30 },
-  rewardIcon: { fontSize: 40, lineHeight: 52 },
+  rewardIcon: { height: 52, width: 52 },
   lockedMessage: { color: colors.brandSecondary, fontWeight: '800', textAlign: 'center' },
   pressed: { opacity: 0.75 },
   remove: {

@@ -295,3 +295,21 @@ viewport gerçek çizim boyutunu değiştirmeden en geniş animasyon karesini ko
 korunur. `CharacterAvatar` ve animasyon katmanı taşmayı kesmez; sahne kartları karakter boyutunu
 küçültmek yerine bu güvenli viewport yüksekliğini ayırır. Home, collection, brushing, completion,
 onboarding ve Mood Lab aynı render bileşenini kullanır.
+
+# 2026-08-21 — Veli hesabından aktif çocuk seçimi
+
+- Veli Hesabındaki mevcut çocuk profilleri, yeni profil oluşturma akışından ayrı tam kart seçimleri olarak sunulur.
+- Seçim mevcut `active_parent_profile` kaydına yazılır; böylece parent isolation korunur ve uygulama yeniden başlatıldığında son seçim geri yüklenir.
+- Child-specific ekranlar profil kimliğini aktif profilden alır. Bellekte tutulan Profil ve Koleksiyon sekmeleri odaklandıklarında aktif profili ve ona bağlı verileri yeniden okur.
+
+# 2026-08-21 — Fırçalama temas koordinatları
+
+- Fırçalama path'i ortak yaklaşık dikdörtgen yerine 8 karakter × 5 lifecycle asset'inin alfa siluetinden güvenli inset ile örneklenen altı temas anchor'ını kullanır.
+- Path koordinatı fırça grubunun sol üstünü değil bristle temas ucunu temsil eder; foam aynı hareketli grubun temas ucuna bağlıdır.
+- Brushing sahnesinde karakter idle transform'u kapatılır; karakter silueti ve temas path'i aynı sabit koordinat sisteminde kalır. Diğer karakter ekranlarının animasyonu değişmez.
+
+# 2026-08-21 — Veli kartından profil tamamlama yönlendirmesi
+
+- Veli Hesabında bir çocuk kartı seçildiğinde aktif profil kalıcılaştırılır; tamamlanmış profil doğrudan Child Home'a gider.
+- Eksik mevcut profil, hedef `profileId` ve yalnız kendi tamamlanmış alanlarıyla ortak onboarding draft context'ine alınır ve ilk eksik adıma yönlendirilir.
+- Mevcut profil tamamlama adımları yeni profil oluşturmaz; yalnız hedef profili `updateProfile` ile günceller ve tamamlanınca Child Home'a geçer.

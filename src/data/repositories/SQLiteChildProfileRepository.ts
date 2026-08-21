@@ -18,7 +18,7 @@ type ProfileRow = {
   family_id: string;
   nickname: string;
   age_band: StoredAgeBand;
-  avatar_id: StarterAvatarKey;
+  avatar_id: string;
   created_at: string;
   archived_at: string | null;
   remote_id: string | null;
@@ -27,12 +27,26 @@ type ProfileRow = {
   updated_at: string;
 };
 
+const legacyAvatarKeys: Record<string, StarterAvatarKey> = {
+  'cheerful-incisor': 'inci',
+  'curious-tooth': 'piril',
+  'brave-canine': 'kaan',
+  'sunny-tooth': 'milo',
+  'starry-tooth': 'zipzip',
+  'shy-tooth': 'topi',
+  'sleepy-molar': 'akil',
+  'giggle-tooth': 'uyku',
+};
+
+const normalizeAvatarKey = (key: string): StarterAvatarKey =>
+  legacyAvatarKeys[key] ?? (key as StarterAvatarKey);
+
 const mapProfile = (row: ProfileRow): ChildProfile => ({
   id: row.id,
   familyId: row.family_id,
   nickname: row.nickname,
   ageBand: row.age_band,
-  avatarId: row.avatar_id,
+  avatarId: normalizeAvatarKey(row.avatar_id),
   createdAt: row.created_at,
   archivedAt: row.archived_at,
   remoteId: row.remote_id,
@@ -177,7 +191,7 @@ export class SQLiteChildProfileRepository implements ChildProfileRepository {
     const updated = {
       nickname: input.nickname ?? current.nickname,
       ageBand: input.ageBand ?? current.age_band,
-      avatarId: input.avatarId ?? current.avatar_id,
+      avatarId: input.avatarId ?? normalizeAvatarKey(current.avatar_id),
     };
     await this.database.withTransactionAsync(async () => {
       await this.database.runAsync(

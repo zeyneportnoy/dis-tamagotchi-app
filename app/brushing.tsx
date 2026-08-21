@@ -37,10 +37,17 @@ import {
   startBrushingTimer,
   type BrushingTimerState,
 } from '@/domain/brushing';
-import { CharacterAvatar, evolutionSequence } from '@/features/character';
+import {
+  CharacterAvatar,
+  CharacterSceneDecor,
+  CharacterScreenBackdrop,
+  evolutionSequence,
+  sceneBackgroundForCharacter,
+  sceneToneForCharacter,
+} from '@/features/character';
 import { useAuth } from '@/features/auth';
 import {
-  brushPathFor,
+  AnimatedToothbrush,
   brushingVoiceCues,
   chooseCompletionJingleIndex,
   completionJingles,
@@ -69,6 +76,13 @@ import type { BrushingPeriod, ProfileProgress } from '@/domain/family';
 const regionKeys = ['rightUpper', 'leftUpper', 'rightLower', 'leftLower'] as const;
 type BrushingRegion = (typeof regionKeys)[number];
 
+const quadrantOverlayPosition: Record<BrushingRegion, { left: number; top: number }> = {
+  rightUpper: { left: 8, top: 8 },
+  leftUpper: { left: 63, top: 8 },
+  rightLower: { left: 8, top: 42 },
+  leftLower: { left: 63, top: 42 },
+};
+
 function SmileQuadrant({ activeRegion }: { activeRegion: BrushingRegion }) {
   return (
     <View style={styles.smileMap} testID={`smile-quadrant-${activeRegion}`}>
@@ -79,121 +93,8 @@ function SmileQuadrant({ activeRegion }: { activeRegion: BrushingRegion }) {
       />
       <View
         testID={`quadrant-${activeRegion}`}
-        style={[
-          styles.smileActiveOverlay,
-          activeRegion === 'rightUpper' && styles.smileActiveRightUpper,
-          activeRegion === 'leftUpper' && styles.smileActiveLeftUpper,
-          activeRegion === 'rightLower' && styles.smileActiveRightLower,
-          activeRegion === 'leftLower' && styles.smileActiveLeftLower,
-        ]}
+        style={[styles.smileActiveOverlay, quadrantOverlayPosition[activeRegion]]}
       />
-    </View>
-  );
-}
-
-function AnimatedToothbrush({
-  characterKey,
-  growthStage,
-  progress,
-  segmentIndex,
-}: {
-  characterKey: ChildProfileViewModel['avatarId'];
-  growthStage: ReturnType<typeof growthStageForXp>;
-  progress: number;
-  segmentIndex: number;
-}) {
-  const [stroke] = useState(() => new Animated.Value(0));
-  const [pathVariant, setPathVariant] = useState(0);
-  const points = brushPathFor(characterKey, growthStage, pathVariant + segmentIndex);
-
-  useEffect(() => {
-    stroke.setValue(0);
-    const movement = Animated.timing(stroke, {
-      duration: 2900,
-      easing: Easing.inOut(Easing.sin),
-      toValue: 1,
-      useNativeDriver: true,
-    });
-    movement.start(({ finished }) => {
-      if (finished) setPathVariant((current) => (current + 1) % 3);
-    });
-    return () => movement.stop();
-  }, [pathVariant, segmentIndex, stroke]);
-
-  return (
-    <View pointerEvents="none" style={styles.brushAnimation} testID="animated-toothbrush">
-      <Animated.View
-        style={[
-          styles.brushPath,
-          {
-            transform: [
-              {
-                translateX: stroke.interpolate({
-                  inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
-                  outputRange: points.map(({ x }) => x - 118),
-                }),
-              },
-              {
-                translateY: stroke.interpolate({
-                  inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
-                  outputRange: points.map(({ y }) => y - 8),
-                }),
-              },
-              {
-                rotate: stroke.interpolate({
-                  inputRange: [0, 0.25, 0.5, 0.75, 1],
-                  outputRange: ['-14deg', '-5deg', '-11deg', '2deg', '-14deg'],
-                }),
-              },
-            ],
-          },
-        ]}
-      >
-        <Animated.View
-          style={[
-            styles.foamLayer,
-            {
-              opacity: stroke.interpolate({
-                inputRange: [0, 0.35, 0.7, 1],
-                outputRange: [0.48, 1, 0.66, 0.48],
-              }),
-              transform: [
-                {
-                  translateY: stroke.interpolate({ inputRange: [0, 1], outputRange: [2, -9] }),
-                },
-                {
-                  scale: stroke.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [0.8, 1.12, 0.8],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={[styles.foamBubble, styles.foamBubbleOne]} />
-          <View style={[styles.foamBubble, styles.foamBubbleTwo]} />
-          <View style={[styles.foamBubble, styles.foamBubbleThree]} />
-          <View style={[styles.foamBubble, styles.foamBubbleFour]} />
-        </Animated.View>
-        <View style={styles.toothbrush}>
-          <View style={styles.brushHandle}>
-            <View style={styles.brushGrip} />
-          </View>
-          <View style={styles.brushNeck} />
-          <View style={styles.brushHead}>
-            <View style={styles.bristleRow}>
-              <View style={styles.bristle} />
-              <View style={styles.bristle} />
-              <View style={styles.bristle} />
-              <View style={styles.bristle} />
-            </View>
-          </View>
-        </View>
-      </Animated.View>
-      <View style={[styles.cleanShine, { opacity: 0.15 + progress * 0.85 }]}>
-        <Text style={styles.cleanShineText}>✦</Text>
-      </View>
     </View>
   );
 }
@@ -826,12 +727,20 @@ export default function BrushingScreen() {
   if (result) {
     const completionStage = growthStageForXp(result.progress.totalXp);
     return (
-      <Screen style={styles.completionScreen} testID="brushing-complete-screen">
+      <Screen
+        style={[
+          styles.completionScreen,
+          { backgroundColor: sceneBackgroundForCharacter(profile.avatarId) },
+        ]}
+        testID="brushing-complete-screen"
+      >
+        <CharacterScreenBackdrop characterKey={profile.avatarId} />
         <ScrollView
           contentContainerStyle={styles.completionContent}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.celebrationStage}>
+            <CharacterSceneDecor tone={sceneToneForCharacter(profile.avatarId)} />
             <CompletionCelebration stage={completionStage} />
             <Text style={styles.confettiLeft}>✦</Text>
             <Text style={styles.confettiRight}>★</Text>
@@ -962,7 +871,11 @@ export default function BrushingScreen() {
     }
   };
   return (
-    <Screen style={styles.screen} testID="brushing-session-screen">
+    <Screen
+      style={[styles.screen, { backgroundColor: sceneBackgroundForCharacter(profile.avatarId) }]}
+      testID="brushing-session-screen"
+    >
+      <CharacterScreenBackdrop characterKey={profile.avatarId} />
       <Pressable
         accessibilityLabel={t('brushing.exit')}
         accessibilityRole="button"
@@ -1016,14 +929,18 @@ export default function BrushingScreen() {
             ))}
           </View>
           <View style={styles.brushingStage}>
-            <Text style={styles.bubbleOne}>✦</Text>
-            <Text style={styles.bubbleTwo}>✦</Text>
-            <View style={styles.stageRug} />
-            <View style={styles.brushingCharacterZone}>
+            <View pointerEvents="none" style={styles.brushingBackgroundLayer}>
+              <CharacterSceneDecor density="calm" tone={sceneToneForCharacter(profile.avatarId)} />
+              <Text style={styles.bubbleOne}>✦</Text>
+              <Text style={styles.bubbleTwo}>✦</Text>
+              <View style={styles.stageRug} />
+            </View>
+            <View style={styles.brushingCharacterZone} testID="brushing-character-layer">
               <CharacterAvatar
                 characterKey={profile.avatarId}
                 growthStage={growthStageForXp(initialProgress.totalXp)}
                 mood="energetic"
+                motionEnabled={false}
                 phase="resting"
                 size="large"
                 surface="plain"
@@ -1077,8 +994,17 @@ export default function BrushingScreen() {
       {exitConfirmation ? (
         <View accessibilityViewIsModal style={styles.modalBackdrop}>
           <View accessibilityViewIsModal style={styles.dialog} testID="exit-confirmation">
-            <View style={styles.dialogIcon}>
-              <Text style={styles.dialogIconText}>?</Text>
+            <View style={styles.dialogCharacterHero} testID="exit-character-sad">
+              <View style={styles.dialogCharacterScale}>
+                <CharacterAvatar
+                  characterKey={profile.avatarId}
+                  growthStage={currentGrowthStage}
+                  mood="sad"
+                  motionEnabled={false}
+                  size="large"
+                  surface="plain"
+                />
+              </View>
             </View>
             <Text style={styles.centerText} variant="title">
               {t('brushing.exitQuestion')}
@@ -1099,45 +1025,6 @@ export default function BrushingScreen() {
 }
 
 const styles = StyleSheet.create({
-  bristle: { backgroundColor: '#FFFFFF', borderRadius: 2, height: 11, width: 4 },
-  bristleRow: { flexDirection: 'row', gap: 2, position: 'absolute', right: 3, top: -8 },
-  brushAnimation: {
-    height: 190,
-    left: 0,
-    overflow: 'hidden',
-    position: 'absolute',
-    top: 0,
-    width: 195,
-    zIndex: 5,
-  },
-  brushGrip: {
-    backgroundColor: '#7256CF',
-    borderRadius: 6,
-    height: 8,
-    marginLeft: 12,
-    marginTop: 5,
-    width: 48,
-  },
-  brushHandle: {
-    backgroundColor: '#42D6C5',
-    borderColor: '#FFFFFF',
-    borderBottomLeftRadius: 13,
-    borderTopLeftRadius: 13,
-    borderWidth: 3,
-    height: 24,
-    width: 78,
-  },
-  brushHead: {
-    backgroundColor: '#FF6B81',
-    borderColor: '#FFFFFF',
-    borderBottomRightRadius: 9,
-    borderTopRightRadius: 9,
-    borderWidth: 3,
-    height: 22,
-    width: 32,
-  },
-  brushNeck: { backgroundColor: '#42D6C5', height: 12, width: 24 },
-  brushPath: { left: 0, position: 'absolute', top: 0 },
   bubbleOne: {
     color: colors.brandHighlight,
     fontSize: 24,
@@ -1164,12 +1051,22 @@ const styles = StyleSheet.create({
     bottom: 8,
     justifyContent: 'center',
     left: 8,
+    opacity: 1,
+    overflow: 'visible',
     position: 'absolute',
     top: 8,
+    transform: [{ scale: 1 }],
     width: 250,
+    zIndex: 3,
   },
-  cleanShine: { position: 'absolute', right: 22, top: 28 },
-  cleanShineText: { color: '#FFD166', fontSize: 32 },
+  brushingBackgroundLayer: {
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    zIndex: 0,
+  },
   celebrationRug: {
     backgroundColor: '#D783C1',
     borderRadius: radii.pill,
@@ -1225,16 +1122,15 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     width: '100%',
   },
-  dialogIcon: {
+  dialogCharacterHero: {
     alignItems: 'center',
     alignSelf: 'center',
-    backgroundColor: '#FFF0C9',
-    borderRadius: radii.pill,
-    height: 64,
+    height: 148,
     justifyContent: 'center',
-    width: 64,
+    overflow: 'hidden',
+    width: 180,
   },
-  dialogIconText: { color: colors.brandSecondary, fontSize: 34, fontWeight: '900', lineHeight: 40 },
+  dialogCharacterScale: { transform: [{ scale: 0.58 }] },
   dialogDescription: { color: colors.textPrimary, opacity: 0.72, textAlign: 'center' },
   eyebrow: {
     backgroundColor: '#F0EAFE',
@@ -1258,18 +1154,6 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   exitIcon: { color: colors.brandPrimary, fontSize: 34, fontWeight: '700', lineHeight: 38 },
-  foamBubble: {
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    borderColor: '#D7F8F4',
-    borderRadius: 20,
-    borderWidth: 2,
-    position: 'absolute',
-  },
-  foamBubbleFour: { height: 12, left: 33, top: 23, width: 12 },
-  foamBubbleOne: { height: 23, left: 12, top: 28, width: 23 },
-  foamBubbleThree: { height: 15, left: 27, top: 5, width: 15 },
-  foamBubbleTwo: { height: 17, left: 1, top: 12, width: 17 },
-  foamLayer: { height: 48, left: 100, position: 'absolute', top: -24, width: 40 },
   instruction: { fontSize: 22, fontWeight: '700', lineHeight: 30, textAlign: 'center' },
   mouthMap: {
     bottom: 16,
@@ -1277,6 +1161,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 8,
     width: 126,
+    zIndex: 7,
   },
   modalBackdrop: {
     backgroundColor: 'rgba(38,50,56,0.36)',
@@ -1342,8 +1227,10 @@ const styles = StyleSheet.create({
   segmentTrack: { flexDirection: 'row', gap: spacing.sm, width: '100%' },
   secondsLabel: { fontSize: 14, fontWeight: '800', lineHeight: 18 },
   sessionCard: {
-    backgroundColor: colors.white,
+    backgroundColor: 'rgba(255,255,255,0.78)',
+    borderColor: 'rgba(255,255,255,0.86)',
     borderRadius: 32,
+    borderWidth: 1,
     gap: spacing.md,
     padding: spacing.md,
   },
@@ -1355,8 +1242,6 @@ const styles = StyleSheet.create({
     paddingTop: 68,
   },
   sessionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  smileActiveLeftLower: { bottom: 8, right: 8 },
-  smileActiveLeftUpper: { right: 8, top: 8 },
   smileActiveOverlay: {
     backgroundColor: 'rgba(129,80,230,0.28)',
     borderColor: '#9E6BFF',
@@ -1369,8 +1254,6 @@ const styles = StyleSheet.create({
     shadowRadius: 7,
     width: 55,
   },
-  smileActiveRightLower: { bottom: 8, left: 8 },
-  smileActiveRightUpper: { left: 8, top: 8 },
   smileMap: { flex: 1, overflow: 'hidden' },
   smileMapImage: { height: '100%', width: '100%' },
   screen: { justifyContent: 'flex-start', padding: 0 },
@@ -1393,7 +1276,6 @@ const styles = StyleSheet.create({
   },
   timerText: { fontSize: 30, fontWeight: '900', lineHeight: 34 },
   totalRemaining: { fontSize: 15, lineHeight: 20, opacity: 0.68, textAlign: 'center' },
-  toothbrush: { alignItems: 'center', flexDirection: 'row' },
   unlockResult: { color: colors.brandPrimary, fontWeight: '900', textAlign: 'center' },
   unlockCard: {
     backgroundColor: '#FFF0C9',

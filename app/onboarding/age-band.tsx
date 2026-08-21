@@ -2,12 +2,27 @@ import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
+import { getFamilyUseCases } from '@/application/family';
 import { Button, Screen, Text, colors, minimumTouchTarget, radii, spacing } from '@/design-system';
 import { useOnboardingDraft } from '@/features/onboarding/OnboardingDraftContext';
 
 export default function AgeBandScreen() {
   const { t } = useTranslation();
   const draft = useOnboardingDraft();
+  const continueFlow = async (): Promise<void> => {
+    if (!draft.ageBand) return;
+    if (draft.profileId) {
+      await (
+        await getFamilyUseCases()
+      ).updateProfile(draft.profileId, {
+        ageBand: draft.ageBand,
+      });
+      if (!draft.avatarId) return router.replace('/onboarding/character');
+      draft.reset();
+      return router.replace('/(child)');
+    }
+    router.push('/onboarding/character');
+  };
   return (
     <Screen style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -60,7 +75,7 @@ export default function AgeBandScreen() {
         <Button
           disabled={!draft.ageBand}
           label={t('common.continue')}
-          onPress={() => router.push('/onboarding/character')}
+          onPress={() => void continueFlow()}
         />
       </ScrollView>
     </Screen>

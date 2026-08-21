@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
+import { getFamilyUseCases } from '@/application/family';
 import { Button, Input, Screen, Text, colors, radii, spacing } from '@/design-system';
 import { nicknameSchema } from '@/domain/family';
 import { useOnboardingDraft } from '@/features/onboarding/OnboardingDraftContext';
@@ -13,10 +14,17 @@ export default function NicknameScreen() {
   const [nickname, setNickname] = useState(draft.nickname);
   const [showError, setShowError] = useState(false);
 
-  const continueFlow = () => {
+  const continueFlow = async (): Promise<void> => {
     const result = nicknameSchema.safeParse(nickname);
     if (!result.success) return setShowError(true);
     draft.setNickname(result.data);
+    if (draft.profileId) {
+      await (await getFamilyUseCases()).updateProfile(draft.profileId, { nickname: result.data });
+      if (!draft.ageBand) return router.replace('/onboarding/age-band');
+      if (!draft.avatarId) return router.replace('/onboarding/character');
+      draft.reset();
+      return router.replace('/(child)');
+    }
     router.push('/onboarding/age-band');
   };
 
@@ -54,7 +62,7 @@ export default function NicknameScreen() {
             />
             {showError ? <Text>{t('onboarding.nickname.error')}</Text> : null}
           </View>
-          <Button label={t('common.continue')} onPress={continueFlow} />
+          <Button label={t('common.continue')} onPress={() => void continueFlow()} />
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>

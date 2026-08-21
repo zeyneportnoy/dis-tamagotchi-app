@@ -26,7 +26,13 @@ import {
   growthProgressForXp,
   type InventoryItem,
 } from '@/domain/rewards';
-import { CharacterAvatar } from '@/features/character';
+import {
+  CharacterAvatar,
+  CharacterSceneDecor,
+  CharacterScreenBackdrop,
+  sceneBackgroundForCharacter,
+  sceneToneForCharacter,
+} from '@/features/character';
 
 type TaskCardProps = {
   completed: boolean;
@@ -178,7 +184,11 @@ export default function ChildHomeScreen() {
               : undefined;
 
   return (
-    <Screen style={styles.screen} testID="child-home-screen">
+    <Screen
+      style={[styles.screen, { backgroundColor: sceneBackgroundForCharacter(active.avatarId) }]}
+      testID="child-home-screen"
+    >
+      <CharacterScreenBackdrop characterKey={active.avatarId} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={styles.greeting}>
@@ -197,6 +207,7 @@ export default function ChildHomeScreen() {
         </View>
 
         <View style={[styles.characterStage, roomTone ? { backgroundColor: roomTone } : null]}>
+          <CharacterSceneDecor tone={sceneToneForCharacter(active.avatarId)} />
           <View style={styles.window}>
             <View style={styles.windowVertical} />
             <View style={styles.windowHorizontal} />
@@ -454,7 +465,14 @@ const styles = StyleSheet.create({
   floorLineThree: { left: '75%' },
   floorLineTwo: { left: '50%' },
   greeting: { flex: 1 },
-  growthCard: { gap: spacing.sm, paddingHorizontal: spacing.sm },
+  growthCard: {
+    backgroundColor: 'rgba(255,255,255,0.58)',
+    borderColor: 'rgba(255,255,255,0.72)',
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
   growthCopy: { alignItems: 'flex-start', gap: 2 },
   brushingEstimate: { color: '#667078', fontSize: 13, fontWeight: '700', lineHeight: 18 },
   header: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, minHeight: 66 },
@@ -574,6 +592,8 @@ const styles = StyleSheet.create({
     minHeight: minimumTouchTarget,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+    borderColor: 'rgba(255,255,255,0.7)',
+    borderWidth: 1,
   },
   taskCardShell: { flex: 1, position: 'relative' },
   taskCardCompleted: { borderColor: colors.brandAccent, borderWidth: 3 },

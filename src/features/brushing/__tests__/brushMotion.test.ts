@@ -1,15 +1,31 @@
-import { brushMotionCharacterKeys, brushPathFor } from '../brushMotion';
+import { brushContactAnchorsFor, brushMotionCharacterKeys, brushPathFor } from '../brushMotion';
 
 describe('character-aware brushing motion', () => {
   it.each(brushMotionCharacterKeys)(
     'keeps every %s path on its visible body at every stage',
     (key) => {
       for (const stage of [0, 1, 2, 3, 4] as const) {
-        const points = brushPathFor(key, stage, 0);
-        expect(points).toHaveLength(6);
-        expect(new Set(points.map(({ x }) => x)).size).toBeGreaterThan(3);
-        expect(new Set(points.map(({ y }) => y)).size).toBeGreaterThan(3);
-        expect(points.every(({ x, y }) => x >= 62 && x <= 183 && y >= 31 && y <= 151)).toBe(true);
+        const anchors = brushContactAnchorsFor(key, stage);
+        expect(anchors).toHaveLength(6);
+        expect(anchors[0]!.x).toBeLessThan(anchors[1]!.x);
+        expect(anchors[2]!.x).toBeLessThan(anchors[3]!.x);
+        expect(anchors[4]!.x).toBeLessThan(anchors[5]!.x);
+        expect(Math.max(anchors[0]!.y, anchors[1]!.y)).toBeLessThan(
+          Math.min(anchors[2]!.y, anchors[3]!.y),
+        );
+        expect(Math.max(anchors[2]!.y, anchors[3]!.y)).toBeLessThan(
+          Math.min(anchors[4]!.y, anchors[5]!.y),
+        );
+        for (const variant of [0, 1, 2]) {
+          const points = brushPathFor(key, stage, variant);
+          expect(points).toHaveLength(6);
+          expect(new Set(points.map(({ x, y }) => `${x}:${y}`))).toEqual(
+            new Set(anchors.map(({ x, y }) => `${x}:${y}`)),
+          );
+          expect(points.every(({ x, y }) => x >= 98 && x <= 172 && y >= 111 && y <= 202)).toBe(
+            true,
+          );
+        }
       }
     },
   );

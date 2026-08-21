@@ -5,20 +5,64 @@ import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { getFamilyUseCases, type ChildProfileViewModel } from '@/application/family';
-import { Button, Screen, ScreenHeader, Text, colors, radii, spacing } from '@/design-system';
+import {
+  Button,
+  Screen,
+  ScreenHeader,
+  SelectionCard,
+  Text,
+  colors,
+  radii,
+  spacing,
+} from '@/design-system';
 import { useAuth } from '@/features/auth';
+import { starterAvatarKeys } from '@/domain/family';
+import { useOnboardingDraft } from '@/features/onboarding/OnboardingDraftContext';
 
 export default function ParentAccountScreen() {
   const { t } = useTranslation();
   const { session, useCases } = useAuth();
+  const draft = useOnboardingDraft();
   const [profiles, setProfiles] = useState<readonly ChildProfileViewModel[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
   const [deleteInfo, setDeleteInfo] = useState(false);
 
   useEffect(() => {
-    void getFamilyUseCases()
-      .then((family) => family.listProfiles())
-      .then(setProfiles);
+    void getFamilyUseCases().then(async (family) => {
+      const [listedProfiles, activeProfile] = await Promise.all([
+        family.listProfiles(),
+        family.getActiveProfile(),
+      ]);
+      setProfiles(listedProfiles);
+      setActiveProfileId(activeProfile?.id ?? null);
+    });
   }, []);
+
+  const selectProfile = async (profile: ChildProfileViewModel): Promise<void> => {
+    const family = await getFamilyUseCases();
+    await family.selectActiveProfile(profile.id);
+    setActiveProfileId(profile.id);
+
+    const nickname = profile.nickname?.trim();
+    const ageBand =
+      profile.ageBand === '4_6' || profile.ageBand === '7_11' ? profile.ageBand : null;
+    const avatarId = starterAvatarKeys.includes(profile.avatarId) ? profile.avatarId : null;
+    if (nickname && ageBand && avatarId) {
+      draft.reset();
+      router.replace('/(child)');
+      return;
+    }
+
+    draft.beginExistingProfile({
+      id: profile.id,
+      nickname,
+      ageBand,
+      avatarId,
+    });
+    if (!nickname) return router.replace('/onboarding/nickname');
+    if (!ageBand) return router.replace('/onboarding/age-band');
+    router.replace('/onboarding/character');
+  };
 
   const signOut = async (): Promise<void> => {
     await useCases?.signOut();
@@ -42,7 +86,13 @@ export default function ParentAccountScreen() {
         <View style={styles.profileCard}>
           <Text style={styles.name}>{t('parent.children')}</Text>
           {profiles.map((profile) => (
-            <Text key={profile.id}>• {profile.nickname}</Text>
+            <SelectionCard
+              key={profile.id}
+              label={profile.nickname}
+              onPress={() => void selectProfile(profile)}
+              selected={profile.id === activeProfileId}
+              testID={`parent-child-profile-${profile.id}`}
+            />
           ))}
         </View>
         <Button

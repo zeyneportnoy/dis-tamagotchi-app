@@ -1,12 +1,19 @@
-import { Tabs } from 'expo-router';
-import { type ColorValue, StyleSheet } from 'react-native';
+import { Tabs, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { Image, type ColorValue, type ImageSourcePropType, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
+import { getFamilyUseCases } from '@/application/family';
 import { Text, colors, minimumTouchTarget } from '@/design-system';
+import type { StarterAvatarKey } from '@/domain/family';
+import { characterIconSource, type CharacterIconName } from '@/features/character';
 
-function TabIcon({ active, symbol }: { active: boolean; symbol: string }) {
+function TabIcon({ active, source }: { active: boolean; source: ImageSourcePropType }) {
   return (
-    <Text style={[styles.icon, active ? styles.iconActive : styles.iconInactive]}>{symbol}</Text>
+    <Image
+      source={source}
+      style={[styles.icon, active ? styles.iconActive : styles.iconInactive]}
+    />
   );
 }
 
@@ -20,6 +27,23 @@ function TabLabel({ color, label }: { color: ColorValue; label: string }) {
 
 export default function ChildLayout() {
   const { t } = useTranslation();
+  const [characterKey, setCharacterKey] = useState<StarterAvatarKey>('inci');
+
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      void getFamilyUseCases()
+        .then((family) => family.getActiveProfile())
+        .then((profile) => {
+          if (mounted && profile) setCharacterKey(profile.avatarId);
+        });
+      return () => {
+        mounted = false;
+      };
+    }, []),
+  );
+
+  const icon = (name: CharacterIconName) => characterIconSource(characterKey, name);
   return (
     <Tabs
       screenOptions={{
@@ -32,7 +56,7 @@ export default function ChildLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon active={focused} symbol="🏠" />,
+          tabBarIcon: ({ focused }) => <TabIcon active={focused} source={icon('home')} />,
           tabBarLabel: ({ color }) => <TabLabel color={color} label={t('tabs.home')} />,
           title: t('tabs.home'),
         }}
@@ -40,7 +64,7 @@ export default function ChildLayout() {
       <Tabs.Screen
         name="tasks"
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon active={focused} symbol="📋" />,
+          tabBarIcon: ({ focused }) => <TabIcon active={focused} source={icon('tasks')} />,
           tabBarLabel: ({ color }) => <TabLabel color={color} label={t('tabs.tasks')} />,
           title: t('tabs.tasks'),
         }}
@@ -48,7 +72,7 @@ export default function ChildLayout() {
       <Tabs.Screen
         name="collection"
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon active={focused} symbol="⭐" />,
+          tabBarIcon: ({ focused }) => <TabIcon active={focused} source={icon('collection')} />,
           tabBarLabel: ({ color }) => <TabLabel color={color} label={t('tabs.collection')} />,
           title: t('tabs.collection'),
         }}
@@ -56,7 +80,7 @@ export default function ChildLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon active={focused} symbol="☺" />,
+          tabBarIcon: ({ focused }) => <TabIcon active={focused} source={icon('profile')} />,
           tabBarLabel: ({ color }) => <TabLabel color={color} label={t('tabs.profile')} />,
           title: t('tabs.profile'),
         }}
@@ -67,13 +91,13 @@ export default function ChildLayout() {
 
 const styles = StyleSheet.create({
   bar: {
-    backgroundColor: colors.white,
+    backgroundColor: 'rgba(255,255,255,0.86)',
     borderTopColor: '#EEE8E3',
     height: 78,
     paddingBottom: 8,
     paddingTop: 6,
   },
-  icon: { fontSize: 23, fontWeight: '800', lineHeight: 28, minHeight: 28 },
+  icon: { height: 28, width: 28 },
   iconActive: { opacity: 1 },
   iconInactive: { opacity: 0.42 },
   label: {

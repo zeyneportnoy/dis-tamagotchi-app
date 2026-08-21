@@ -1,5 +1,5 @@
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
@@ -14,29 +14,50 @@ import {
   radii,
   spacing,
 } from '@/design-system';
-import { CharacterAvatar } from '@/features/character';
+import {
+  CharacterAvatar,
+  CharacterSceneDecor,
+  CharacterScreenBackdrop,
+  sceneBackgroundForCharacter,
+  sceneToneForCharacter,
+} from '@/features/character';
 
 export default function ProfileScreen() {
   const { t } = useTranslation();
   const [profile, setProfile] = useState<ChildProfileViewModel | null>(null);
   const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
-    void getFamilyUseCases()
-      .then((useCases) => useCases.getActiveProfile())
-      .then((active) => setProfile(active))
-      .catch(() => setFailed(true));
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      void getFamilyUseCases()
+        .then((useCases) => useCases.getActiveProfile())
+        .then((active) => {
+          if (mounted) setProfile(active);
+        })
+        .catch(() => {
+          if (mounted) setFailed(true);
+        });
+      return () => {
+        mounted = false;
+      };
+    }, []),
+  );
 
   if (failed) return <ErrorState />;
   if (!profile) return <LoadingState />;
 
   return (
-    <Screen style={styles.screen} testID="profile-screen">
+    <Screen
+      style={[styles.screen, { backgroundColor: sceneBackgroundForCharacter(profile.avatarId) }]}
+      testID="profile-screen"
+    >
+      <CharacterScreenBackdrop characterKey={profile.avatarId} />
       <Text style={styles.heading} variant="title">
         {t('placeholders.profileTitle')}
       </Text>
       <View style={styles.hero}>
+        <CharacterSceneDecor density="calm" tone={sceneToneForCharacter(profile.avatarId)} />
         <Text style={styles.sparkleLeft}>✦</Text>
         <Text style={styles.sparkleRight}>★</Text>
         <CharacterAvatar characterKey={profile.avatarId} size="large" surface="plain" />
@@ -70,7 +91,9 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.white,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    borderColor: 'rgba(255,255,255,0.8)',
+    borderWidth: 1,
     borderRadius: radii.lg,
     gap: spacing.md,
     padding: spacing.lg,

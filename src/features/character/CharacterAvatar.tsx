@@ -19,10 +19,54 @@ type Props = {
   size?: Size;
   surface?: 'badge' | 'plain';
   phase?: 'resting' | 'crack-start' | 'cracking';
+  motionEnabled?: boolean;
 };
 
 type LifecycleKey = 'egg' | 'cracking' | 'baby' | 'growing' | 'developed';
 type LifecycleSources = Record<LifecycleKey, ImageSourcePropType>;
+type AccessoryAnchorKind = 'effect' | 'face' | 'head';
+type AccessoryAnchor = Readonly<{ scale: number; top: `${number}%`; translateX: number }>;
+
+const stageAnchorTop: Record<AccessoryAnchorKind, Record<LifecycleKey, number>> = {
+  head: { egg: -4, cracking: -3, baby: 0, growing: 2, developed: 4 },
+  face: { egg: 29, cracking: 30, baby: 29, growing: 31, developed: 33 },
+  effect: { egg: 13, cracking: 13, baby: 14, growing: 14, developed: 15 },
+};
+
+const characterAnchorAdjustment: Record<
+  StarterAvatarKey,
+  Record<AccessoryAnchorKind, Readonly<{ top: number; x: number }>>
+> = {
+  inci: { head: { top: 0, x: 0 }, face: { top: 0, x: 0 }, effect: { top: 0, x: 0 } },
+  piril: { head: { top: -1, x: -8 }, face: { top: 0, x: -2 }, effect: { top: 0, x: 0 } },
+  kaan: { head: { top: -2, x: -3 }, face: { top: -1, x: 0 }, effect: { top: 0, x: 0 } },
+  milo: { head: { top: -2, x: 2 }, face: { top: 0, x: 1 }, effect: { top: 0, x: 0 } },
+  zipzip: { head: { top: -1, x: 0 }, face: { top: 0, x: 0 }, effect: { top: 0, x: 0 } },
+  topi: { head: { top: -1, x: 2 }, face: { top: 1, x: 0 }, effect: { top: 0, x: 0 } },
+  akil: { head: { top: -1, x: 0 }, face: { top: -1, x: 0 }, effect: { top: 0, x: 0 } },
+  uyku: { head: { top: -2, x: 1 }, face: { top: 1, x: 0 }, effect: { top: 0, x: 0 } },
+};
+
+const accessoryScaleForSize: Record<Size, number> = {
+  tiny: 0.28,
+  small: 0.42,
+  large: 0.78,
+  hero: 1,
+};
+
+export function accessoryAnchorFor(
+  characterKey: StarterAvatarKey,
+  lifecycleKey: LifecycleKey,
+  kind: AccessoryAnchorKind,
+  size: Size,
+): AccessoryAnchor {
+  const adjustment = characterAnchorAdjustment[characterKey][kind];
+  return {
+    scale: accessoryScaleForSize[size] * (kind === 'effect' ? 1.08 : 1),
+    top: `${stageAnchorTop[kind][lifecycleKey] + adjustment.top}%`,
+    translateX: adjustment.x,
+  };
+}
 
 const sources: Record<StarterAvatarKey, LifecycleSources> = {
   inci: {
@@ -115,33 +159,55 @@ export const characterSafeViewport: Record<Size, { height: number; width: number
 };
 
 export function CharacterAccessory({
+  characterKey,
   itemKey,
+  lifecycleKey,
   preview = false,
+  size = 'hero',
 }: {
+  characterKey?: StarterAvatarKey;
   itemKey: RewardItemKey;
+  lifecycleKey?: LifecycleKey;
   preview?: boolean;
+  size?: Size;
 }) {
   const item = rewardItemForKey(itemKey);
   const isCrown = itemKey === 'sparkle-crown';
   const isGlasses = ['star-glasses', 'super-glasses', 'color-glasses'].includes(itemKey);
   const isWearable = item.slot === 'wearable';
+  const anchorKind: AccessoryAnchorKind =
+    item.slot === 'effect' ? 'effect' : isGlasses ? 'face' : 'head';
+  const anchor =
+    !preview && characterKey && lifecycleKey
+      ? accessoryAnchorFor(characterKey, lifecycleKey, anchorKind, size)
+      : null;
   return (
     <View
       style={[
         styles.accessoryVisual,
         preview && styles.accessoryPreview,
-        isWearable && styles.accessoryHead,
-        isGlasses && styles.accessoryFace,
+        !preview && isWearable && styles.accessoryHead,
+        !preview && isGlasses && styles.accessoryFace,
         item.slot === 'effect' && styles.accessoryEffect,
+        anchor && {
+          top: anchor.top,
+          transform: [{ translateX: anchor.translateX }, { scale: anchor.scale }],
+        },
       ]}
       testID={`accessory-${itemKey}`}
     >
       {isCrown ? (
         <>
+          <View style={styles.crownGlow} />
           <View style={styles.crownBase} />
+          <View style={styles.crownBand} />
           <View style={[styles.crownPoint, styles.crownPointLeft]} />
           <View style={[styles.crownPoint, styles.crownPointCenter]} />
           <View style={[styles.crownPoint, styles.crownPointRight]} />
+          <View style={[styles.crownJewel, styles.crownJewelLeft]} />
+          <View style={[styles.crownJewel, styles.crownJewelCenter]} />
+          <View style={[styles.crownJewel, styles.crownJewelRight]} />
+          <Text style={styles.crownShine}>✦</Text>
         </>
       ) : itemKey === 'star-crown' ? (
         <View style={styles.hairBand}>
@@ -152,12 +218,14 @@ export function CharacterAccessory({
           <View style={[styles.bowMiniLoop, styles.bowMiniLeft]} />
           <View style={[styles.bowMiniLoop, styles.bowMiniRight]} />
           <View style={styles.bowMiniCenter} />
+          <View style={styles.bowMiniShine} />
         </View>
       ) : itemKey === 'mini-halo' ? (
         <View style={styles.halo} />
       ) : itemKey === 'mini-hat' ? (
         <>
           <View style={styles.hatTop} />
+          <View style={styles.hatHighlight} />
           <View style={styles.hatBand} />
           <View style={styles.hatBrim} />
         </>
@@ -182,6 +250,8 @@ export function CharacterAccessory({
           <View
             style={[styles.glassBridge, itemKey === 'color-glasses' && styles.glassBridgeColor]}
           />
+          <View style={[styles.glassShine, styles.glassShineLeft]} />
+          <View style={[styles.glassShine, styles.glassShineRight]} />
         </>
       ) : item.slot === 'effect' ? (
         <>
@@ -205,6 +275,7 @@ export function CharacterAvatar({
   growthStage,
   level = 1,
   mood = 'happy',
+  motionEnabled = true,
   size = 'large',
   surface = 'badge',
   phase = 'resting',
@@ -228,7 +299,7 @@ export function CharacterAvatar({
   const personality = idlePersonality[characterKey];
   const moodSource = moodSources[characterKey][lifecycleKey][moodKey];
   const [motion] = useState(() => new Animated.Value(0));
-  const animated = size === 'large' || size === 'hero';
+  const animated = motionEnabled && (size === 'large' || size === 'hero');
   const equippedKeys = accessoryKeys ?? (accessoryKey ? [accessoryKey] : []);
   const effectKeys = equippedKeys.filter((key) => rewardItemForKey(key).slot === 'effect');
   const foregroundKeys = equippedKeys.filter((key) => rewardItemForKey(key).slot === 'wearable');
@@ -356,7 +427,15 @@ export function CharacterAvatar({
         (stage >= 2 || mood === 'clean' || mood === 'proud') ? (
           <Text style={styles.sparkle}> ✦ </Text>
         ) : null}
-        {!isEgg ? effectKeys.map((key) => <CharacterAccessory itemKey={key} key={key} />) : null}
+        {effectKeys.map((key) => (
+          <CharacterAccessory
+            characterKey={characterKey}
+            itemKey={key}
+            key={key}
+            lifecycleKey={lifecycleKey}
+            size={size}
+          />
+        ))}
         <Image
           resizeMode="contain"
           source={moodSource ?? sources[characterKey][lifecycleKey]}
@@ -370,26 +449,41 @@ export function CharacterAvatar({
             <View style={[styles.crackLine, styles.crackLineThree]} />
           </View>
         ) : null}
-        {!isEgg
-          ? foregroundKeys.map((key) => <CharacterAccessory itemKey={key} key={key} />)
-          : null}
+        {foregroundKeys.map((key) => (
+          <CharacterAccessory
+            characterKey={characterKey}
+            itemKey={key}
+            key={key}
+            lifecycleKey={lifecycleKey}
+            size={size}
+          />
+        ))}
       </Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  accessoryVisual: { height: 54, position: 'absolute', width: 76, zIndex: 3 },
-  accessoryPreview: { position: 'relative', transform: [{ scale: 1.1 }] },
+  accessoryVisual: {
+    height: 54,
+    left: '50%',
+    marginLeft: -38,
+    position: 'absolute',
+    width: 76,
+    zIndex: 3,
+  },
+  accessoryPreview: { left: 0, marginLeft: 0, position: 'relative', transform: [{ scale: 1.1 }] },
   accessoryEffect: {
     height: '74%',
+    left: '-6%',
+    marginLeft: 0,
     opacity: 0.72,
     top: '20%',
     width: '112%',
     zIndex: 0,
   },
-  accessoryFace: { top: '38%', transform: [{ scale: 0.82 }] },
-  accessoryHead: { top: '18%', transform: [{ scale: 0.72 }] },
+  accessoryFace: {},
+  accessoryHead: {},
   collectionIcon: { fontSize: 38 },
   bowClip: { height: 36, left: 44, position: 'absolute', top: 14, width: 36 },
   bowMiniCenter: {
@@ -412,9 +506,23 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 6,
     width: 20,
+    shadowColor: '#B84172',
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.16,
+    shadowRadius: 2,
   },
   bowMiniLeft: { left: 0, transform: [{ rotate: '18deg' }] },
   bowMiniRight: { right: 0, transform: [{ rotate: '-18deg' }] },
+  bowMiniShine: {
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderRadius: radii.pill,
+    height: 4,
+    left: 8,
+    position: 'absolute',
+    top: 9,
+    transform: [{ rotate: '-18deg' }],
+    width: 8,
+  },
   halo: {
     borderColor: '#FFD166',
     borderRadius: 30,
@@ -495,31 +603,66 @@ const styles = StyleSheet.create({
   capeWingLeft: { left: 2, transform: [{ rotate: '18deg' }] },
   capeWingRight: { right: 2, transform: [{ rotate: '-18deg' }] },
   crownBase: {
-    backgroundColor: '#FFD166',
-    borderColor: '#FFF',
-    borderRadius: 8,
-    borderWidth: 2,
-    bottom: 4,
-    height: 22,
-    left: 7,
+    backgroundColor: '#F6BD58',
+    borderColor: '#FFF4C7',
+    borderRadius: 10,
+    borderWidth: 3,
+    bottom: 3,
+    height: 23,
+    left: 6,
     position: 'absolute',
-    width: 62,
+    shadowColor: '#A65D30',
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.22,
+    shadowRadius: 4,
+    width: 64,
+  },
+  crownBand: {
+    backgroundColor: '#FFE89C',
+    borderRadius: 6,
+    bottom: 9,
+    height: 7,
+    left: 11,
+    position: 'absolute',
+    width: 54,
   },
   crownPoint: {
-    backgroundColor: '#FFD166',
-    borderColor: '#FFF',
-    borderRadius: 4,
+    backgroundColor: '#FFD879',
+    borderColor: '#FFF4C7',
+    borderRadius: 7,
     borderWidth: 2,
-    height: 28,
+    height: 25,
     position: 'absolute',
-    top: 4,
+    top: 7,
     transform: [{ rotate: '45deg' }],
-    width: 28,
+    width: 25,
   },
-  crownPointCenter: { left: 24, top: 0 },
-  crownPointLeft: { left: 6, top: 8 },
-  crownPointRight: { right: 6, top: 8 },
-  crownStar: { color: '#8B5ED7', fontSize: 17, left: 29, position: 'absolute', top: 17 },
+  crownPointCenter: { left: 26, top: 1 },
+  crownPointLeft: { left: 9, top: 9 },
+  crownPointRight: { right: 9, top: 9 },
+  crownGlow: {
+    backgroundColor: 'rgba(255,232,156,0.3)',
+    borderRadius: radii.pill,
+    height: 44,
+    left: 3,
+    position: 'absolute',
+    top: 0,
+    width: 70,
+  },
+  crownJewel: {
+    borderColor: '#FFF7DA',
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    bottom: 9,
+    height: 8,
+    position: 'absolute',
+    width: 8,
+    zIndex: 2,
+  },
+  crownJewelCenter: { backgroundColor: '#8B6DE9', left: 34 },
+  crownJewelLeft: { backgroundColor: '#FF7FA0', left: 18 },
+  crownJewelRight: { backgroundColor: '#42D6C5', right: 18 },
+  crownShine: { color: '#FFF', fontSize: 12, left: 47, position: 'absolute', top: 1, zIndex: 3 },
   glassBridge: {
     backgroundColor: '#6C5CE7',
     height: 5,
@@ -531,6 +674,7 @@ const styles = StyleSheet.create({
   glassBridgeColor: { backgroundColor: '#42D6C5' },
   glassColor: { borderColor: '#42D6C5' },
   glassLens: {
+    backgroundColor: 'rgba(255,255,255,0.13)',
     borderColor: '#6C5CE7',
     borderRadius: 18,
     borderWidth: 5,
@@ -538,10 +682,25 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 10,
     width: 34,
+    shadowColor: '#4C3E9F',
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.18,
+    shadowRadius: 2,
   },
   glassLensLeft: { left: 1 },
   glassLensRight: { right: 1 },
   glassSuper: { backgroundColor: 'rgba(108,92,231,0.16)', borderColor: '#FF6B81' },
+  glassShine: {
+    backgroundColor: 'rgba(255,255,255,0.76)',
+    borderRadius: radii.pill,
+    height: 4,
+    position: 'absolute',
+    top: 17,
+    transform: [{ rotate: '-28deg' }],
+    width: 9,
+  },
+  glassShineLeft: { left: 9 },
+  glassShineRight: { right: 9 },
   hatBand: {
     backgroundColor: '#FF6B81',
     height: 8,
@@ -567,6 +726,20 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 4,
     width: 40,
+    shadowColor: '#241933',
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+  },
+  hatHighlight: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderRadius: radii.pill,
+    height: 5,
+    left: 24,
+    position: 'absolute',
+    top: 9,
+    transform: [{ rotate: '-12deg' }],
+    width: 16,
   },
   developed: {},
   firstCrack: {

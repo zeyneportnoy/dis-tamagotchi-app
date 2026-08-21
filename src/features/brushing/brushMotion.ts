@@ -1,71 +1,378 @@
 import type { StarterAvatarKey } from '@/domain/family';
 import type { CharacterGrowthStage } from '@/domain/rewards';
 
-export type BrushPoint = { x: number; y: number };
-type VisibleBody = { bottom: number; left: number; right: number; top: number };
+export type BrushPoint = Readonly<{ x: number; y: number }>;
+type Anchor = readonly [x: number, y: number];
+type StageAnchors = Record<CharacterGrowthStage, readonly Anchor[]>;
 
-const characterBodies: Record<StarterAvatarKey, VisibleBody> = {
-  inci: { bottom: 150, left: 70, right: 176, top: 35 },
-  piril: { bottom: 151, left: 67, right: 177, top: 34 },
-  kaan: { bottom: 151, left: 72, right: 174, top: 31 },
-  milo: { bottom: 150, left: 68, right: 178, top: 33 },
-  zipzip: { bottom: 151, left: 64, right: 181, top: 38 },
-  topi: { bottom: 151, left: 66, right: 179, top: 36 },
-  akil: { bottom: 150, left: 63, right: 182, top: 35 },
-  uyku: { bottom: 148, left: 62, right: 183, top: 46 },
+/**
+ * Six contact anchors (upper-left/right, center-left/right, lower-left/right) sampled from the
+ * eroded alpha silhouette of each 512px happy lifecycle asset, then projected into the brushing
+ * scene's static `large` character viewport. The erosion is the safe inset for the bristle tip.
+ */
+const contactAnchors: Record<StarterAvatarKey, StageAnchors> = {
+  inci: {
+    0: [
+      [104, 119],
+      [162, 119],
+      [104, 154],
+      [162, 154],
+      [104, 189],
+      [162, 189],
+    ],
+    1: [
+      [100, 119],
+      [165, 119],
+      [100, 153],
+      [165, 153],
+      [100, 188],
+      [165, 188],
+    ],
+    2: [
+      [100, 119],
+      [165, 119],
+      [100, 153],
+      [165, 153],
+      [100, 188],
+      [165, 188],
+    ],
+    3: [
+      [98, 131],
+      [167, 131],
+      [98, 162],
+      [167, 162],
+      [98, 193],
+      [167, 193],
+    ],
+    4: [
+      [106, 154],
+      [167, 154],
+      [104, 179],
+      [167, 178],
+      [102, 202],
+      [167, 202],
+    ],
+  },
+  piril: {
+    0: [
+      [105, 119],
+      [161, 119],
+      [105, 154],
+      [161, 154],
+      [105, 188],
+      [161, 188],
+    ],
+    1: [
+      [105, 115],
+      [161, 115],
+      [105, 147],
+      [161, 147],
+      [105, 179],
+      [161, 179],
+    ],
+    2: [
+      [105, 111],
+      [161, 111],
+      [105, 141],
+      [161, 141],
+      [105, 170],
+      [161, 170],
+    ],
+    3: [
+      [105, 115],
+      [170, 115],
+      [105, 149],
+      [170, 149],
+      [105, 183],
+      [170, 183],
+    ],
+    4: [
+      [99, 131],
+      [166, 131],
+      [99, 162],
+      [166, 162],
+      [99, 193],
+      [166, 193],
+    ],
+  },
+  kaan: {
+    0: [
+      [104, 118],
+      [160, 118],
+      [104, 153],
+      [160, 153],
+      [104, 188],
+      [160, 188],
+    ],
+    1: [
+      [105, 116],
+      [162, 116],
+      [105, 150],
+      [162, 150],
+      [105, 183],
+      [162, 183],
+    ],
+    2: [
+      [103, 113],
+      [156, 113],
+      [103, 145],
+      [156, 145],
+      [103, 176],
+      [156, 176],
+    ],
+    3: [
+      [119, 117],
+      [170, 117],
+      [119, 152],
+      [170, 152],
+      [119, 188],
+      [170, 188],
+    ],
+    4: [
+      [100, 122],
+      [167, 122],
+      [100, 155],
+      [167, 155],
+      [100, 189],
+      [167, 189],
+    ],
+  },
+  milo: {
+    0: [
+      [104, 119],
+      [161, 119],
+      [104, 153],
+      [161, 153],
+      [104, 188],
+      [161, 188],
+    ],
+    1: [
+      [102, 119],
+      [165, 119],
+      [102, 153],
+      [165, 153],
+      [102, 188],
+      [165, 188],
+    ],
+    2: [
+      [100, 118],
+      [166, 118],
+      [100, 153],
+      [166, 153],
+      [100, 188],
+      [166, 188],
+    ],
+    3: [
+      [111, 116],
+      [169, 116],
+      [111, 151],
+      [169, 151],
+      [111, 186],
+      [169, 186],
+    ],
+    4: [
+      [105, 147],
+      [168, 147],
+      [105, 173],
+      [168, 173],
+      [105, 199],
+      [168, 199],
+    ],
+  },
+  zipzip: {
+    0: [
+      [104, 119],
+      [162, 119],
+      [104, 154],
+      [162, 154],
+      [104, 189],
+      [162, 189],
+    ],
+    1: [
+      [103, 119],
+      [162, 119],
+      [103, 154],
+      [162, 154],
+      [103, 189],
+      [162, 189],
+    ],
+    2: [
+      [101, 118],
+      [165, 118],
+      [101, 153],
+      [165, 153],
+      [101, 188],
+      [165, 188],
+    ],
+    3: [
+      [120, 116],
+      [169, 116],
+      [120, 151],
+      [169, 151],
+      [122, 186],
+      [169, 187],
+    ],
+    4: [
+      [100, 119],
+      [162, 123],
+      [100, 153],
+      [165, 154],
+      [100, 188],
+      [160, 188],
+    ],
+  },
+  topi: {
+    0: [
+      [104, 118],
+      [161, 118],
+      [104, 153],
+      [161, 153],
+      [104, 188],
+      [161, 188],
+    ],
+    1: [
+      [100, 119],
+      [166, 119],
+      [100, 154],
+      [166, 154],
+      [100, 189],
+      [166, 189],
+    ],
+    2: [
+      [100, 122],
+      [167, 122],
+      [100, 156],
+      [167, 156],
+      [100, 190],
+      [167, 190],
+    ],
+    3: [
+      [108, 122],
+      [170, 122],
+      [108, 155],
+      [170, 155],
+      [110, 190],
+      [170, 190],
+    ],
+    4: [
+      [100, 141],
+      [166, 141],
+      [100, 169],
+      [166, 169],
+      [102, 191],
+      [166, 197],
+    ],
+  },
+  akil: {
+    0: [
+      [105, 119],
+      [159, 119],
+      [105, 154],
+      [159, 154],
+      [105, 189],
+      [159, 189],
+    ],
+    1: [
+      [103, 119],
+      [163, 119],
+      [103, 154],
+      [163, 154],
+      [103, 189],
+      [163, 189],
+    ],
+    2: [
+      [105, 111],
+      [160, 111],
+      [105, 141],
+      [160, 141],
+      [105, 170],
+      [160, 170],
+    ],
+    3: [
+      [117, 117],
+      [172, 117],
+      [117, 152],
+      [172, 152],
+      [117, 188],
+      [172, 188],
+    ],
+    4: [
+      [100, 127],
+      [166, 127],
+      [100, 159],
+      [166, 159],
+      [100, 192],
+      [166, 192],
+    ],
+  },
+  uyku: {
+    0: [
+      [104, 119],
+      [161, 119],
+      [104, 154],
+      [161, 154],
+      [104, 188],
+      [161, 188],
+    ],
+    1: [
+      [101, 119],
+      [165, 119],
+      [101, 154],
+      [165, 154],
+      [101, 189],
+      [165, 189],
+    ],
+    2: [
+      [100, 119],
+      [165, 119],
+      [100, 153],
+      [165, 153],
+      [100, 188],
+      [165, 188],
+    ],
+    3: [
+      [111, 127],
+      [172, 127],
+      [111, 159],
+      [172, 159],
+      [111, 192],
+      [172, 192],
+    ],
+    4: [
+      [109, 149],
+      [170, 149],
+      [109, 174],
+      [170, 174],
+      [109, 200],
+      [170, 200],
+    ],
+  },
 };
 
-const stageInsets: Record<CharacterGrowthStage, { x: number; y: number }> = {
-  0: { x: 17, y: 8 },
-  1: { x: 13, y: 6 },
-  2: { x: 12, y: 7 },
-  3: { x: 5, y: 3 },
-  4: { x: 0, y: 0 },
-};
-
-const patterns = [
-  [
-    [0.18, 0.24],
-    [0.52, 0.18],
-    [0.78, 0.36],
-    [0.58, 0.58],
-    [0.22, 0.52],
-    [0.38, 0.78],
-  ],
-  [
-    [0.72, 0.2],
-    [0.34, 0.3],
-    [0.2, 0.62],
-    [0.55, 0.76],
-    [0.82, 0.57],
-    [0.48, 0.46],
-  ],
-  [
-    [0.25, 0.72],
-    [0.18, 0.38],
-    [0.46, 0.2],
-    [0.78, 0.3],
-    [0.7, 0.68],
-    [0.42, 0.58],
-  ],
+const pathOrders = [
+  [0, 1, 3, 2, 4, 5],
+  [1, 0, 2, 4, 5, 3],
+  [4, 2, 0, 1, 3, 5],
 ] as const;
+
+export function brushContactAnchorsFor(
+  characterKey: StarterAvatarKey,
+  stage: CharacterGrowthStage,
+): readonly BrushPoint[] {
+  return contactAnchors[characterKey][stage].map(([x, y]) => ({ x, y }));
+}
 
 export function brushPathFor(
   characterKey: StarterAvatarKey,
   stage: CharacterGrowthStage,
   variant: number,
 ): BrushPoint[] {
-  const body = characterBodies[characterKey];
-  const inset = stageInsets[stage];
-  const left = body.left + inset.x;
-  const right = body.right - inset.x;
-  const top = body.top + inset.y;
-  const bottom = body.bottom - inset.y;
-  const pattern = patterns[Math.abs(variant) % patterns.length] ?? patterns[0];
-  return pattern.map(([xRatio, yRatio]) => ({
-    x: Math.round(left + (right - left) * xRatio),
-    y: Math.round(top + (bottom - top) * yRatio),
-  }));
+  const anchors = contactAnchors[characterKey][stage];
+  const order = pathOrders[Math.abs(variant) % pathOrders.length] ?? pathOrders[0];
+  return order.map((index) => {
+    const [x, y] = anchors[index] ?? anchors[0] ?? [0, 0];
+    return { x, y };
+  });
 }
 
-export const brushMotionCharacterKeys = Object.keys(characterBodies) as StarterAvatarKey[];
+export const brushMotionCharacterKeys = Object.keys(contactAnchors) as StarterAvatarKey[];

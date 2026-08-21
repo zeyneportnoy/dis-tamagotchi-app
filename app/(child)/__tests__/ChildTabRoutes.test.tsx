@@ -7,7 +7,14 @@ import TasksScreen from '../tasks';
 const mockEquipItem = jest.fn();
 const mockUnequipAccessorySlot = jest.fn();
 
-jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
+jest.mock('expo-router', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  return {
+    router: { push: jest.fn() },
+    useFocusEffect: (callback: () => void | (() => void)) =>
+      React.useEffect(() => callback(), [callback]),
+  };
+});
 jest.mock('@/application/child', () => ({
   getChildExperienceUseCases: () =>
     Promise.resolve({
@@ -110,6 +117,9 @@ describe('Child tab routes', () => {
   it('hides brush rewards and removes a selected background immediately', async () => {
     const view = await render(<CollectionScreen />);
     await waitFor(() => expect(view.getByText('Pastel Oyun Odası')).toBeTruthy());
+    expect(view.getByTestId('collection-preview-background')).toBeTruthy();
+    expect(view.getByTestId('collection-preview-decor')).toBeTruthy();
+    expect(view.getByTestId('collection-item-visual-pastel-playroom')).toBeTruthy();
     expect(view.queryByText('Fırça')).toBeNull();
     await fireEvent.press(view.getByText('Seçimi kaldır'));
     await waitFor(() =>

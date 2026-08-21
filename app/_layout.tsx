@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { ErrorState, LoadingState } from '@/design-system';
 import { initializeDatabase } from '@/data/db';
 import { AuthProvider } from '@/features/auth';
+import { OnboardingDraftProvider } from '@/features/onboarding/OnboardingDraftContext';
 import { configureNotificationPresentation } from '@/features/reminders/configureNotifications';
 import '@/i18n';
 
@@ -35,7 +36,9 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <Stack screenOptions={{ headerShown: false }} />
+      <OnboardingDraftProvider>
+        <Stack screenOptions={{ headerShown: false }} />
+      </OnboardingDraftProvider>
     </AuthProvider>
   );
 }
