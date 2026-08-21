@@ -8,17 +8,27 @@ import {
   type RewardItemKey,
 } from '@/domain/rewards';
 
+import {
+  isRoomMaterialKey,
+  roomMaterialForKey,
+  roomMaterialKeys,
+  type RoomMaterialKey,
+} from './roomMaterials';
+
 export type SceneSize = Readonly<{ height: number; width: number }>;
 export type ItemPlacement = Readonly<{ scale: number; x: number; y: number }>;
+export type CustomizationItemKey = RewardItemKey | RoomMaterialKey;
 export type CustomizationState = Readonly<{
   developerEquipped: Partial<Record<AccessorySlot, RewardItemKey | null>>;
-  placements: Partial<Record<RewardItemKey, ItemPlacement>>;
+  placements: Partial<Record<CustomizationItemKey, ItemPlacement>>;
+  selectedRoomMaterials: readonly RoomMaterialKey[];
   version: 1;
 }>;
 
 type StoredCustomizationState = Readonly<{
   developerEquipped?: Partial<Record<AccessorySlot, RewardItemKey | null>>;
-  placements?: Partial<Record<RewardItemKey, ItemPlacement>>;
+  placements?: Partial<Record<CustomizationItemKey, ItemPlacement>>;
+  selectedRoomMaterials?: readonly string[];
   version?: number;
 }>;
 
@@ -28,12 +38,14 @@ const hiddenWearableKeys = new Set<RewardItemKey>([
   'color-glasses',
 ]);
 const rewardKeys = new Set<string>(rewardCatalog.map((item) => item.key));
+const customizationItemKeys = new Set<string>([...rewardKeys, ...roomMaterialKeys]);
 const slots = new Set<AccessorySlot>(['background', 'decor', 'effect', 'wearable', 'brush']);
 const updateQueues = new Map<string, Promise<CustomizationState>>();
 
 export const emptyCustomizationState: CustomizationState = {
   developerEquipped: {},
   placements: {},
+  selectedRoomMaterials: [],
   version: 1,
 };
 
@@ -64,6 +76,27 @@ export function placementAfterDrag(
   });
 }
 
+export function placementAfterBoundedDrag(
+  start: ItemPlacement,
+  delta: Readonly<{ x: number; y: number }>,
+  sceneSize: SceneSize,
+  itemSize: Readonly<{ height: number; width: number }>,
+): ItemPlacement {
+  if (sceneSize.width <= 0 || sceneSize.height <= 0) return start;
+  const proposed = clampPlacement({
+    ...start,
+    x: start.x + delta.x / sceneSize.width,
+    y: start.y + delta.y / sceneSize.height,
+  });
+  const halfWidth = Math.min(0.49, (itemSize.width * proposed.scale) / sceneSize.width / 2);
+  const halfHeight = Math.min(0.49, (itemSize.height * proposed.scale) / sceneSize.height / 2);
+  return {
+    ...proposed,
+    x: Math.max(halfWidth, Math.min(1 - halfWidth, proposed.x)),
+    y: Math.max(halfHeight, Math.min(1 - halfHeight, proposed.y)),
+  };
+}
+
 function decodePlacement(value: unknown): ItemPlacement | null {
   if (!value || typeof value !== 'object') return null;
   const candidate = value as Partial<ItemPlacement>;
@@ -83,12 +116,20 @@ export function decodeCustomizationState(raw: string | null): CustomizationState
     const parsed = JSON.parse(raw) as StoredCustomizationState;
     if (parsed.version !== undefined && parsed.version !== 1) return emptyCustomizationState;
 
-    const placements: Partial<Record<RewardItemKey, ItemPlacement>> = {};
+    const placements: Partial<Record<CustomizationItemKey, ItemPlacement>> = {};
     for (const [key, value] of Object.entries(parsed.placements ?? {})) {
-      if (!rewardKeys.has(key)) continue;
+      if (!customizationItemKeys.has(key)) continue;
       const placement = decodePlacement(value);
-      if (placement) placements[key as RewardItemKey] = placement;
+      if (placement) placements[key as CustomizationItemKey] = placement;
     }
+
+    const selectedRoomMaterials = Array.from(
+      new Set(
+        (parsed.selectedRoomMaterials ?? []).filter(
+          (key): key is RoomMaterialKey => typeof key === 'string' && isRoomMaterialKey(key),
+        ),
+      ),
+    );
 
     const developerEquipped: Partial<Record<AccessorySlot, RewardItemKey | null>> = {};
     for (const [slot, key] of Object.entries(parsed.developerEquipped ?? {})) {
@@ -103,7 +144,7 @@ export function decodeCustomizationState(raw: string | null): CustomizationState
       }
     }
 
-    return { developerEquipped, placements, version: 1 };
+    return { developerEquipped, placements, selectedRoomMaterials, version: 1 };
   } catch {
     return emptyCustomizationState;
   }
@@ -135,12 +176,23 @@ async function updateCustomizationState(
 
 export function saveItemPlacement(
   profileId: string,
-  itemKey: RewardItemKey,
+  itemKey: CustomizationItemKey,
   placement: ItemPlacement,
 ): Promise<CustomizationState> {
   return updateCustomizationState(profileId, (current) => ({
     ...current,
     placements: { ...current.placements, [itemKey]: clampPlacement(placement) },
+  }));
+}
+
+export function saveSelectedRoomMaterials(
+  profileId: string,
+  itemKeys: readonly RoomMaterialKey[],
+): Promise<CustomizationState> {
+  const uniqueKeys = Array.from(new Set(itemKeys)).filter(isRoomMaterialKey);
+  return updateCustomizationState(profileId, (current) => ({
+    ...current,
+    selectedRoomMaterials: uniqueKeys,
   }));
 }
 
@@ -188,4 +240,8 @@ export function defaultPlacementFor(itemKey: RewardItemKey): ItemPlacement {
   }
   if (itemKey === 'mini-shelf') return { scale: 0.9, x: 0.78, y: 0.72 };
   return { scale: 0.9, x: 0.2, y: 0.74 };
+}
+
+export function defaultPlacementForRoomMaterial(itemKey: RoomMaterialKey): ItemPlacement {
+  return roomMaterialForKey(itemKey).defaultPlacement;
 }

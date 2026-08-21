@@ -323,3 +323,12 @@ onboarding ve Mood Lab aynı render bileşenini kullanır.
   ortamı mevcut inventory sonucunu aynen kullanır.
 - Gözlük ve maskeler katalog verisinden silinmez; hassas yüz hizası gerektirdiği için customization
   sunumunda filtrelenir. Home sahnesinde drag responder yalnız açık “Odamı Düzenle” modunda etkinleşir.
+
+# 2026-08-21 — Oda malzemeleri arka plan temasına göre ayrı sahne varlıklarıdır
+
+- Altı desteklenen arka planın her biri beş şeffaf oda malzemesine sahiptir; malzemeler arka plan
+  görseline birleştirilmez ve kart yüzeyi olmadan karakterin arkasındaki oda katmanında render edilir.
+- Malzeme seçimi ve normalize yerleşimleri mevcut child-specific customization anahtarında saklanır.
+  Collection önizlemesi ile Home aynı kaydı okur.
+- Yeni malzeme kataloğu production reward sırasına kayıt eklemez. Kilit durumu mevcut beş dekor
+  ödülüne bağlıdır; yalnız DEV sunumu tüm tematik varyantları seçilebilir yapar.

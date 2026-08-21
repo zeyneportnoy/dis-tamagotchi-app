@@ -35,13 +35,18 @@ import {
   sceneToneForCharacter,
 } from '@/features/character';
 import {
+  RoomMaterialItem,
   SceneCustomizationItem,
   defaultPlacementFor,
+  defaultPlacementForRoomMaterial,
   emptyCustomizationState,
   loadCustomizationState,
   presentCustomizationInventory,
+  roomMaterialsForTheme,
   saveDeveloperEquippedItem,
   saveItemPlacement,
+  saveSelectedRoomMaterials,
+  type CustomizationItemKey,
   type CustomizationState,
   type ItemPlacement,
   type SceneSize,
@@ -187,11 +192,13 @@ export default function ChildHomeScreen() {
   const growthStage = growth.currentStage;
   const isYoungerExperience = active.ageBand === '4_6';
   const roomBackground = equipped.find((item) => item.slot === 'background');
-  const roomDecor = equipped.find((item) => item.slot === 'decor');
   const roomEffect = equipped.find((item) => item.slot === 'effect');
   const roomWearable = equipped.find((item) => item.slot === 'wearable');
+  const selectedRoomMaterials = roomMaterialsForTheme(roomBackground?.key).filter((item) =>
+    customization.selectedRoomMaterials.includes(item.key),
+  );
 
-  const updatePlacement = (itemKey: InventoryItem['key'], placement: ItemPlacement): void => {
+  const updatePlacement = (itemKey: CustomizationItemKey, placement: ItemPlacement): void => {
     setCustomization((current) => ({
       ...current,
       placements: { ...current.placements, [itemKey]: placement },
@@ -207,6 +214,14 @@ export default function ChildHomeScreen() {
     }
     const child = await getChildExperienceUseCases();
     await child.unequipAccessorySlot(active.id, item.slot);
+  };
+
+  const removeRoomMaterial = async (
+    materialKey: (typeof selectedRoomMaterials)[number]['key'],
+  ): Promise<void> => {
+    const nextKeys = customization.selectedRoomMaterials.filter((key) => key !== materialKey);
+    setCustomization((current) => ({ ...current, selectedRoomMaterials: nextKeys }));
+    await saveSelectedRoomMaterials(active.id, nextKeys);
   };
 
   return (
@@ -284,26 +299,26 @@ export default function ChildHomeScreen() {
               <Text style={styles.effectThree}>{roomEffect.icon}</Text>
             </View>
           ) : null}
-          {roomDecor ? (
-            <SceneCustomizationItem
-              accessibilityLabel={t(`rewards.items.${roomDecor.key}`)}
+          {selectedRoomMaterials.map((material) => (
+            <RoomMaterialItem
+              accessibilityLabel={t(`collection.roomMaterials.${material.key}`)}
               editable={editMode}
-              itemKey={roomDecor.key}
-              key={`${active.id}:${roomDecor.key}`}
-              kind="decor"
-              onPlacementChange={(placement) => updatePlacement(roomDecor.key, placement)}
-              onRemove={() => void removeSceneItem(roomDecor)}
+              key={`${active.id}:${material.key}`}
+              materialKey={material.key}
+              onPlacementChange={(placement) => updatePlacement(material.key, placement)}
+              onRemove={() => void removeRoomMaterial(material.key)}
               placement={
-                customization.placements[roomDecor.key] ?? defaultPlacementFor(roomDecor.key)
+                customization.placements[material.key] ??
+                defaultPlacementForRoomMaterial(material.key)
               }
               removeLabel={t('collection.removeItem', {
-                item: t(`rewards.items.${roomDecor.key}`),
+                item: t(`collection.roomMaterials.${material.key}`),
               })}
-              renderMode="symbol"
               sceneSize={sceneSize}
+              testID={`home-room-material-${material.key}`}
               zIndex={2}
             />
-          ) : null}
+          ))}
           <Text style={[styles.sceneSparkle, styles.sceneSparkleLeft]}>✦</Text>
           <Text style={[styles.sceneSparkle, styles.sceneSparkleRight]}>✦</Text>
           <View style={styles.heroCharacter}>

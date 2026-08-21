@@ -1,9 +1,11 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { StyleSheet } from 'react-native';
 
 import { minimumTouchTarget } from '@/design-system';
 import type { InventoryItem } from '@/domain/rewards';
+import { customizationStorageKey } from '@/features/customization';
 
 import ChildHomeScreen from '../index';
 
@@ -20,9 +22,7 @@ const defaultProgress = {
   lastBrushingAt: null,
 };
 const mockGetProgress = jest.fn((_profileId: string) => Promise.resolve(defaultProgress));
-const mockListInventory = jest.fn<Promise<readonly InventoryItem[]>, []>(() =>
-  Promise.resolve([]),
-);
+const mockListInventory = jest.fn<Promise<readonly InventoryItem[]>, []>(() => Promise.resolve([]));
 const mockHomeProfiles = [
   { id: 'profile-1', nickname: 'Ege', ageBand: '4_6', avatarId: 'inci' },
   { id: 'profile-2', nickname: 'Ada', ageBand: '7_11', avatarId: 'kaan' },
@@ -61,8 +61,9 @@ jest.mock('expo-router', () => {
 });
 
 describe('Child Home route', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
+    await AsyncStorage.clear();
     mockActiveHomeProfileId = 'profile-1';
     mockGetProgress.mockResolvedValue(defaultProgress);
     mockListInventory.mockResolvedValue([]);
@@ -165,6 +166,42 @@ describe('Child Home route', () => {
       top: 0,
       width: '100%',
     });
+  });
+
+  it('renders the child-specific room material at the same persisted placement', async () => {
+    mockListInventory.mockResolvedValue([
+      {
+        equipped: true,
+        icon: '🌊',
+        key: 'undersea-room',
+        slot: 'background',
+        unlocked: true,
+        unlockedAt: '2026-08-21T00:00:00.000Z',
+        unlockXp: 560,
+      },
+    ]);
+    await AsyncStorage.setItem(
+      customizationStorageKey('profile-1'),
+      JSON.stringify({
+        placements: { 'undersea-shell-pouf': { scale: 0.8, x: 0.7, y: 0.75 } },
+        selectedRoomMaterials: ['undersea-shell-pouf'],
+        version: 1,
+      }),
+    );
+
+    const view = await render(<ChildHomeScreen />);
+    const scene = await view.findByTestId('home-character-scene');
+    fireEvent(scene, 'layout', {
+      nativeEvent: { layout: { height: 360, width: 360, x: 0, y: 0 } },
+    });
+
+    const material = await view.findByTestId('home-room-material-undersea-shell-pouf');
+    expect(StyleSheet.flatten(material.props.style)).toMatchObject({
+      left: 0.7 * 360 - 104 / 2,
+      top: 0.75 * 360 - 108 / 2,
+      zIndex: 2,
+    });
+    expect(view.getAllByTestId('character-inci', { includeHiddenElements: true })).toHaveLength(2);
   });
 
   it('opens morning and evening brushing from the full accessible task cards', async () => {

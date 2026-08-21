@@ -2,6 +2,8 @@ import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StyleSheet } from 'react-native';
 
+import { customizationStorageKey } from '@/features/customization';
+
 import CollectionScreen from '../collection';
 import ProfileScreen from '../profile';
 import TasksScreen from '../tasks';
@@ -139,7 +141,11 @@ describe('Child tab routes', () => {
     expect(mockUnequipAccessorySlot).not.toHaveBeenCalled();
   });
 
-  it('hides brush rewards and removes a selected background immediately', async () => {
+  it('renders themed room materials as independent collection preview objects', async () => {
+    await AsyncStorage.setItem(
+      customizationStorageKey('profile-1'),
+      JSON.stringify({ selectedRoomMaterials: ['pastel-toy-box'], version: 1 }),
+    );
     const view = await render(<CollectionScreen />);
     await waitFor(() => expect(view.getByText('Pastel Oyun Odası')).toBeTruthy());
     expect(view.getByText('Şeker Bulutlar')).toBeTruthy();
@@ -164,11 +170,18 @@ describe('Child tab routes', () => {
       top: 0,
       width: '100%',
     });
-    await waitFor(() => expect(view.getByTestId('collection-preview-decor')).toBeTruthy());
     expect(view.getByTestId('collection-item-visual-pastel-playroom')).toBeTruthy();
+    await fireEvent.press(view.getByText('Oda'));
+    await waitFor(() => expect(view.getByText('Oyuncak Kutusu')).toBeTruthy());
+    expect(view.getByText('Yıldız Lamba')).toBeTruthy();
+    expect(view.getByText('Renkli Minder')).toBeTruthy();
+    expect(view.getByText('Minik Raf')).toBeTruthy();
+    expect(view.getByText('Blok Küpleri')).toBeTruthy();
+    await waitFor(() =>
+      expect(view.getByTestId('collection-preview-room-material-pastel-toy-box')).toBeTruthy(),
+    );
     expect(view.queryByText('Fırça')).toBeNull();
-    await fireEvent.press(view.getByText('Seçimi kaldır'));
+    await waitFor(() => expect(view.getByText('Seçimi kaldır')).toBeTruthy());
     expect(mockUnequipAccessorySlot).not.toHaveBeenCalled();
-    expect(view.queryByText('Seçimi kaldır')).toBeNull();
   });
 });

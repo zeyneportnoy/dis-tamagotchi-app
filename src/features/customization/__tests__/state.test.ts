@@ -7,9 +7,11 @@ import {
   decodeCustomizationState,
   loadCustomizationState,
   placementAfterDrag,
+  placementAfterBoundedDrag,
   presentCustomizationInventory,
   saveDeveloperEquippedItem,
   saveItemPlacement,
+  saveSelectedRoomMaterials,
 } from '../state';
 
 const inventory: readonly InventoryItem[] = [
@@ -57,6 +59,19 @@ describe('customization state', () => {
     });
   });
 
+  it('persists selected room materials per child without changing reward inventory', async () => {
+    await saveSelectedRoomMaterials('child-a', ['pastel-toy-box', 'pastel-star-lamp']);
+    await saveSelectedRoomMaterials('child-b', ['night-pillow']);
+
+    await expect(loadCustomizationState('child-a')).resolves.toMatchObject({
+      selectedRoomMaterials: ['pastel-toy-box', 'pastel-star-lamp'],
+    });
+    await expect(loadCustomizationState('child-b')).resolves.toMatchObject({
+      selectedRoomMaterials: ['night-pillow'],
+    });
+    expect(inventory[0]).toMatchObject({ equipped: true, key: 'pastel-playroom' });
+  });
+
   it('converts drag distance to normalized scene placement and keeps it in bounds', () => {
     expect(
       placementAfterDrag(
@@ -72,6 +87,18 @@ describe('customization state', () => {
         { height: 400, width: 500 },
       ),
     ).toEqual({ scale: 1, x: 0.92, y: 0.92 });
+  });
+
+  it('keeps the entire room material inside the scene while dragging', () => {
+    const placement = placementAfterBoundedDrag(
+      { scale: 1, x: 0.9, y: 0.9 },
+      { x: 500, y: 500 },
+      { height: 386, width: 360 },
+      { height: 104, width: 118 },
+    );
+
+    expect(placement.x).toBeCloseTo(1 - 118 / 360 / 2);
+    expect(placement.y).toBeCloseTo(1 - 104 / 386 / 2);
   });
 
   it('unlocks and equips through a DEV-only view without changing production inventory', async () => {

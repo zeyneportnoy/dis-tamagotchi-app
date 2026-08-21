@@ -36,15 +36,23 @@ import {
   sceneToneForCharacter,
 } from '@/features/character';
 import {
+  RoomMaterialItem,
   SceneCustomizationItem,
   defaultPlacementFor,
+  defaultPlacementForRoomMaterial,
   emptyCustomizationState,
+  isRoomMaterialUnlocked,
   loadCustomizationState,
   presentCustomizationInventory,
+  roomMaterialsForTheme,
+  roomMaterialUnlockXp,
   saveDeveloperEquippedItem,
   saveItemPlacement,
+  saveSelectedRoomMaterials,
+  type CustomizationItemKey,
   type CustomizationState,
   type ItemPlacement,
+  type RoomMaterial,
   type SceneSize,
 } from '@/features/customization';
 
@@ -120,6 +128,14 @@ export default function CollectionScreen() {
 
   const remove = async (slot: AccessorySlot = activeSlot): Promise<void> => {
     if (!profile) return;
+    if (slot === 'decor') {
+      const backgroundKey = items?.find((item) => item.equipped && item.slot === 'background')?.key;
+      const themeKeys = new Set(roomMaterialsForTheme(backgroundKey).map((item) => item.key));
+      const nextKeys = customization.selectedRoomMaterials.filter((key) => !themeKeys.has(key));
+      setCustomization((current) => ({ ...current, selectedRoomMaterials: nextKeys }));
+      await saveSelectedRoomMaterials(profile.id, nextKeys);
+      return;
+    }
     setItems(
       (current) =>
         current?.map((item) => (item.slot === slot ? { ...item, equipped: false } : item)) ?? null,
@@ -133,7 +149,7 @@ export default function CollectionScreen() {
     await child.unequipAccessorySlot(profile.id, slot);
   };
 
-  const updatePlacement = (itemKey: RewardItemKey, placement: ItemPlacement): void => {
+  const updatePlacement = (itemKey: CustomizationItemKey, placement: ItemPlacement): void => {
     if (!profile) return;
     setCustomization((current) => ({
       ...current,
@@ -142,18 +158,39 @@ export default function CollectionScreen() {
     void saveItemPlacement(profile.id, itemKey, placement).then(setCustomization);
   };
 
+  const selectRoomMaterial = async (material: RoomMaterial): Promise<void> => {
+    if (!profile || !isRoomMaterialUnlocked(material, items ?? [], __DEV__)) {
+      setLockedMessage(true);
+      return;
+    }
+    setLockedMessage(false);
+    const isSelected = customization.selectedRoomMaterials.includes(material.key);
+    const nextKeys = isSelected
+      ? customization.selectedRoomMaterials.filter((key) => key !== material.key)
+      : [...customization.selectedRoomMaterials, material.key];
+    setCustomization((current) => ({ ...current, selectedRoomMaterials: nextKeys }));
+    await saveSelectedRoomMaterials(profile.id, nextKeys);
+  };
+
   if (failed) return <ErrorState />;
   if (!items || !profile) return <LoadingState />;
   const selectedBackground = items.find((item) => item.equipped && item.slot === 'background');
-  const selectedDecor = items.find((item) => item.equipped && item.slot === 'decor');
   const selectedEffect = items.find((item) => item.equipped && item.slot === 'effect');
   const selectedWearable = items.find((item) => item.equipped && item.slot === 'wearable');
+  const roomMaterials = roomMaterialsForTheme(selectedBackground?.key);
+  const selectedRoomMaterials = roomMaterials.filter((item) =>
+    customization.selectedRoomMaterials.includes(item.key),
+  );
   const visibleItems = items.filter(
     (item) =>
       item.slot === activeSlot &&
+      activeSlot !== 'decor' &&
       (activeSlot !== 'background' || isCollectionBackgroundKey(item.key)),
   );
-  const hasEquippedInSlot = visibleItems.some((item) => item.equipped);
+  const hasEquippedInSlot =
+    activeSlot === 'decor'
+      ? selectedRoomMaterials.length > 0
+      : visibleItems.some((item) => item.equipped);
   const visualPalette = collectionVisualPalette[profile.avatarId];
 
   return (
@@ -194,27 +231,26 @@ export default function CollectionScreen() {
               <Image source={premiumRewardSource(selectedEffect.key)} style={styles.effectLeft} />
             </View>
           ) : null}
-          {selectedDecor ? (
-            <SceneCustomizationItem
-              accessibilityLabel={t(`rewards.items.${selectedDecor.key}`)}
+          {selectedRoomMaterials.map((material) => (
+            <RoomMaterialItem
+              accessibilityLabel={t(`collection.roomMaterials.${material.key}`)}
               editable
-              itemKey={selectedDecor.key}
-              key={`${profile.id}:${selectedDecor.key}`}
-              kind="decor"
-              onPlacementChange={(placement) => updatePlacement(selectedDecor.key, placement)}
-              onRemove={() => void remove('decor')}
+              key={`${profile.id}:${material.key}`}
+              materialKey={material.key}
+              onPlacementChange={(placement) => updatePlacement(material.key, placement)}
+              onRemove={() => void selectRoomMaterial(material)}
               placement={
-                customization.placements[selectedDecor.key] ??
-                defaultPlacementFor(selectedDecor.key)
+                customization.placements[material.key] ??
+                defaultPlacementForRoomMaterial(material.key)
               }
               removeLabel={t('collection.removeItem', {
-                item: t(`rewards.items.${selectedDecor.key}`),
+                item: t(`collection.roomMaterials.${material.key}`),
               })}
               sceneSize={sceneSize}
-              testID="collection-preview-decor"
+              testID={`collection-preview-room-material-${material.key}`}
               zIndex={2}
             />
-          ) : null}
+          ))}
           <View
             style={[
               styles.characterPreview,
@@ -306,6 +342,65 @@ export default function CollectionScreen() {
         </View>
         {lockedMessage ? <Text style={styles.lockedMessage}>{t('collection.locked')}</Text> : null}
         <View style={styles.grid}>
+          {activeSlot === 'decor'
+            ? roomMaterials.map((material) => {
+                const unlocked = isRoomMaterialUnlocked(material, items, __DEV__);
+                const selected = customization.selectedRoomMaterials.includes(material.key);
+                return (
+                  <Pressable
+                    accessibilityLabel={`${t(`collection.roomMaterials.${material.key}`)}. ${t(
+                      selected
+                        ? 'collection.equipped'
+                        : unlocked
+                          ? 'collection.unlocked'
+                          : 'collection.locked',
+                    )}`}
+                    accessibilityRole="button"
+                    key={material.key}
+                    onPress={() => void selectRoomMaterial(material)}
+                    style={({ pressed }) => [
+                      styles.itemCard,
+                      { backgroundColor: visualPalette.card },
+                      selected && styles.itemEquipped,
+                      selected && {
+                        backgroundColor: visualPalette.selectedCard,
+                        borderColor: visualPalette.accent,
+                      },
+                      !unlocked && styles.itemLocked,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.itemIcon,
+                        { backgroundColor: visualPalette.soft },
+                        selected && styles.itemIconSelected,
+                      ]}
+                    >
+                      <Image
+                        resizeMode="contain"
+                        source={material.source}
+                        style={styles.rewardIcon}
+                        testID={`collection-room-material-visual-${material.key}`}
+                      />
+                    </View>
+                    <Text style={styles.itemName}>
+                      {t(`collection.roomMaterials.${material.key}`)}
+                    </Text>
+                    <Text style={styles.itemStatus}>
+                      {t(
+                        selected
+                          ? 'collection.equipped'
+                          : unlocked
+                            ? 'collection.tapToEquip'
+                            : 'collection.lockedHint',
+                        { xp: roomMaterialUnlockXp(material) },
+                      )}
+                    </Text>
+                  </Pressable>
+                );
+              })
+            : null}
           {visibleItems.map((item) => (
             <Pressable
               accessibilityLabel={`${t(`rewards.items.${item.key}`)}. ${t(
