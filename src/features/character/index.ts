@@ -1,9 +1,4 @@
-export {
-  accessoryAnchorFor,
-  CharacterAccessory,
-  CharacterAvatar,
-  characterSafeViewport,
-} from './CharacterAvatar';
+export { CharacterAccessory, CharacterAvatar, characterSafeViewport } from './CharacterAvatar';
 export {
   CharacterSceneDecor,
   CharacterScreenBackdrop,

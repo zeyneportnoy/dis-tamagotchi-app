@@ -13,6 +13,5 @@ export {
   nextCompletionMessageKey,
 } from './completionMessages';
 export * from './brushMotion';
-export { AnimatedToothbrush } from './AnimatedToothbrush';
 export * from './completionJingles';
 export * from './voiceGuidance';

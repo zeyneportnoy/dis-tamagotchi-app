@@ -6,7 +6,11 @@ import { useTranslation } from 'react-i18next';
 import { getFamilyUseCases } from '@/application/family';
 import { Text, colors, minimumTouchTarget } from '@/design-system';
 import type { StarterAvatarKey } from '@/domain/family';
-import { characterIconSource, type CharacterIconName } from '@/features/character';
+import {
+  characterIconSource,
+  sceneBackgroundForCharacter,
+  type CharacterIconName,
+} from '@/features/character';
 
 function TabIcon({ active, source }: { active: boolean; source: ImageSourcePropType }) {
   return (
@@ -44,10 +48,12 @@ export default function ChildLayout() {
   );
 
   const icon = (name: CharacterIconName) => characterIconSource(characterKey, name);
+  const backgroundColor = sceneBackgroundForCharacter(characterKey);
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
+        sceneStyle: { backgroundColor },
         tabBarActiveTintColor: colors.brandPrimary,
         tabBarInactiveTintColor: colors.textPrimary,
         tabBarStyle: styles.bar,

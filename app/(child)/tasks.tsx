@@ -1,12 +1,35 @@
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
+import { getFamilyUseCases } from '@/application/family';
 import { Screen, Text, colors, radii, spacing } from '@/design-system';
+import type { StarterAvatarKey } from '@/domain/family';
+import { sceneBackgroundForCharacter } from '@/features/character';
 
 export default function TasksScreen() {
   const { t } = useTranslation();
+  const [characterKey, setCharacterKey] = useState<StarterAvatarKey>('inci');
+
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      void getFamilyUseCases()
+        .then((family) => family.getActiveProfile())
+        .then((profile) => {
+          if (mounted && profile) setCharacterKey(profile.avatarId);
+        });
+      return () => {
+        mounted = false;
+      };
+    }, []),
+  );
   return (
-    <Screen style={styles.screen} testID="tasks-screen">
+    <Screen
+      style={[styles.screen, { backgroundColor: sceneBackgroundForCharacter(characterKey) }]}
+      testID="tasks-screen"
+    >
       <Text style={styles.heading} variant="title">
         {t('placeholders.tasksTitle')}
       </Text>
