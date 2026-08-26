@@ -1,7 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Image, PanResponder, Pressable, StyleSheet, View } from 'react-native';
-
-import { Text, colors, minimumTouchTarget } from '@/design-system';
+import { Image, PanResponder, StyleSheet, View } from 'react-native';
 
 import { roomMaterialForKey, type RoomMaterialKey } from './roomMaterials';
 import { placementAfterBoundedDrag, type ItemPlacement, type SceneSize } from './state';
@@ -11,9 +9,7 @@ type Props = Readonly<{
   editable: boolean;
   materialKey: RoomMaterialKey;
   onPlacementChange(placement: ItemPlacement): void;
-  onRemove?(): void;
   placement: ItemPlacement;
-  removeLabel: string;
   sceneSize: SceneSize;
   testID?: string;
   zIndex: number;
@@ -24,9 +20,7 @@ export function RoomMaterialItem({
   editable,
   materialKey,
   onPlacementChange,
-  onRemove,
   placement,
-  removeLabel,
   sceneSize,
   testID,
   zIndex,
@@ -38,6 +32,7 @@ export function RoomMaterialItem({
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: () => editable,
+        onMoveShouldSetPanResponderCapture: () => editable,
         onPanResponderMove: (_, gesture) => {
           if (!editable) return;
           setCurrent(
@@ -71,7 +66,9 @@ export function RoomMaterialItem({
             ),
           );
         },
+        onPanResponderTerminationRequest: () => !editable,
         onStartShouldSetPanResponder: () => editable,
+        onStartShouldSetPanResponderCapture: () => editable,
       }),
     [editable, material.dimensions, onPlacementChange, placement, sceneSize],
   );
@@ -97,18 +94,6 @@ export function RoomMaterialItem({
       {...panResponder.panHandlers}
     >
       <Image resizeMode="contain" source={material.source} style={styles.image} />
-      {editable && onRemove ? (
-        <Pressable
-          accessibilityLabel={removeLabel}
-          accessibilityRole="button"
-          hitSlop={8}
-          onPress={onRemove}
-          style={styles.remove}
-          testID={`remove-room-material-${materialKey}`}
-        >
-          <Text style={styles.removeText}>×</Text>
-        </Pressable>
-      ) : null}
     </View>
   );
 }
@@ -116,23 +101,4 @@ export function RoomMaterialItem({
 const styles = StyleSheet.create({
   image: { height: '100%', width: '100%' },
   item: { position: 'absolute' },
-  remove: {
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    borderColor: colors.brandSecondary,
-    borderRadius: minimumTouchTarget / 2,
-    borderWidth: 2,
-    height: minimumTouchTarget,
-    justifyContent: 'center',
-    position: 'absolute',
-    right: -minimumTouchTarget / 2,
-    top: -minimumTouchTarget / 2,
-    width: minimumTouchTarget,
-  },
-  removeText: {
-    color: colors.brandSecondary,
-    fontSize: 26,
-    fontWeight: '900',
-    lineHeight: 28,
-  },
 });

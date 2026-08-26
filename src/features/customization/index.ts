@@ -1,4 +1,3 @@
-export { SceneCustomizationItem } from './SceneCustomizationItem';
 export { RoomMaterialItem } from './RoomMaterialItem';
 export {
   isRoomMaterialKey,
@@ -21,7 +20,6 @@ export {
   clampPlacement,
   customizationStorageKey,
   decodeCustomizationState,
-  defaultPlacementFor,
   defaultPlacementForRoomMaterial,
   emptyCustomizationState,
   isCustomizationItemVisible,

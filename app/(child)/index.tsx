@@ -36,16 +36,12 @@ import {
 } from '@/features/character';
 import {
   RoomMaterialItem,
-  SceneCustomizationItem,
-  defaultPlacementFor,
   defaultPlacementForRoomMaterial,
   emptyCustomizationState,
   loadCustomizationState,
   presentCustomizationInventory,
   roomMaterialsForTheme,
-  saveDeveloperEquippedItem,
   saveItemPlacement,
-  saveSelectedRoomMaterials,
   type CustomizationItemKey,
   type CustomizationState,
   type ItemPlacement,
@@ -193,7 +189,6 @@ export default function ChildHomeScreen() {
   const isYoungerExperience = active.ageBand === '4_6';
   const roomBackground = equipped.find((item) => item.slot === 'background');
   const roomEffect = equipped.find((item) => item.slot === 'effect');
-  const roomWearable = equipped.find((item) => item.slot === 'wearable');
   const selectedRoomMaterials = roomMaterialsForTheme(roomBackground?.key).filter((item) =>
     customization.selectedRoomMaterials.includes(item.key),
   );
@@ -204,24 +199,6 @@ export default function ChildHomeScreen() {
       placements: { ...current.placements, [itemKey]: placement },
     }));
     void saveItemPlacement(active.id, itemKey, placement).then(setCustomization);
-  };
-
-  const removeSceneItem = async (item: InventoryItem): Promise<void> => {
-    setEquipped((current) => current.filter((equippedItem) => equippedItem.slot !== item.slot));
-    if (__DEV__) {
-      setCustomization(await saveDeveloperEquippedItem(active.id, item.slot, null));
-      return;
-    }
-    const child = await getChildExperienceUseCases();
-    await child.unequipAccessorySlot(active.id, item.slot);
-  };
-
-  const removeRoomMaterial = async (
-    materialKey: (typeof selectedRoomMaterials)[number]['key'],
-  ): Promise<void> => {
-    const nextKeys = customization.selectedRoomMaterials.filter((key) => key !== materialKey);
-    setCustomization((current) => ({ ...current, selectedRoomMaterials: nextKeys }));
-    await saveSelectedRoomMaterials(active.id, nextKeys);
   };
 
   return (
@@ -306,14 +283,10 @@ export default function ChildHomeScreen() {
               key={`${active.id}:${material.key}`}
               materialKey={material.key}
               onPlacementChange={(placement) => updatePlacement(material.key, placement)}
-              onRemove={() => void removeRoomMaterial(material.key)}
               placement={
                 customization.placements[material.key] ??
                 defaultPlacementForRoomMaterial(material.key)
               }
-              removeLabel={t('collection.removeItem', {
-                item: t(`collection.roomMaterials.${material.key}`),
-              })}
               sceneSize={sceneSize}
               testID={`home-room-material-${material.key}`}
               zIndex={2}
@@ -330,25 +303,6 @@ export default function ChildHomeScreen() {
               surface="plain"
             />
           </View>
-          {roomWearable ? (
-            <SceneCustomizationItem
-              accessibilityLabel={t(`rewards.items.${roomWearable.key}`)}
-              editable={editMode}
-              itemKey={roomWearable.key}
-              key={`${active.id}:${roomWearable.key}`}
-              kind="wearable"
-              onPlacementChange={(placement) => updatePlacement(roomWearable.key, placement)}
-              onRemove={() => void removeSceneItem(roomWearable)}
-              placement={
-                customization.placements[roomWearable.key] ?? defaultPlacementFor(roomWearable.key)
-              }
-              removeLabel={t('collection.removeItem', {
-                item: t(`rewards.items.${roomWearable.key}`),
-              })}
-              sceneSize={sceneSize}
-              zIndex={4}
-            />
-          ) : null}
           <Pressable
             accessibilityRole="button"
             onPress={() => setEditMode((current) => !current)}

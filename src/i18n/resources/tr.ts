@@ -205,6 +205,7 @@ export const tr = {
       unlocked: 'Kazanıldı',
       locked: 'Henüz kilitli 🔒',
       lockedHint: 'Fırçaladıkça açılır',
+      dragToPlace: 'Odaya sürükle',
       tapToEquip: 'Seçmek için dokun',
       unlockAt: '{{xp}} XP’de açılır',
       keepBrushing: 'Fırçaladıkça sürpriz açılır',

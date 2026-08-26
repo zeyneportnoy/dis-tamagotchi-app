@@ -1125,7 +1125,7 @@ const styles = StyleSheet.create({
   brushAnimation: {
     height: 190,
     left: 0,
-    overflow: 'hidden',
+    overflow: 'visible',
     position: 'absolute',
     top: 0,
     width: 195,
@@ -1177,7 +1177,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9D7E5',
     borderRadius: 28,
     height: 300,
-    overflow: 'hidden',
+    overflow: 'visible',
     position: 'relative',
   },
   brushingCharacterZone: {

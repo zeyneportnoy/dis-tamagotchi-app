@@ -122,25 +122,6 @@ describe('Child tab routes', () => {
     expect(view.queryByRole('button', { name: 'Geri' })).toBeNull();
   });
 
-  it('makes every supported item selectable in DEV without writing production inventory', async () => {
-    const view = await render(<CollectionScreen />);
-    await fireEvent.press(view.getByText('Aksesuar'));
-    await waitFor(() =>
-      expect(view.getByRole('button', { name: 'Mini Taç. Seçili' })).toBeTruthy(),
-    );
-    await fireEvent.press(view.getByRole('button', { name: 'Yıldız Saç Bandı. Kazanıldı' }));
-    expect(mockEquipItem).not.toHaveBeenCalled();
-    await waitFor(() =>
-      expect(view.getByRole('button', { name: 'Yıldız Saç Bandı. Seçili' })).toBeTruthy(),
-    );
-    await fireEvent.press(view.getByRole('button', { name: 'Uyku Şapkası. Kazanıldı' }));
-    await waitFor(() =>
-      expect(view.getByRole('button', { name: 'Uyku Şapkası. Seçili' })).toBeTruthy(),
-    );
-    expect(mockEquipItem).not.toHaveBeenCalled();
-    expect(mockUnequipAccessorySlot).not.toHaveBeenCalled();
-  });
-
   it('renders themed room materials as independent collection preview objects', async () => {
     await AsyncStorage.setItem(
       customizationStorageKey('profile-1'),

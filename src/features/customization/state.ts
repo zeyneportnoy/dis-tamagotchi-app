@@ -32,11 +32,6 @@ type StoredCustomizationState = Readonly<{
   version?: number;
 }>;
 
-const hiddenWearableKeys = new Set<RewardItemKey>([
-  'star-glasses',
-  'super-glasses',
-  'color-glasses',
-]);
 const rewardKeys = new Set<string>(rewardCatalog.map((item) => item.key));
 const customizationItemKeys = new Set<string>([...rewardKeys, ...roomMaterialKeys]);
 const slots = new Set<AccessorySlot>(['background', 'decor', 'effect', 'wearable', 'brush']);
@@ -208,7 +203,7 @@ export function saveDeveloperEquippedItem(
 }
 
 export function isCustomizationItemVisible(item: InventoryItem): boolean {
-  return !hiddenWearableKeys.has(item.key);
+  return item.slot !== 'wearable';
 }
 
 export function presentCustomizationInventory(
@@ -226,20 +221,6 @@ export function presentCustomizationInventory(
       equipped: hasOverride ? override === item.key : item.equipped,
     };
   });
-}
-
-export function defaultPlacementFor(itemKey: RewardItemKey): ItemPlacement {
-  const item = rewardItemForKey(itemKey);
-  if (item.slot === 'wearable') return { scale: 0.88, x: 0.18, y: 0.2 };
-  if (itemKey === 'cozy-scarf') return { scale: 1.18, x: 0.5, y: 0.84 };
-  if (itemKey === 'heart-rug' || itemKey === 'color-pillow') {
-    return { scale: 1.2, x: 0.5, y: 0.85 };
-  }
-  if (itemKey === 'heart-badge' || itemKey === 'moon-lamp') {
-    return { scale: 0.82, x: 0.78, y: 0.28 };
-  }
-  if (itemKey === 'mini-shelf') return { scale: 0.9, x: 0.78, y: 0.72 };
-  return { scale: 0.9, x: 0.2, y: 0.74 };
 }
 
 export function defaultPlacementForRoomMaterial(itemKey: RoomMaterialKey): ItemPlacement {
