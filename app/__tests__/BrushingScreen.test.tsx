@@ -27,6 +27,7 @@ jest.mock('@/application/child', () => ({
     Promise.resolve({
       completeBrushingSession: mockCompleteBrushingSession,
       abandonBrushingSession: mockAbandonBrushingSession,
+      getEquippedItems: () => Promise.resolve([]),
       getProgress: () =>
         Promise.resolve({
           childProfileId: 'profile-1',

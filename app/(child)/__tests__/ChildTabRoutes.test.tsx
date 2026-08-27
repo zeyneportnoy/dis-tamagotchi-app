@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StyleSheet } from 'react-native';
 
@@ -90,6 +90,7 @@ jest.mock('@/application/child', () => ({
       equipItem: mockEquipItem,
       unequipAccessorySlot: mockUnequipAccessorySlot,
       getProgress: () => Promise.resolve({ level: 2 }),
+      listCompletedSessions: () => Promise.resolve([]),
     }),
 }));
 jest.mock('@/application/family', () => ({
@@ -101,6 +102,7 @@ jest.mock('@/application/family', () => ({
           nickname: 'Ege',
           ageBand: '4_6',
           avatarId: 'inci',
+          createdAt: '2026-08-09T00:00:00.000Z',
         }),
     }),
 }));
@@ -120,6 +122,24 @@ describe('Child tab routes', () => {
     await waitFor(() => expect(view.getByTestId(testID)).toBeTruthy());
     expect(view.getByText(title)).toBeTruthy();
     expect(view.queryByRole('button', { name: 'Geri' })).toBeNull();
+  });
+
+  it('marks calendar days before the profile creation date as neutral, not missed', async () => {
+    const view = await render(<TasksScreen />);
+    await waitFor(() => expect(view.getByTestId('tasks-calendar')).toBeTruthy());
+
+    // Profile joined 2026-08-09 (see getActiveProfile mock). Step the calendar
+    // back to July 2026 so every visible day predates the account.
+    await fireEvent.press(view.getByLabelText('Önceki ay'));
+    await waitFor(() => expect(view.getByTestId('tasks-day-2026-07-15')).toBeTruthy());
+
+    await fireEvent.press(view.getByTestId('tasks-day-2026-07-15'));
+    await waitFor(() =>
+      expect(view.getAllByText('O tarihte henüz başlamamıştın').length).toBeGreaterThan(0),
+    );
+    // A pre-account day is never framed as a missed brushing.
+    expect(view.queryByText('Bu seferlik kaçtı 😢')).toBeNull();
+    expect(view.queryByText('Sorun değil, yarın tekrar deneyebiliriz!')).toBeNull();
   });
 
   it('renders themed room materials as independent collection preview objects', async () => {
@@ -161,7 +181,9 @@ describe('Child tab routes', () => {
     await waitFor(() =>
       expect(view.getByTestId('collection-preview-room-material-pastel-toy-box')).toBeTruthy(),
     );
-    expect(view.queryByText('Fırça')).toBeNull();
+    // The "Oda" item list shows only room materials — no brush entry leaks in.
+    // (Scoped to the item grid: "Fırça" is now also a permanent category tab label.)
+    expect(within(view.getByTestId('collection-item-grid')).queryByText('Fırça')).toBeNull();
     await waitFor(() => expect(view.getByText('Seçimi kaldır')).toBeTruthy());
     expect(mockUnequipAccessorySlot).not.toHaveBeenCalled();
   });

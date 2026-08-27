@@ -20,18 +20,30 @@ export default function RootLayout() {
   });
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [failureReason, setFailureReason] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     void initializeDatabase()
       .then(() => setReady(true))
-      .catch(() => setFailed(true));
+      .catch((error: unknown) => {
+        console.error('initializeDatabase failed', error);
+        setFailureReason(error instanceof Error ? error.message : String(error));
+        setFailed(true);
+      });
   }, []);
 
   useEffect(() => {
     if ((ready && fontsLoaded) || failed || fontError) void SplashScreen.hideAsync();
   }, [failed, fontError, fontsLoaded, ready]);
 
-  if (failed || fontError) return <ErrorState />;
+  if (failed || fontError) {
+    const dbReason = failureReason;
+    const fontReason = fontError
+      ? ((fontError as { message?: string }).message ?? String(fontError))
+      : undefined;
+    const reason = `[TEŞHİS v2] db=${dbReason ?? 'yok'} | font=${fontReason ?? 'yok'}`;
+    return <ErrorState body={reason} />;
+  }
   if (!ready || !fontsLoaded) return <LoadingState />;
 
   return (

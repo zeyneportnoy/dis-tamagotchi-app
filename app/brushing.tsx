@@ -95,17 +95,46 @@ function SmileQuadrant({ activeRegion }: { activeRegion: BrushingRegion }) {
   );
 }
 
+type BrushAppearance = { grip: string; handle: string; head: string; icon: string; neck: string };
+
+const defaultBrushAppearance: BrushAppearance = {
+  grip: '#7256CF',
+  handle: '#42D6C5',
+  head: '#FF6B81',
+  icon: '🪥',
+  neck: '#42D6C5',
+};
+
+const brushAppearance: Record<string, BrushAppearance> = {
+  'classic-brush': defaultBrushAppearance,
+  'mini-cape': { grip: '#0F6E56', handle: '#9FE1CB', head: '#04342C', icon: '🪥', neck: '#9FE1CB' },
+  'pink-brush': { grip: '#D4537E', handle: '#F4C0D1', head: '#993556', icon: '🌸', neck: '#F4C0D1' },
+  'star-brush': { grip: '#BA7517', handle: '#FAC775', head: '#854F0B', icon: '⭐', neck: '#FAC775' },
+  'rainbow-brush': { grip: '#639922', handle: '#F0997B', head: '#378ADD', icon: '🌈', neck: '#EF9F27' },
+  'dino-brush': { grip: '#3B6D11', handle: '#97C459', head: '#27500A', icon: '🦕', neck: '#97C459' },
+  'space-brush': { grip: '#042C53', handle: '#0C447C', head: '#85B7EB', icon: '🚀', neck: '#0C447C' },
+  'sparkle-brush': { grip: '#993C1D', handle: '#F5C4B3', head: '#712B13', icon: '✨', neck: '#F5C4B3' },
+  'heart-brush': { grip: '#993556', handle: '#ED93B1', head: '#4B1528', icon: '💗', neck: '#ED93B1' },
+};
+
+function brushAppearanceFor(brushKey?: string): BrushAppearance {
+  return (brushKey ? brushAppearance[brushKey] : undefined) ?? defaultBrushAppearance;
+}
+
 function AnimatedToothbrush({
+  brushKey,
   characterKey,
   growthStage,
   progress,
   segmentIndex,
 }: {
+  brushKey?: string;
   characterKey: ChildProfileViewModel['avatarId'];
   growthStage: ReturnType<typeof growthStageForXp>;
   progress: number;
   segmentIndex: number;
 }) {
+  const appearance = brushAppearanceFor(brushKey);
   const [stroke] = useState(() => new Animated.Value(0));
   const [pathVariant, setPathVariant] = useState(0);
   const points = brushPathFor(characterKey, growthStage, pathVariant + segmentIndex);
@@ -181,11 +210,11 @@ function AnimatedToothbrush({
           <View style={[styles.foamBubble, styles.foamBubbleFour]} />
         </Animated.View>
         <View style={styles.toothbrush}>
-          <View style={styles.brushHandle}>
-            <View style={styles.brushGrip} />
+          <View style={[styles.brushHandle, { backgroundColor: appearance.handle }]}>
+            <View style={[styles.brushGrip, { backgroundColor: appearance.grip }]} />
           </View>
-          <View style={styles.brushNeck} />
-          <View style={styles.brushHead}>
+          <View style={[styles.brushNeck, { backgroundColor: appearance.neck }]} />
+          <View style={[styles.brushHead, { backgroundColor: appearance.head }]}>
             <View style={styles.bristleRow}>
               <View style={styles.bristle} />
               <View style={styles.bristle} />
@@ -193,6 +222,7 @@ function AnimatedToothbrush({
               <View style={styles.bristle} />
             </View>
           </View>
+          <Text style={styles.brushIconBadge}>{appearance.icon}</Text>
         </View>
       </Animated.View>
       <View style={[styles.cleanShine, { opacity: 0.15 + progress * 0.85 }]}>
@@ -450,6 +480,7 @@ export default function BrushingScreen() {
   const nextTickPlayer = useRef<0 | 1>(0);
   const voiceSpeaking = useRef(false);
   const [profile, setProfile] = useState<ChildProfileViewModel | null>(null);
+  const [equippedBrushKey, setEquippedBrushKey] = useState<string | undefined>(undefined);
   const [initialProgress, setInitialProgress] = useState<ProfileProgress | null>(null);
   const [timer, setTimer] = useState<BrushingTimerState | null>(null);
   const [nowMs, setNowMs] = useState(0);
@@ -751,9 +782,14 @@ export default function BrushingScreen() {
       .then((useCases) => useCases.getActiveProfile())
       .then(async (activeProfile) => {
         if (!activeProfile) return router.replace('/onboarding');
-        const progress = await (await getChildExperienceUseCases()).getProgress(activeProfile.id);
+        const childUseCases = await getChildExperienceUseCases();
+        const [progress, equippedItems] = await Promise.all([
+          childUseCases.getProgress(activeProfile.id),
+          childUseCases.getEquippedItems(activeProfile.id),
+        ]);
         setProfile(activeProfile);
         setInitialProgress(progress);
+        setEquippedBrushKey(equippedItems.find((item) => item.slot === 'brush')?.key);
       })
       .catch(() => setFailed(true));
   }, []);
@@ -1032,7 +1068,7 @@ export default function BrushingScreen() {
             <Text style={styles.bubbleOne}>✦</Text>
             <Text style={styles.bubbleTwo}>✦</Text>
             <View style={styles.stageRug} />
-            <View style={styles.brushingCharacterZone}>
+            <View style={styles.brushingCharacterZone} testID="brushing-character-layer">
               <CharacterAvatar
                 characterKey={profile.avatarId}
                 growthStage={growthStageForXp(initialProgress.totalXp)}
@@ -1043,6 +1079,7 @@ export default function BrushingScreen() {
               />
             </View>
             <AnimatedToothbrush
+              brushKey={equippedBrushKey}
               characterKey={profile.avatarId}
               growthStage={currentGrowthStage}
               progress={Math.max(0, Math.min(1, snapshot.elapsedSeconds / 120))}
@@ -1157,6 +1194,12 @@ const styles = StyleSheet.create({
     height: 22,
     width: 32,
   },
+  brushIconBadge: {
+    fontSize: 14,
+    left: 4,
+    position: 'absolute',
+    top: -18,
+  },
   brushNeck: { backgroundColor: '#42D6C5', height: 12, width: 24 },
   brushPath: { left: 0, position: 'absolute', top: 0 },
   bubbleOne: {
@@ -1185,9 +1228,12 @@ const styles = StyleSheet.create({
     bottom: 8,
     justifyContent: 'center',
     left: 8,
+    opacity: 1,
+    overflow: 'visible',
     position: 'absolute',
     top: 8,
     width: 250,
+    zIndex: 3,
   },
   cleanShine: { position: 'absolute', right: 22, top: 28 },
   cleanShineText: { color: '#FFD166', fontSize: 32 },

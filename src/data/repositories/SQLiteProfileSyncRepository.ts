@@ -1,3 +1,4 @@
+import { randomUUID } from 'expo-crypto';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { AgeBand, StarterAvatarKey } from '@/domain/family';
@@ -50,10 +51,7 @@ export class SQLiteProfileSyncRepository implements LocalProfileSyncRepository {
 
   async upsertCloud(profile: CloudChildProfile): Promise<void> {
     await this.database.withTransactionAsync(async () => {
-      const family = await this.database.getFirstAsync<{ id: string }>(
-        'SELECT id FROM families LIMIT 1',
-      );
-      if (!family) throw new Error('LOCAL_FAMILY_REQUIRED');
+      const familyId = await this.ensureLocalFamilyId();
       await this.database.runAsync(
         `INSERT INTO child_profiles
           (id, family_id, nickname, age_band, avatar_id, created_at, archived_at,
@@ -65,7 +63,7 @@ export class SQLiteProfileSyncRepository implements LocalProfileSyncRepository {
           parent_auth_user_id = excluded.parent_auth_user_id,
           sync_status = 'synced', updated_at = excluded.updated_at`,
         profile.id,
-        family.id,
+        familyId,
         profile.nickname,
         profile.ageBand,
         profile.avatarId,
@@ -82,6 +80,29 @@ export class SQLiteProfileSyncRepository implements LocalProfileSyncRepository {
         profile.id,
       );
     });
+  }
+
+  /**
+   * Cloud recovery can run before any local family exists (fresh install with an
+   * account that already owns profiles). Bootstrap one instead of failing so the
+   * recovered `child_profiles` rows have a valid `family_id`. Mirrors
+   * `SQLiteFamilyRepository.createLocal`.
+   */
+  private async ensureLocalFamilyId(): Promise<string> {
+    const existing = await this.database.getFirstAsync<{ id: string }>(
+      'SELECT id FROM families ORDER BY created_at LIMIT 1',
+    );
+    if (existing) return existing.id;
+    const id = randomUUID();
+    await this.database.runAsync(
+      `INSERT INTO families(id, created_at, locale, timezone, cloud_account_id)
+       VALUES (?, ?, ?, ?, NULL)`,
+      id,
+      new Date().toISOString(),
+      'tr-TR',
+      Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Istanbul',
+    );
+    return id;
   }
 
   async markSynced(localId: string, parentId: string, remoteId: string): Promise<void> {

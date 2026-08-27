@@ -332,3 +332,9 @@ onboarding ve Mood Lab aynı render bileşenini kullanır.
   Collection önizlemesi ile Home aynı kaydı okur.
 - Yeni malzeme kataloğu production reward sırasına kayıt eklemez. Kilit durumu mevcut beş dekor
   ödülüne bağlıdır; yalnız DEV sunumu tüm tematik varyantları seçilebilir yapar.
+
+# 2026-08-27 — React Native iOS bundle script yolu tırnak içinde çalıştırılır
+
+- Xcode build phase, React Native script yolunu komut ikamesiyle doğrudan çalıştırmak yerine önce
+  `RN_XCODE_SCRIPT` değişkenine çözer ve tırnak içinde çağırır. Böylece proje dizinindeki boşluklar
+  native Debug/Release derlemelerini bozmaz; uygulama davranışı ve feature kodu değişmez.

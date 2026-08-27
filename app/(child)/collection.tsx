@@ -65,7 +65,7 @@ import {
   type SceneSize,
 } from '@/features/customization';
 
-const categories: readonly AccessorySlot[] = ['background', 'decor', 'effect'];
+const categories: readonly AccessorySlot[] = ['background', 'decor', 'effect', 'brush'];
 
 type DragPoint = Readonly<{ pageX: number; pageY: number }>;
 type DragItem = Readonly<{
@@ -520,7 +520,7 @@ export default function CollectionScreen() {
           ) : null}
         </View>
         {lockedMessage ? <Text style={styles.lockedMessage}>{t('collection.locked')}</Text> : null}
-        <View style={styles.grid}>
+        <View style={styles.grid} testID="collection-item-grid">
           {activeSlot === 'decor'
             ? roomMaterials.map((material) => {
                 const unlocked = isRoomMaterialUnlocked(material, items, __DEV__);

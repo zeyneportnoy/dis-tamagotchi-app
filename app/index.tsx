@@ -40,7 +40,10 @@ export default function Index() {
             : 'profile-onboarding',
         );
       })
-      .catch(() => setDestination('error'));
+      .catch((error: unknown) => {
+        console.error('index: profile bootstrap failed', error);
+        setDestination('error');
+      });
   }, [authLoading, configured, session]);
 
   if (authLoading) return <LoadingState />;

@@ -1,4 +1,8 @@
-import { DatabaseSync, type StatementResultingChanges, type SupportedValueType } from 'node:sqlite';
+import { DatabaseSync, type StatementResultingChanges } from 'node:sqlite';
+
+// `node:sqlite` stopped exporting `SupportedValueType` in newer @types/node; these
+// are the bind-parameter primitives it still accepts.
+type SupportedValueType = null | number | bigint | string | Uint8Array;
 
 export class NodeSQLiteDatabase {
   private readonly database: DatabaseSync;

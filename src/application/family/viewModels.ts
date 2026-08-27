@@ -5,6 +5,7 @@ export type ChildProfileViewModel = Readonly<{
   nickname: string;
   ageBand: StoredAgeBand;
   avatarId: StarterAvatarKey;
+  createdAt: string;
 }>;
 
 export const toChildProfileViewModel = (profile: ChildProfile): ChildProfileViewModel => ({
@@ -12,4 +13,5 @@ export const toChildProfileViewModel = (profile: ChildProfile): ChildProfileView
   nickname: profile.nickname,
   ageBand: profile.ageBand,
   avatarId: profile.avatarId,
+  createdAt: profile.createdAt,
 });
