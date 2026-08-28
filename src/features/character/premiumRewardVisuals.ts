@@ -29,6 +29,24 @@ const premiumRewardSources = {
   colorGlasses: require('../../../assets/rewards/premium/color-glasses.png'),
 } as const satisfies Record<string, ImageSourcePropType>;
 
+const brushSources: Partial<Record<RewardItemKey, ImageSourcePropType>> = {
+  'classic-brush': require('../../../assets/rewards/brushes/classic-brush.png'),
+  'pink-brush': require('../../../assets/rewards/brushes/pink-brush.png'),
+  'star-brush': require('../../../assets/rewards/brushes/star-brush.png'),
+  'mini-cape': require('../../../assets/rewards/brushes/mini-cape.png'),
+  'rainbow-brush': require('../../../assets/rewards/brushes/rainbow-brush.png'),
+  'dino-brush': require('../../../assets/rewards/brushes/dino-brush.png'),
+  'space-brush': require('../../../assets/rewards/brushes/space-brush.png'),
+  'heart-brush': require('../../../assets/rewards/brushes/heart-brush.png'),
+};
+
+const classicBrushSource: ImageSourcePropType = require('../../../assets/rewards/brushes/classic-brush.png');
+
+/** Real illustration for an equipped/collected brush; falls back to the classic brush. */
+export function brushImageSource(key: string | undefined): ImageSourcePropType {
+  return (key ? brushSources[key as RewardItemKey] : undefined) ?? classicBrushSource;
+}
+
 export const collectionBackgroundKeys = [
   'pastel-playroom',
   'cloud-room',
@@ -77,15 +95,14 @@ export function premiumRewardSource(key: RewardItemKey): ImageSourcePropType {
     'super-glasses': premiumRewardSources.heroMask,
     'color-glasses': premiumRewardSources.colorGlasses,
     'mini-halo': premiumRewardSources.starHeadband,
-    'classic-brush': premiumRewardSources.bubbles,
-    'pink-brush': premiumRewardSources.hearts,
-    'star-brush': premiumRewardSources.goldSparkle,
-    'mini-cape': premiumRewardSources.heroMask,
-    'rainbow-brush': premiumRewardSources.rainbowLight,
-    'dino-brush': premiumRewardSources.miniPlant,
-    'space-brush': premiumRewardSources.nightRoom,
-    'sparkle-brush': premiumRewardSources.starSparkle,
-    'heart-brush': premiumRewardSources.hearts,
+    'classic-brush': brushSources['classic-brush'],
+    'pink-brush': brushSources['pink-brush'],
+    'star-brush': brushSources['star-brush'],
+    'mini-cape': brushSources['mini-cape'],
+    'rainbow-brush': brushSources['rainbow-brush'],
+    'dino-brush': brushSources['dino-brush'],
+    'space-brush': brushSources['space-brush'],
+    'heart-brush': brushSources['heart-brush'],
   };
   return sourceByKey[key] ?? premiumRewardSources.goldSparkle;
 }

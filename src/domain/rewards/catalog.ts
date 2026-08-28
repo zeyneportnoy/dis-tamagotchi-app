@@ -40,7 +40,6 @@ export const rewardCatalog = [
   { key: 'space-brush', icon: '🚀', slot: 'brush', unlockXp: 1040 },
   { key: 'cloud-effect', icon: '☁️', slot: 'effect', unlockXp: 1080 },
   { key: 'forest-room', icon: '🌲', slot: 'background', unlockXp: 1120 },
-  { key: 'sparkle-brush', icon: '✨', slot: 'brush', unlockXp: 1160 },
   { key: 'heart-brush', icon: '💗', slot: 'brush', unlockXp: 1200 },
 ] as const;
 

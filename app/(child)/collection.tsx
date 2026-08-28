@@ -65,7 +65,7 @@ import {
   type SceneSize,
 } from '@/features/customization';
 
-const categories: readonly AccessorySlot[] = ['background', 'decor', 'effect', 'brush'];
+const categories: readonly AccessorySlot[] = ['brush', 'background', 'decor', 'effect'];
 
 type DragPoint = Readonly<{ pageX: number; pageY: number }>;
 type DragItem = Readonly<{
@@ -184,7 +184,7 @@ export default function CollectionScreen() {
   const [profile, setProfile] = useState<ChildProfileViewModel | null>(null);
   const [growthStage, setGrowthStage] = useState<CharacterGrowthStage>(0);
   const [items, setItems] = useState<readonly InventoryItem[] | null>(null);
-  const [activeSlot, setActiveSlot] = useState<AccessorySlot>('background');
+  const [activeSlot, setActiveSlot] = useState<AccessorySlot>('brush');
   const [customization, setCustomization] = useState<CustomizationState>(emptyCustomizationState);
   const [sceneSize, setSceneSize] = useState<SceneSize>({ height: 0, width: 0 });
   const [lockedMessage, setLockedMessage] = useState(false);
@@ -488,6 +488,7 @@ export default function CollectionScreen() {
                 ]}
               >
                 <Image
+                  resizeMode="contain"
                   source={characterIconSource(profile.avatarId, categoryIconName(slot))}
                   style={styles.categoryIcon}
                 />
@@ -519,6 +520,11 @@ export default function CollectionScreen() {
             </Pressable>
           ) : null}
         </View>
+        {activeSlot === 'brush' || activeSlot === 'decor' ? (
+          <Text style={styles.slotHint}>
+            {t(activeSlot === 'brush' ? 'collection.brushHint' : 'collection.decorHint')}
+          </Text>
+        ) : null}
         {lockedMessage ? <Text style={styles.lockedMessage}>{t('collection.locked')}</Text> : null}
         <View style={styles.grid} testID="collection-item-grid">
           {activeSlot === 'decor'
@@ -631,13 +637,15 @@ export default function CollectionScreen() {
               <View
                 style={[
                   styles.itemIcon,
+                  activeSlot === 'brush' && styles.itemIconBrush,
                   { backgroundColor: visualPalette.soft },
                   item.equipped && styles.itemIconSelected,
                 ]}
               >
                 <Image
+                  resizeMode="contain"
                   source={premiumRewardSource(item.key)}
-                  style={styles.rewardIcon}
+                  style={activeSlot === 'brush' ? styles.brushRewardIcon : styles.rewardIcon}
                   testID={`collection-item-visual-${item.key}`}
                 />
               </View>
@@ -798,6 +806,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 74,
   },
+  itemIconBrush: { height: 120, width: 78 },
   itemIconSelected: { backgroundColor: '#FFF3C8' },
   itemLocked: { opacity: 0.58 },
   itemName: { fontSize: 15, fontWeight: '800', lineHeight: 20, minHeight: 40, textAlign: 'center' },
@@ -808,6 +817,16 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     textAlign: 'center',
   },
+  slotHint: {
+    color: '#3B2A6B',
+    fontSize: 22,
+    fontWeight: '900',
+    lineHeight: 28,
+    marginBottom: spacing.sm,
+    marginTop: spacing.xs,
+    textAlign: 'center',
+  },
+  brushRewardIcon: { height: 112, width: 70 },
   rewardIcon: { height: 52, width: 52 },
   rewardIconFill: { height: '100%', width: '100%' },
   lockedMessage: { color: colors.brandSecondary, fontWeight: '800', textAlign: 'center' },

@@ -148,6 +148,8 @@ describe('Child tab routes', () => {
       JSON.stringify({ selectedRoomMaterials: ['pastel-toy-box'], version: 1 }),
     );
     const view = await render(<CollectionScreen />);
+    // Collection opens on the "Fırça" tab; switch to backgrounds for this scenario.
+    await fireEvent.press(view.getByText('Arka Plan'));
     await waitFor(() => expect(view.getByText('Pastel Oyun Odası')).toBeTruthy());
     expect(view.getByText('Şeker Bulutlar')).toBeTruthy();
     expect(view.getByText('Gökkuşağı Işıltısı')).toBeTruthy();

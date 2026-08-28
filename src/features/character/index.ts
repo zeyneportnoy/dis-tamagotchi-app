@@ -16,6 +16,7 @@ export type { CharacterIconName, CharacterIconThemeSet } from './CharacterIconTh
 export { collectionPreviewBottomForStage, collectionVisualPalette } from './collectionVisuals';
 export type { CollectionVisualPalette } from './collectionVisuals';
 export {
+  brushImageSource,
   collectionBackgroundKeys,
   isCollectionBackgroundKey,
   premiumRewardSource,

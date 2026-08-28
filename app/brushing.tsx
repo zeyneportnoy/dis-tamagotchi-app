@@ -39,6 +39,7 @@ import {
 } from '@/domain/brushing';
 import {
   CharacterAvatar,
+  brushImageSource,
   evolutionSequence,
   sceneBackgroundForCharacter,
 } from '@/features/character';
@@ -68,6 +69,7 @@ import {
   growthStageForXp,
   type BrushingRewardResult,
 } from '@/domain/rewards';
+import { loadCustomizationState } from '@/features/customization';
 import type { BrushingPeriod, ProfileProgress } from '@/domain/family';
 
 const regionKeys = ['rightUpper', 'leftUpper', 'rightLower', 'leftLower'] as const;
@@ -95,30 +97,93 @@ function SmileQuadrant({ activeRegion }: { activeRegion: BrushingRegion }) {
   );
 }
 
-type BrushAppearance = { grip: string; handle: string; head: string; icon: string; neck: string };
-
-const defaultBrushAppearance: BrushAppearance = {
-  grip: '#7256CF',
-  handle: '#42D6C5',
-  head: '#FF6B81',
-  icon: '🪥',
-  neck: '#42D6C5',
+type FoamBubbleConfig = {
+  delay: number;
+  duration: number;
+  dx: number;
+  dy: number;
+  left: number;
+  pop: number;
+  size: number;
+  top: number;
 };
 
-const brushAppearance: Record<string, BrushAppearance> = {
-  'classic-brush': defaultBrushAppearance,
-  'mini-cape': { grip: '#0F6E56', handle: '#9FE1CB', head: '#04342C', icon: '🪥', neck: '#9FE1CB' },
-  'pink-brush': { grip: '#D4537E', handle: '#F4C0D1', head: '#993556', icon: '🌸', neck: '#F4C0D1' },
-  'star-brush': { grip: '#BA7517', handle: '#FAC775', head: '#854F0B', icon: '⭐', neck: '#FAC775' },
-  'rainbow-brush': { grip: '#639922', handle: '#F0997B', head: '#378ADD', icon: '🌈', neck: '#EF9F27' },
-  'dino-brush': { grip: '#3B6D11', handle: '#97C459', head: '#27500A', icon: '🦕', neck: '#97C459' },
-  'space-brush': { grip: '#042C53', handle: '#0C447C', head: '#85B7EB', icon: '🚀', neck: '#0C447C' },
-  'sparkle-brush': { grip: '#993C1D', handle: '#F5C4B3', head: '#712B13', icon: '✨', neck: '#F5C4B3' },
-  'heart-brush': { grip: '#993556', handle: '#ED93B1', head: '#4B1528', icon: '💗', neck: '#ED93B1' },
-};
+// Each bubble is born near the bristle tip, sprays off in its own direction, swells,
+// drifts up and pops — on its own irregular clock — so the foam churns like a real
+// brushing froth instead of pulsing in lockstep.
+const foamBubbleConfigs: readonly FoamBubbleConfig[] = [
+  { delay: 0, duration: 760, dx: -30, dy: -34, left: 30, pop: 1.5, size: 14, top: 40 },
+  { delay: 160, duration: 1120, dx: 28, dy: -20, left: 34, pop: 1.25, size: 30, top: 44 },
+  { delay: 90, duration: 620, dx: 12, dy: -40, left: 38, pop: 1.55, size: 9, top: 38 },
+  { delay: 420, duration: 960, dx: -40, dy: -14, left: 32, pop: 1.3, size: 22, top: 42 },
+  { delay: 300, duration: 1320, dx: 40, dy: -30, left: 36, pop: 1.2, size: 36, top: 40 },
+  { delay: 560, duration: 700, dx: -14, dy: -46, left: 34, pop: 1.6, size: 11, top: 36 },
+  { delay: 240, duration: 880, dx: 20, dy: -10, left: 40, pop: 1.35, size: 17, top: 46 },
+  { delay: 680, duration: 1180, dx: -34, dy: -26, left: 30, pop: 1.22, size: 32, top: 42 },
+  { delay: 130, duration: 540, dx: 6, dy: -24, left: 36, pop: 1.65, size: 7, top: 40 },
+  { delay: 470, duration: 820, dx: 32, dy: -38, left: 38, pop: 1.42, size: 15, top: 38 },
+  { delay: 360, duration: 1040, dx: -24, dy: -8, left: 32, pop: 1.28, size: 25, top: 48 },
+  { delay: 610, duration: 680, dx: 16, dy: -48, left: 36, pop: 1.55, size: 10, top: 34 },
+  { delay: 200, duration: 1000, dx: -8, dy: -30, left: 35, pop: 1.32, size: 20, top: 41 },
+  { delay: 520, duration: 900, dx: 36, dy: -16, left: 37, pop: 1.24, size: 13, top: 45 },
+  { delay: 340, duration: 640, dx: -20, dy: -44, left: 33, pop: 1.58, size: 8, top: 37 },
+];
 
-function brushAppearanceFor(brushKey?: string): BrushAppearance {
-  return (brushKey ? brushAppearance[brushKey] : undefined) ?? defaultBrushAppearance;
+function FoamBubble({ config }: { config: FoamBubbleConfig }) {
+  const [life] = useState(() => new Animated.Value(0));
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.delay(config.delay),
+        Animated.timing(life, {
+          duration: config.duration,
+          easing: Easing.out(Easing.quad),
+          toValue: 1,
+          useNativeDriver: true,
+        }),
+        Animated.timing(life, { duration: 1, toValue: 0, useNativeDriver: true }),
+        Animated.delay(config.duration * 0.35),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [config.delay, config.duration, life]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.foamBubble,
+        {
+          height: config.size,
+          left: config.left,
+          top: config.top,
+          width: config.size,
+          opacity: life.interpolate({
+            inputRange: [0, 0.12, 0.7, 1],
+            outputRange: [0, 1, 0.9, 0],
+          }),
+          transform: [
+            {
+              translateX: life.interpolate({ inputRange: [0, 1], outputRange: [0, config.dx] }),
+            },
+            {
+              translateY: life.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, config.dy - 10],
+              }),
+            },
+            {
+              scale: life.interpolate({
+                inputRange: [0, 0.3, 0.8, 1],
+                outputRange: [0.1, config.pop, config.pop * 0.85, 0.35],
+              }),
+            },
+          ],
+        },
+      ]}
+    />
+  );
 }
 
 function AnimatedToothbrush({
@@ -134,10 +199,17 @@ function AnimatedToothbrush({
   progress: number;
   segmentIndex: number;
 }) {
-  const appearance = brushAppearanceFor(brushKey);
   const [stroke] = useState(() => new Animated.Value(0));
   const [pathVariant, setPathVariant] = useState(0);
-  const points = brushPathFor(characterKey, growthStage, pathVariant + segmentIndex);
+  const rawPoints = brushPathFor(characterKey, growthStage, pathVariant + segmentIndex);
+  // Compress the sweep toward its own centre so the whole brush — handle included —
+  // stays inside the character silhouette on every frame of the animation.
+  const centreX = rawPoints.reduce((sum, point) => sum + point.x, 0) / rawPoints.length;
+  const centreY = rawPoints.reduce((sum, point) => sum + point.y, 0) / rawPoints.length;
+  const points = rawPoints.map((point) => ({
+    x: centreX + (point.x - centreX) * 0.42,
+    y: centreY + (point.y - centreY) * 0.42,
+  }));
 
   useEffect(() => {
     stroke.setValue(0);
@@ -188,7 +260,7 @@ function AnimatedToothbrush({
             {
               opacity: stroke.interpolate({
                 inputRange: [0, 0.35, 0.7, 1],
-                outputRange: [0.48, 1, 0.66, 0.48],
+                outputRange: [0.9, 1, 0.95, 0.9],
               }),
               transform: [
                 {
@@ -204,26 +276,16 @@ function AnimatedToothbrush({
             },
           ]}
         >
-          <View style={[styles.foamBubble, styles.foamBubbleOne]} />
-          <View style={[styles.foamBubble, styles.foamBubbleTwo]} />
-          <View style={[styles.foamBubble, styles.foamBubbleThree]} />
-          <View style={[styles.foamBubble, styles.foamBubbleFour]} />
+          {foamBubbleConfigs.map((config, index) => (
+            <FoamBubble config={config} key={index} />
+          ))}
         </Animated.View>
-        <View style={styles.toothbrush}>
-          <View style={[styles.brushHandle, { backgroundColor: appearance.handle }]}>
-            <View style={[styles.brushGrip, { backgroundColor: appearance.grip }]} />
-          </View>
-          <View style={[styles.brushNeck, { backgroundColor: appearance.neck }]} />
-          <View style={[styles.brushHead, { backgroundColor: appearance.head }]}>
-            <View style={styles.bristleRow}>
-              <View style={styles.bristle} />
-              <View style={styles.bristle} />
-              <View style={styles.bristle} />
-              <View style={styles.bristle} />
-            </View>
-          </View>
-          <Text style={styles.brushIconBadge}>{appearance.icon}</Text>
-        </View>
+        <Image
+          resizeMode="contain"
+          source={brushImageSource(brushKey)}
+          style={styles.brushImage}
+          testID="brushing-brush-image"
+        />
       </Animated.View>
       <View style={[styles.cleanShine, { opacity: 0.15 + progress * 0.85 }]}>
         <Text style={styles.cleanShineText}>✦</Text>
@@ -745,8 +807,13 @@ export default function BrushingScreen() {
     return () => {
       cancelled = true;
       if (timeout) clearTimeout(timeout);
-      timerTickA.pause();
-      timerTickB.pause();
+      // expo-audio can release the native player before this cleanup runs on unmount.
+      try {
+        timerTickA.pause();
+        timerTickB.pause();
+      } catch {
+        /* player already torn down */
+      }
     };
   }, [result, timer, timerTickA, timerTickB, voiceProfile]);
 
@@ -783,13 +850,18 @@ export default function BrushingScreen() {
       .then(async (activeProfile) => {
         if (!activeProfile) return router.replace('/onboarding');
         const childUseCases = await getChildExperienceUseCases();
-        const [progress, equippedItems] = await Promise.all([
+        const [progress, equippedItems, customization] = await Promise.all([
           childUseCases.getProgress(activeProfile.id),
           childUseCases.getEquippedItems(activeProfile.id),
+          __DEV__ ? loadCustomizationState(activeProfile.id) : Promise.resolve(null),
         ]);
         setProfile(activeProfile);
         setInitialProgress(progress);
-        setEquippedBrushKey(equippedItems.find((item) => item.slot === 'brush')?.key);
+        const equippedBrush = equippedItems.find((item) => item.slot === 'brush')?.key;
+        // In DEV, Collection writes the chosen brush to the developer-equipped override
+        // (AsyncStorage) rather than the inventory table, so honor it here too.
+        const devBrush = customization?.developerEquipped.brush ?? undefined;
+        setEquippedBrushKey(devBrush ?? equippedBrush);
       })
       .catch(() => setFailed(true));
   }, []);
@@ -1157,8 +1229,6 @@ export default function BrushingScreen() {
 }
 
 const styles = StyleSheet.create({
-  bristle: { backgroundColor: '#FFFFFF', borderRadius: 2, height: 11, width: 4 },
-  bristleRow: { flexDirection: 'row', gap: 2, position: 'absolute', right: 3, top: -8 },
   brushAnimation: {
     height: 190,
     left: 0,
@@ -1168,39 +1238,13 @@ const styles = StyleSheet.create({
     width: 195,
     zIndex: 5,
   },
-  brushGrip: {
-    backgroundColor: '#7256CF',
-    borderRadius: 6,
-    height: 8,
-    marginLeft: 12,
-    marginTop: 5,
-    width: 48,
+  brushImage: {
+    height: 128,
+    marginLeft: 78,
+    marginTop: -50,
+    transform: [{ rotate: '138deg' }],
+    width: 72,
   },
-  brushHandle: {
-    backgroundColor: '#42D6C5',
-    borderColor: '#FFFFFF',
-    borderBottomLeftRadius: 13,
-    borderTopLeftRadius: 13,
-    borderWidth: 3,
-    height: 24,
-    width: 78,
-  },
-  brushHead: {
-    backgroundColor: '#FF6B81',
-    borderColor: '#FFFFFF',
-    borderBottomRightRadius: 9,
-    borderTopRightRadius: 9,
-    borderWidth: 3,
-    height: 22,
-    width: 32,
-  },
-  brushIconBadge: {
-    fontSize: 14,
-    left: 4,
-    position: 'absolute',
-    top: -18,
-  },
-  brushNeck: { backgroundColor: '#42D6C5', height: 12, width: 24 },
   brushPath: { left: 0, position: 'absolute', top: 0 },
   bubbleOne: {
     color: colors.brandHighlight,
@@ -1325,17 +1369,24 @@ const styles = StyleSheet.create({
   },
   exitIcon: { color: colors.brandPrimary, fontSize: 34, fontWeight: '700', lineHeight: 38 },
   foamBubble: {
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    borderColor: '#D7F8F4',
-    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderColor: '#8FD9E8',
+    borderRadius: 999,
     borderWidth: 2,
     position: 'absolute',
+    shadowColor: '#3FA9C4',
+    shadowOffset: { height: 1, width: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 3,
   },
-  foamBubbleFour: { height: 12, left: 33, top: 23, width: 12 },
-  foamBubbleOne: { height: 23, left: 12, top: 28, width: 23 },
-  foamBubbleThree: { height: 15, left: 27, top: 5, width: 15 },
-  foamBubbleTwo: { height: 17, left: 1, top: 12, width: 17 },
-  foamLayer: { height: 48, left: 100, position: 'absolute', top: -24, width: 40 },
+  foamLayer: {
+    height: 92,
+    left: 112,
+    overflow: 'visible',
+    position: 'absolute',
+    top: 16,
+    width: 92,
+  },
   instruction: { fontSize: 22, fontWeight: '700', lineHeight: 30, textAlign: 'center' },
   mouthMap: {
     bottom: 16,

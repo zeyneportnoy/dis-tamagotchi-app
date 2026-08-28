@@ -13,6 +13,7 @@ export type CharacterIconName =
   | 'room'
   | 'effect'
   | 'accessory'
+  | 'brush'
   | 'pastel-playroom'
   | 'cloud-room'
   | 'rainbow-room'
@@ -39,6 +40,7 @@ const iconSources: Record<CharacterIconThemeSet, Record<CharacterIconName, Image
     room: require('../../../assets/icons/character-themes/set1/room.png'),
     effect: require('../../../assets/icons/character-themes/set1/effect.png'),
     accessory: require('../../../assets/icons/character-themes/set1/accessory.png'),
+    brush: require('../../../assets/icons/character-themes/set1/brush.png'),
     'pastel-playroom': require('../../../assets/icons/character-themes/set1/pastel-playroom.png'),
     'cloud-room': require('../../../assets/icons/character-themes/set1/cloud-room.png'),
     'rainbow-room': require('../../../assets/icons/character-themes/set1/rainbow-room.png'),
@@ -53,6 +55,7 @@ const iconSources: Record<CharacterIconThemeSet, Record<CharacterIconName, Image
     room: require('../../../assets/icons/character-themes/set2/room.png'),
     effect: require('../../../assets/icons/character-themes/set2/effect.png'),
     accessory: require('../../../assets/icons/character-themes/set2/accessory.png'),
+    brush: require('../../../assets/icons/character-themes/set1/brush.png'),
     'pastel-playroom': require('../../../assets/icons/character-themes/set2/pastel-playroom.png'),
     'cloud-room': require('../../../assets/icons/character-themes/set2/cloud-room.png'),
     'rainbow-room': require('../../../assets/icons/character-themes/set2/rainbow-room.png'),
@@ -67,6 +70,7 @@ const iconSources: Record<CharacterIconThemeSet, Record<CharacterIconName, Image
     room: require('../../../assets/icons/character-themes/set3/room.png'),
     effect: require('../../../assets/icons/character-themes/set3/effect.png'),
     accessory: require('../../../assets/icons/character-themes/set3/accessory.png'),
+    brush: require('../../../assets/icons/character-themes/set1/brush.png'),
     'pastel-playroom': require('../../../assets/icons/character-themes/set3/pastel-playroom.png'),
     'cloud-room': require('../../../assets/icons/character-themes/set3/cloud-room.png'),
     'rainbow-room': require('../../../assets/icons/character-themes/set3/rainbow-room.png'),
@@ -83,6 +87,7 @@ export function characterIconSource(
 
 export function categoryIconName(slot: AccessorySlot): CharacterIconName {
   if (slot === 'background') return 'background';
+  if (slot === 'brush') return 'brush';
   if (slot === 'decor') return 'room';
   if (slot === 'effect') return 'effect';
   return 'accessory';
