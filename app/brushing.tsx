@@ -12,6 +12,7 @@ import {
   ScrollView,
   StyleSheet,
   View,
+  type LayoutRectangle,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
@@ -40,6 +41,7 @@ import {
 import {
   CharacterAvatar,
   brushImageSource,
+  characterSafeViewport,
   evolutionSequence,
   sceneBackgroundForCharacter,
 } from '@/features/character';
@@ -74,6 +76,36 @@ import type { BrushingPeriod, ProfileProgress } from '@/domain/family';
 
 const regionKeys = ['rightUpper', 'leftUpper', 'rightLower', 'leftLower'] as const;
 type BrushingRegion = (typeof regionKeys)[number];
+
+const brushImageCentre = { x: 36, y: 64 } as const;
+const brushImageBristlePoint = { x: 29.5, y: 19 } as const;
+const brushImageRotationDegrees = -12;
+const brushRotationDegrees = [76, 67, 73, 60, 76] as const;
+const brushBristleAnchor = { x: 71, y: 93 } as const;
+
+function rotatePoint(
+  point: Readonly<{ x: number; y: number }>,
+  centre: Readonly<{ x: number; y: number }>,
+  degrees: number,
+): Readonly<{ x: number; y: number }> {
+  const radians = (degrees * Math.PI) / 180;
+  const deltaX = point.x - centre.x;
+  const deltaY = point.y - centre.y;
+  return {
+    x: centre.x + deltaX * Math.cos(radians) - deltaY * Math.sin(radians),
+    y: centre.y + deltaX * Math.sin(radians) + deltaY * Math.cos(radians),
+  };
+}
+
+function brushRotationAt(progress: number): number {
+  const lastIndex = brushRotationDegrees.length - 1;
+  const scaled = Math.max(0, Math.min(1, progress)) * lastIndex;
+  const fromIndex = Math.min(Math.floor(scaled), lastIndex - 1);
+  const ratio = scaled - fromIndex;
+  const from = brushRotationDegrees[fromIndex] ?? brushRotationDegrees[0];
+  const to = brushRotationDegrees[fromIndex + 1] ?? from;
+  return from + (to - from) * ratio;
+}
 
 function SmileQuadrant({ activeRegion }: { activeRegion: BrushingRegion }) {
   return (
@@ -197,6 +229,7 @@ function AnimatedToothbrush({
   paused,
   progress,
   segmentIndex,
+  surfaceCentre,
 }: {
   brushKey?: string;
   characterKey: ChildProfileViewModel['avatarId'];
@@ -204,21 +237,23 @@ function AnimatedToothbrush({
   paused: boolean;
   progress: number;
   segmentIndex: number;
+  surfaceCentre?: Readonly<{ x: number; y: number }>;
 }) {
   const [stroke] = useState(() => new Animated.Value(0));
   const [pathVariant, setPathVariant] = useState(0);
   const strokeProgress = useRef(0);
   const routeKey = `${segmentIndex}:${pathVariant}`;
   const activeRouteKey = useRef(routeKey);
-  const rawPoints = brushPathFor(characterKey, growthStage, pathVariant, segmentIndex);
-  // Compress the sweep toward its own centre so the whole brush — handle included —
-  // stays inside the character silhouette on every frame of the animation.
-  const centreX = rawPoints.reduce((sum, point) => sum + point.x, 0) / rawPoints.length;
-  const centreY = rawPoints.reduce((sum, point) => sum + point.y, 0) / rawPoints.length;
-  const points = rawPoints.map((point) => ({
-    x: centreX + (point.x - centreX) * 0.72,
-    y: centreY - 24 + (point.y - centreY) * 0.24,
-  }));
+  const points = brushPathFor(characterKey, growthStage, pathVariant, segmentIndex, surfaceCentre);
+  const motionInputRange = points.map((_, index) => index / (points.length - 1));
+  const imageBristlePoint = rotatePoint(
+    brushImageBristlePoint,
+    brushImageCentre,
+    brushImageRotationDegrees,
+  );
+  const renderedBristlePoints = motionInputRange.map((pathProgress) =>
+    rotatePoint(imageBristlePoint, brushBristleAnchor, brushRotationAt(pathProgress)),
+  );
 
   useEffect(() => {
     if (activeRouteKey.current !== routeKey) {
@@ -264,13 +299,13 @@ function AnimatedToothbrush({
             transform: [
               {
                 translateX: stroke.interpolate({
-                  inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
+                  inputRange: motionInputRange,
                   outputRange: points.map(({ x }) => x - 35),
                 }),
               },
               {
                 translateY: stroke.interpolate({
-                  inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
+                  inputRange: motionInputRange,
                   outputRange: points.map(({ y }) => y - 40),
                 }),
               },
@@ -292,26 +327,32 @@ function AnimatedToothbrush({
         ))}
       </Animated.View>
       <Animated.View
+        testID="brushing-brush-anchor"
         style={[
           styles.brushPath,
           {
+            transformOrigin: [brushBristleAnchor.x, brushBristleAnchor.y, 0],
             transform: [
               {
                 translateX: stroke.interpolate({
-                  inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
-                  outputRange: points.map(({ x }) => x - 118),
+                  inputRange: motionInputRange,
+                  outputRange: points.map(
+                    ({ x }, index) => x - (renderedBristlePoints[index]?.x ?? brushBristleAnchor.x),
+                  ),
                 }),
               },
               {
                 translateY: stroke.interpolate({
-                  inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
-                  outputRange: points.map(({ y }) => y - 8),
+                  inputRange: motionInputRange,
+                  outputRange: points.map(
+                    ({ y }, index) => y - (renderedBristlePoints[index]?.y ?? brushBristleAnchor.y),
+                  ),
                 }),
               },
               {
                 rotate: stroke.interpolate({
                   inputRange: [0, 0.25, 0.5, 0.75, 1],
-                  outputRange: ['76deg', '67deg', '73deg', '60deg', '76deg'],
+                  outputRange: brushRotationDegrees.map((degrees) => `${degrees}deg`),
                 }),
               },
             ],
@@ -591,6 +632,10 @@ export default function BrushingScreen() {
   const [completionMessageKey, setCompletionMessageKey] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [voiceProfile, setVoiceProfile] = useState<BrushingVoiceProfile | null>(null);
+  const [characterZoneLayout, setCharacterZoneLayout] = useState<LayoutRectangle | null>(null);
+  const [characterArtworkLayout, setCharacterArtworkLayout] = useState<LayoutRectangle | null>(
+    null,
+  );
   const [nicknamePersonalization, setNicknamePersonalization] = useState<boolean | null>(null);
   const [personalizedCueUris, setPersonalizedCueUris] = useState<
     Partial<Record<PersonalizedVoiceCueIndex, string>>
@@ -611,6 +656,22 @@ export default function BrushingScreen() {
   const snapshot = timer ? getBrushingTimerSnapshot(timer, nowMs) : null;
   const region = regionKeys[snapshot?.segmentIndex ?? 0] ?? regionKeys[0];
   const currentGrowthStage = growthStageForXp(initialProgress?.totalXp ?? 0);
+  const largeCharacterViewport = characterSafeViewport.large;
+  const characterSurfaceCentre =
+    characterZoneLayout && characterArtworkLayout
+      ? {
+          x:
+            characterZoneLayout.x +
+            (characterZoneLayout.width - largeCharacterViewport.width) / 2 +
+            characterArtworkLayout.x +
+            characterArtworkLayout.width / 2,
+          y:
+            characterZoneLayout.y +
+            (characterZoneLayout.height - largeCharacterViewport.height) / 2 +
+            characterArtworkLayout.y +
+            characterArtworkLayout.height / 2,
+        }
+      : undefined;
 
   const pauseSessionAudio = useCallback((): void => {
     timerTickA.pause();
@@ -1178,11 +1239,16 @@ export default function BrushingScreen() {
             <Text style={styles.bubbleOne}>✦</Text>
             <Text style={styles.bubbleTwo}>✦</Text>
             <View style={styles.stageRug} />
-            <View style={styles.brushingCharacterZone} testID="brushing-character-layer">
+            <View
+              onLayout={({ nativeEvent }) => setCharacterZoneLayout(nativeEvent.layout)}
+              style={styles.brushingCharacterZone}
+              testID="brushing-character-layer"
+            >
               <CharacterAvatar
                 characterKey={profile.avatarId}
                 growthStage={growthStageForXp(initialProgress.totalXp)}
                 mood={paused ? 'waiting' : 'energetic'}
+                onArtworkLayout={setCharacterArtworkLayout}
                 phase="resting"
                 size="large"
                 surface="plain"
@@ -1195,6 +1261,7 @@ export default function BrushingScreen() {
               paused={paused}
               progress={Math.max(0, Math.min(1, snapshot.elapsedSeconds / 120))}
               segmentIndex={snapshot.segmentIndex}
+              surfaceCentre={characterSurfaceCentre}
             />
             <View accessibilityLabel={t(`brushing.regions.${region}`)} style={styles.mouthMap}>
               <SmileQuadrant activeRegion={region} />
@@ -1279,11 +1346,10 @@ const styles = StyleSheet.create({
   },
   brushImage: {
     height: 128,
-    marginLeft: 78,
-    marginTop: -50,
+    transform: [{ rotate: `${brushImageRotationDegrees}deg` }],
     width: 72,
   },
-  brushPath: { left: 0, position: 'absolute', top: 0 },
+  brushPath: { height: 128, left: 0, position: 'absolute', top: 0, width: 72 },
   bubbleOne: {
     color: colors.brandHighlight,
     fontSize: 24,

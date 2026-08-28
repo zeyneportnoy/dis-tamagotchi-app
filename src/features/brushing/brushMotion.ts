@@ -349,17 +349,42 @@ const contactAnchors: Record<StarterAvatarKey, StageAnchors> = {
   },
 };
 
-const quadrantAnchorPairs = [
-  [1, 3],
-  [0, 2],
-  [3, 5],
-  [2, 4],
-] as const;
-
-const quadrantPathOrders = [
-  [0, 2, 0, 1, 3, 1],
-  [3, 1, 3, 2, 0, 2],
-  [0, 1, 3, 1, 2, 0],
+// Wide sweeps: the brush roams most of the visible character surface (left↔right and
+// up↔down) rather than hovering in one corner, while staying inside the silhouette.
+const centreSweepOffsets = [
+  [
+    [-26, -2],
+    [-13, -16],
+    [0, -6],
+    [14, 12],
+    [26, 0],
+    [13, -14],
+    [0, 10],
+    [-14, 16],
+    [-26, -2],
+  ],
+  [
+    [26, 0],
+    [13, 16],
+    [0, 6],
+    [-14, -12],
+    [-26, 0],
+    [-13, 18],
+    [0, -10],
+    [14, -16],
+    [26, 0],
+  ],
+  [
+    [-24, 12],
+    [-10, -14],
+    [10, 4],
+    [24, -10],
+    [12, 16],
+    [-4, 0],
+    [-22, -14],
+    [2, 10],
+    [24, 2],
+  ],
 ] as const;
 
 function interpolateAnchor(from: Anchor, to: Anchor, ratio: number): BrushPoint {
@@ -381,27 +406,19 @@ export function brushPathFor(
   stage: CharacterGrowthStage,
   variant: number,
   segmentIndex = 0,
+  renderedSurfaceCentre?: BrushPoint,
 ): BrushPoint[] {
   const anchors = contactAnchors[characterKey][stage];
-  const [outerTopIndex, outerBottomIndex] =
-    quadrantAnchorPairs[Math.abs(segmentIndex) % quadrantAnchorPairs.length] ??
-    quadrantAnchorPairs[0];
-  const outerTop = anchors[outerTopIndex] ?? anchors[0] ?? [0, 0];
-  const outerBottom = anchors[outerBottomIndex] ?? anchors[0] ?? [0, 0];
-  const oppositeTop =
-    anchors[outerTopIndex % 2 === 0 ? outerTopIndex + 1 : outerTopIndex - 1] ?? outerTop;
-  const oppositeBottom =
-    anchors[outerBottomIndex % 2 === 0 ? outerBottomIndex + 1 : outerBottomIndex - 1] ??
-    outerBottom;
-  const surfacePoints = [
-    interpolateAnchor(oppositeTop, outerTop, 0.58),
-    interpolateAnchor(oppositeBottom, outerBottom, 0.58),
-    { x: outerTop[0], y: outerTop[1] },
-    { x: outerBottom[0], y: outerBottom[1] },
-  ];
-  const order =
-    quadrantPathOrders[Math.abs(variant) % quadrantPathOrders.length] ?? quadrantPathOrders[0];
-  return order.map((index) => surfacePoints[index] ?? surfacePoints[0]!);
+  const middleLeft = anchors[2] ?? anchors[0] ?? [0, 0];
+  const middleRight = anchors[3] ?? anchors[1] ?? middleLeft;
+  const surfaceCentre = renderedSurfaceCentre ?? interpolateAnchor(middleLeft, middleRight, 0.5);
+  const offsets =
+    centreSweepOffsets[Math.abs(variant + segmentIndex) % centreSweepOffsets.length] ??
+    centreSweepOffsets[0];
+  return offsets.map(([x, y]) => ({
+    x: surfaceCentre.x + x,
+    y: surfaceCentre.y + y,
+  }));
 }
 
 export const brushMotionCharacterKeys = Object.keys(contactAnchors) as StarterAvatarKey[];

@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Animated, Image, StyleSheet, View, type ImageSourcePropType } from 'react-native';
+import {
+  Animated,
+  Image,
+  StyleSheet,
+  View,
+  type ImageSourcePropType,
+  type LayoutRectangle,
+} from 'react-native';
 
 import { Text, radii } from '@/design-system';
 import type { StarterAvatarKey } from '@/domain/family';
@@ -19,6 +26,7 @@ type Props = {
   size?: Size;
   surface?: 'badge' | 'plain';
   phase?: 'resting' | 'crack-start' | 'cracking';
+  onArtworkLayout?: (layout: LayoutRectangle) => void;
 };
 
 type LifecycleKey = 'egg' | 'cracking' | 'baby' | 'growing' | 'developed';
@@ -205,6 +213,7 @@ export function CharacterAvatar({
   growthStage,
   level = 1,
   mood = 'happy',
+  onArtworkLayout,
   size = 'large',
   surface = 'badge',
   phase = 'resting',
@@ -292,6 +301,7 @@ export function CharacterAvatar({
       testID={`character-${characterKey}`}
     >
       <Animated.View
+        onLayout={({ nativeEvent }) => onArtworkLayout?.(nativeEvent.layout)}
         testID={isEgg ? `character-phase-${phase}` : `character-growth-stage-${stage}`}
         style={[
           styles.animatedCharacter,
