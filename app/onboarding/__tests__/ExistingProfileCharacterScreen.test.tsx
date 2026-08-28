@@ -1,5 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
+import { StyleSheet } from 'react-native';
 
 import CharacterScreen from '../character';
 import type { AgeBand, StarterAvatarKey } from '@/domain/family';
@@ -9,13 +10,14 @@ const mockReset = jest.fn();
 const mockSetAvatarId = jest.fn();
 let mockAgeBand: AgeBand = '7_11';
 let mockAvatarId: StarterAvatarKey | null = null;
+let mockProfileId: string | null = 'child-b';
 
 jest.mock('@/application/family', () => ({
   getFamilyUseCases: () => Promise.resolve({ updateProfile: mockUpdateProfile }),
 }));
 jest.mock('@/features/onboarding/OnboardingDraftContext', () => ({
   useOnboardingDraft: () => ({
-    profileId: 'child-b',
+    profileId: mockProfileId,
     nickname: 'Ada',
     ageBand: mockAgeBand,
     avatarId: mockAvatarId,
@@ -39,6 +41,7 @@ describe('existing profile character selection', () => {
     jest.clearAllMocks();
     mockAgeBand = '7_11';
     mockAvatarId = null;
+    mockProfileId = 'child-b';
     mockSetAvatarId.mockImplementation((avatar: StarterAvatarKey) => {
       mockAvatarId = avatar;
     });
@@ -78,6 +81,33 @@ describe('existing profile character selection', () => {
     const characterName = view.getByText('Milo');
     expect(characterName.props.numberOfLines).toBe(1);
     expect(characterName).toHaveStyle({ lineHeight: 34, textAlign: 'center' });
+  });
+
+  it('allows short screens to scroll to the continue action with bottom spacing', async () => {
+    const view = await render(<CharacterScreen />);
+
+    const screen = view.getByTestId('character-selection-screen');
+    expect(screen).toHaveStyle({ paddingTop: 0 });
+    expect(screen.props.edges).toMatchObject({ bottom: 'additive', top: 'off' });
+    const screenScroll = view.getByTestId('character-selection-scroll');
+    expect(screenScroll.props.horizontal).not.toBe(true);
+    expect(StyleSheet.flatten(screenScroll.props.contentContainerStyle)).toMatchObject({
+      flexGrow: 1,
+      justifyContent: 'flex-start',
+      paddingBottom: 24,
+    });
+    expect(view.getByRole('button', { name: 'Devam et' })).toBeTruthy();
+  });
+
+  it('opens reminder setup after a new profile character is selected', async () => {
+    mockProfileId = null;
+    mockAvatarId = 'milo';
+    const view = await render(<CharacterScreen />);
+
+    await fireEvent.press(view.getByRole('button', { name: 'Devam et' }));
+
+    expect(router.push).toHaveBeenCalledWith('/onboarding/reminders');
+    expect(mockUpdateProfile).not.toHaveBeenCalled();
   });
 
   it('updates only the selected child and opens its Home', async () => {

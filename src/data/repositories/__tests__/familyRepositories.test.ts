@@ -71,6 +71,32 @@ describe('family repositories', () => {
       'SELECT count(*) AS count FROM families',
     );
     expect(familyCount?.count).toBe(1);
+    await expect(
+      database.getAllAsync<{
+        child_profile_id: string;
+        first_due_at: string;
+        second_due_at: string;
+      }>(
+        `SELECT child_profile_id, first_due_at, second_due_at
+         FROM dentist_reminders ORDER BY child_profile_id`,
+      ),
+    ).resolves.toEqual([
+      {
+        child_profile_id: profileIds[0],
+        first_due_at: '2027-02-02T12:00:00.000Z',
+        second_due_at: '2027-08-02T12:00:00.000Z',
+      },
+      {
+        child_profile_id: profileIds[1],
+        first_due_at: '2027-02-02T12:00:00.000Z',
+        second_due_at: '2027-08-02T12:00:00.000Z',
+      },
+      {
+        child_profile_id: profileIds[2],
+        first_due_at: '2027-02-02T12:00:00.000Z',
+        second_due_at: '2027-08-02T12:00:00.000Z',
+      },
+    ]);
     database.close();
   });
 

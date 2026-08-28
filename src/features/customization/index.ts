@@ -21,6 +21,7 @@ export {
   customizationStorageKey,
   decodeCustomizationState,
   defaultPlacementForRoomMaterial,
+  deleteCustomizationState,
   emptyCustomizationState,
   isCustomizationItemVisible,
   loadCustomizationState,

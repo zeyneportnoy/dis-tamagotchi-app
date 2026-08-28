@@ -338,3 +338,14 @@ onboarding ve Mood Lab aynı render bileşenini kullanır.
 - Xcode build phase, React Native script yolunu komut ikamesiyle doğrudan çalıştırmak yerine önce
   `RN_XCODE_SCRIPT` değişkenine çözer ve tırnak içinde çağırır. Böylece proje dizinindeki boşluklar
   native Debug/Release derlemelerini bozmaz; uygulama davranışı ve feature kodu değişmez.
+
+# 2026-08-28 — İlk profil onboarding’i mevcut yerel tercihlere bağlanır
+
+- Yeni profil akışı karakter seçiminden sonra mevcut parent-scoped sabah/akşam reminder servisini
+  ve Gökçe/Samet/Kapalı voice preference anahtarını kullanır; ikinci bir ayar veya bildirim sistemi
+  oluşturmaz. Profilin varlığı tamamlanmış onboarding için mevcut offline-first kaynak doğruluğudur.
+- Migration 15 her yeni çocuk profiline bağlı iki altı aylık dentist anchor’ını yerel SQLite’ta
+  saklar. Altı aylık ve on iki aylık anchor’lar yıllık tekrar ederek altı aylık döngüyü oluşturur;
+  bildirim izni yoksa tarihler korunur ve profil oluşturma başarısız sayılmaz.
+- Dentist notification içeriği yalnız yerel takma adı kullanır. Bu onboarding değişikliği yeni
+  Supabase alanı, senkronizasyon şeması veya çocuk verisi toplama alanı eklemez.

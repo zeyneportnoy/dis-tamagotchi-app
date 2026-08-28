@@ -289,4 +289,21 @@ export const migrations: readonly Migration[] = [
        FROM child_profiles WHERE archived_at IS NULL;`,
     ],
   },
+  {
+    version: 15,
+    name: 'add_child_dentist_reminders',
+    statements: [
+      `CREATE TABLE dentist_reminders (
+        child_profile_id TEXT PRIMARY KEY NOT NULL,
+        first_due_at TEXT NOT NULL,
+        second_due_at TEXT NOT NULL,
+        first_notification_id TEXT,
+        second_notification_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+      );`,
+      `CREATE INDEX dentist_reminders_first_due_idx ON dentist_reminders(first_due_at);`,
+    ],
+  },
 ];

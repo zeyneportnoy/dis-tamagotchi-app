@@ -1,60 +1,94 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import {
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import { BackButton, Button, Input, Screen, Text, colors, radii, spacing } from '@/design-system';
-import { StyleSheet, View } from 'react-native';
 import { createParentChallenge } from '@/features/parent-gate/challenge';
 
 export default function ParentGateScreen() {
   const { t } = useTranslation();
   const { next } = useLocalSearchParams<{ next?: string }>();
+  const insets = useSafeAreaInsets();
   const challenge = useMemo(() => createParentChallenge(), []);
+  const advancing = useRef(false);
   const [answer, setAnswer] = useState('');
   const [incorrect, setIncorrect] = useState(false);
 
+  const advance = (): void => {
+    if (advancing.current) return;
+    advancing.current = true;
+    Keyboard.dismiss();
+    router.replace(next === 'reminders' ? '/(parent)/reminders' : '/(parent)');
+  };
+
   const submit = () => {
-    if (Number(answer) === challenge.answer)
-      return router.replace(next === 'reminders' ? '/(parent)/reminders' : '/(parent)');
+    if (Number(answer) === challenge.answer) return advance();
     setIncorrect(true);
     setAnswer('');
   };
 
   return (
     <Screen style={styles.screen} testID="parent-gate-screen">
-      <View style={styles.back}>
+      <View
+        style={[styles.back, { top: insets.top + spacing.sm }]}
+        testID="parent-gate-back-safe-area"
+      >
         <BackButton testID="detail-back-button" />
       </View>
-      <View style={styles.hero}>
-        <Text style={styles.sparkleLeft}>✦</Text>
-        <Text style={styles.sparkleRight}>★</Text>
-        <View style={styles.lockBubble}>
-          <Text style={styles.lock}>🔒</Text>
-        </View>
-      </View>
-      <Text style={styles.title} variant="title">
-        {t('parentGate.title')}
-      </Text>
-      <View style={styles.card}>
-        <Text style={styles.question}>{t('parentGate.question', challenge)}</Text>
-        <Input
-          accessibilityLabel={t('parentGate.answerLabel')}
-          keyboardType="number-pad"
-          onChangeText={(value) => {
-            setAnswer(value);
-            setIncorrect(false);
-          }}
-          value={answer}
-        />
-        {incorrect ? <Text>{t('parentGate.incorrect')}</Text> : null}
-        <Button label={t('parentGate.submit')} onPress={submit} />
-      </View>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.flex}
+        testID="parent-gate-keyboard-view"
+      >
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          testID="parent-gate-scroll"
+        >
+          <View style={styles.hero}>
+            <Text style={styles.sparkleLeft}>✦</Text>
+            <Text style={styles.sparkleRight}>★</Text>
+            <View style={styles.lockBubble}>
+              <Text style={styles.lock}>🔒</Text>
+            </View>
+          </View>
+          <Text style={styles.title} variant="title">
+            {t('parentGate.title')}
+          </Text>
+          <View style={styles.card}>
+            <Text style={styles.question}>{t('parentGate.question', challenge)}</Text>
+            <Input
+              accessibilityLabel={t('parentGate.answerLabel')}
+              keyboardType="number-pad"
+              onChangeText={(value) => {
+                setAnswer(value);
+                setIncorrect(false);
+                if (value.trim() && Number(value) === challenge.answer) advance();
+              }}
+              value={answer}
+            />
+            {incorrect ? <Text>{t('parentGate.incorrect')}</Text> : null}
+            <Button label={t('parentGate.submit')} onPress={submit} />
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  back: { left: spacing.lg, position: 'absolute', top: spacing.sm, zIndex: 2 },
+  back: { left: spacing.lg, position: 'absolute', zIndex: 2 },
   card: {
     backgroundColor: colors.white,
     borderRadius: radii.lg,
@@ -62,6 +96,14 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     width: '100%',
   },
+  content: {
+    alignItems: 'center',
+    flexGrow: 1,
+    gap: spacing.md,
+    justifyContent: 'center',
+    paddingBottom: spacing.lg,
+  },
+  flex: { flex: 1, width: '100%' },
   hero: {
     alignItems: 'center',
     backgroundColor: '#D8D0FF',
@@ -81,7 +123,7 @@ const styles = StyleSheet.create({
     width: 120,
   },
   question: { fontSize: 24, fontWeight: '900', textAlign: 'center' },
-  screen: { alignItems: 'center', gap: spacing.md, justifyContent: 'center' },
+  screen: { alignItems: 'center', justifyContent: 'flex-start' },
   sparkleLeft: {
     color: colors.brandHighlight,
     fontSize: 28,

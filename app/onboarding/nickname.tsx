@@ -52,6 +52,7 @@ export default function NicknameScreen() {
               accessibilityLabel={t('onboarding.nickname.label')}
               autoCapitalize="words"
               autoCorrect={false}
+              keyboardType="default"
               maxLength={20}
               onChangeText={(value) => {
                 setNickname(value);

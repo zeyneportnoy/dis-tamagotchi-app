@@ -2,20 +2,19 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { ScrollView, StyleSheet, View } from 'react-native';
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+  type GestureResponderEvent,
+} from 'react-native';
 
 import { getFamilyUseCases, type ChildProfileViewModel } from '@/application/family';
-import {
-  Button,
-  Screen,
-  ScreenHeader,
-  SelectionCard,
-  Text,
-  colors,
-  radii,
-  spacing,
-} from '@/design-system';
+import { Button, Screen, ScreenHeader, Text, colors, radii, spacing } from '@/design-system';
 import { useAuth } from '@/features/auth';
+import { deleteCustomizationState } from '@/features/customization';
 import { starterAvatarKeys } from '@/domain/family';
 import { useOnboardingDraft } from '@/features/onboarding/OnboardingDraftContext';
 
@@ -25,6 +24,8 @@ export default function ParentAccountScreen() {
   const draft = useOnboardingDraft();
   const [profiles, setProfiles] = useState<readonly ChildProfileViewModel[]>([]);
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ChildProfileViewModel | null>(null);
+  const [deletingProfile, setDeletingProfile] = useState(false);
   const [deleteInfo, setDeleteInfo] = useState(false);
 
   useEffect(() => {
@@ -69,6 +70,35 @@ export default function ParentAccountScreen() {
     router.replace('/auth/login');
   };
 
+  const deleteSelectedProfile = async (): Promise<void> => {
+    if (!deleteTarget || deletingProfile) return;
+    const profileId = deleteTarget.id;
+    const deletingActiveProfile = profileId === activeProfileId;
+    setDeletingProfile(true);
+    try {
+      const family = await getFamilyUseCases();
+      await family.deleteProfile(profileId);
+      await deleteCustomizationState(profileId);
+      const remainingProfiles = await family.listProfiles();
+      setProfiles(remainingProfiles);
+      setDeleteTarget(null);
+
+      if (!deletingActiveProfile) return;
+      const fallbackProfile = remainingProfiles[0];
+      if (fallbackProfile) {
+        await family.selectActiveProfile(fallbackProfile.id);
+        setActiveProfileId(fallbackProfile.id);
+        return;
+      }
+
+      setActiveProfileId(null);
+      draft.reset();
+      router.replace('/onboarding/nickname');
+    } finally {
+      setDeletingProfile(false);
+    }
+  };
+
   return (
     <Screen style={styles.screen} testID="parent-account-screen">
       <ScreenHeader
@@ -85,15 +115,55 @@ export default function ParentAccountScreen() {
         </View>
         <View style={styles.profileCard}>
           <Text style={styles.name}>{t('parent.children')}</Text>
-          {profiles.map((profile) => (
-            <SelectionCard
-              key={profile.id}
-              label={profile.nickname}
-              onPress={() => void selectProfile(profile)}
-              selected={profile.id === activeProfileId}
-              testID={`parent-child-profile-${profile.id}`}
-            />
-          ))}
+          {profiles.map((profile) => {
+            const selected = profile.id === activeProfileId;
+            return (
+              <View
+                key={profile.id}
+                style={[styles.profileRow, selected && styles.profileRowSelected]}
+              >
+                <Pressable
+                  accessibilityLabel={profile.nickname}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: selected }}
+                  onPress={() => void selectProfile(profile)}
+                  style={({ pressed }) => [
+                    styles.profileSelection,
+                    pressed && styles.profileSelectionPressed,
+                  ]}
+                  testID={`parent-child-profile-${profile.id}`}
+                >
+                  <Text style={styles.profileName}>{profile.nickname}</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityLabel={t('parent.deleteChild.action', { name: profile.nickname })}
+                  accessibilityRole="button"
+                  hitSlop={4}
+                  onPress={(event: GestureResponderEvent) => {
+                    event.stopPropagation();
+                    setDeleteTarget(profile);
+                  }}
+                  style={({ pressed }) => [
+                    styles.profileDelete,
+                    selected && styles.profileDeleteSelected,
+                    pressed && styles.profileDeletePressed,
+                  ]}
+                  testID={`delete-child-profile-${profile.id}`}
+                >
+                  <View style={styles.trashIcon}>
+                    <View style={[styles.trashHandle, selected && styles.trashHandleSelected]} />
+                    <View style={[styles.trashLid, selected && styles.trashLidSelected]} />
+                    <View style={[styles.trashBody, selected && styles.trashBodySelected]}>
+                      <View style={styles.trashLines}>
+                        <View style={[styles.trashLine, selected && styles.trashLineSelected]} />
+                        <View style={[styles.trashLine, selected && styles.trashLineSelected]} />
+                      </View>
+                    </View>
+                  </View>
+                </Pressable>
+              </View>
+            );
+          })}
         </View>
         <Button
           label={t('parent.settings.open')}
@@ -121,6 +191,38 @@ export default function ParentAccountScreen() {
           </View>
         ) : null}
       </ScrollView>
+      <Modal
+        animationType="fade"
+        onRequestClose={() => {
+          if (!deletingProfile) setDeleteTarget(null);
+        }}
+        transparent
+        visible={deleteTarget !== null}
+      >
+        <View style={styles.modalBackdrop}>
+          <View accessibilityViewIsModal style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{t('parent.deleteChild.title')}</Text>
+            <Text>{t('parent.deleteChild.message', { name: deleteTarget?.nickname ?? '' })}</Text>
+            <View style={styles.modalActions}>
+              <View style={styles.modalAction}>
+                <Button
+                  disabled={deletingProfile}
+                  label={t('parent.deleteChild.cancel')}
+                  onPress={() => setDeleteTarget(null)}
+                  variant="secondary"
+                />
+              </View>
+              <View style={styles.modalAction}>
+                <Button
+                  disabled={deletingProfile}
+                  label={t('parent.deleteChild.confirm')}
+                  onPress={() => void deleteSelectedProfile()}
+                />
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -133,6 +235,24 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   content: { gap: spacing.md, paddingBottom: spacing.xl },
+  modalAction: { flex: 1 },
+  modalActions: { flexDirection: 'row', gap: spacing.sm },
+  modalBackdrop: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(38,50,56,0.42)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  modalCard: {
+    backgroundColor: colors.white,
+    borderRadius: radii.lg,
+    gap: spacing.md,
+    maxWidth: 420,
+    padding: spacing.lg,
+    width: '100%',
+  },
+  modalTitle: { color: colors.textPrimary, fontSize: 22, fontWeight: '900' },
   name: { fontWeight: '900' },
   profileCard: {
     backgroundColor: colors.white,
@@ -140,6 +260,76 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.lg,
   },
+  profileDelete: {
+    alignItems: 'center',
+    backgroundColor: '#FFF1F5',
+    borderRadius: radii.pill,
+    height: 44,
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+    width: 44,
+  },
+  profileDeletePressed: { opacity: 0.68 },
+  profileDeleteSelected: { backgroundColor: '#E5FAF7' },
+  profileName: { fontSize: 17 },
+  profileRow: {
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderColor: colors.brandPrimary,
+    borderRadius: radii.md,
+    borderWidth: 2,
+    flexDirection: 'row',
+    minHeight: 64,
+    overflow: 'hidden',
+  },
+  profileRowSelected: { backgroundColor: '#E7E7FC', borderColor: colors.teal },
+  profileSelection: {
+    alignItems: 'flex-start',
+    alignSelf: 'stretch',
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  profileSelectionPressed: { opacity: 0.72 },
   screen: { justifyContent: 'flex-start' },
+  trashBody: {
+    alignItems: 'center',
+    borderBottomLeftRadius: 3,
+    borderBottomRightRadius: 3,
+    borderColor: colors.brandPrimary,
+    borderTopWidth: 0,
+    borderWidth: 1.5,
+    height: 14,
+    justifyContent: 'center',
+    width: 14,
+  },
+  trashBodySelected: { borderColor: colors.teal },
+  trashHandle: {
+    borderColor: colors.brandPrimary,
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 3,
+    borderWidth: 1.5,
+    height: 4,
+    marginBottom: 1,
+    width: 7,
+  },
+  trashHandleSelected: { borderColor: colors.teal },
+  trashIcon: { alignItems: 'center', height: 22, justifyContent: 'center', width: 22 },
+  trashLid: {
+    backgroundColor: colors.brandPrimary,
+    borderRadius: radii.pill,
+    height: 2,
+    marginBottom: 1,
+    width: 18,
+  },
+  trashLidSelected: { backgroundColor: colors.teal },
+  trashLine: {
+    backgroundColor: colors.brandPrimary,
+    borderRadius: radii.pill,
+    height: 8,
+    width: 1.5,
+  },
+  trashLineSelected: { backgroundColor: colors.teal },
+  trashLines: { flexDirection: 'row', gap: 3 },
   warning: { backgroundColor: '#FFF0C9', borderRadius: radii.md, padding: spacing.md },
 });

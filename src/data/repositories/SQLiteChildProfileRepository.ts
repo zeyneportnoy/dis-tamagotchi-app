@@ -2,6 +2,7 @@ import { randomUUID } from 'expo-crypto';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
+  addCalendarMonths,
   createChildProfileSchema,
   type ChildProfile,
   type ChildProfileRepository,
@@ -128,6 +129,17 @@ export class SQLiteChildProfileRepository implements ChildProfileRepository {
           slot,
         );
       }
+      await this.database.runAsync(
+        `INSERT INTO dentist_reminders
+          (child_profile_id, first_due_at, second_due_at, first_notification_id,
+           second_notification_id, created_at, updated_at)
+         VALUES (?, ?, ?, NULL, NULL, ?, ?)`,
+        profile.id,
+        addCalendarMonths(profile.createdAt, 6),
+        addCalendarMonths(profile.createdAt, 12),
+        profile.createdAt,
+        profile.createdAt,
+      );
     });
     return profile;
   }

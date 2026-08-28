@@ -54,6 +54,7 @@ describe('Parent Account child selection', () => {
     await waitFor(() => expect(mockSelectActiveProfile).toHaveBeenCalledWith('child-a'));
     expect(mockResetDraft).toHaveBeenCalled();
     expect(router.replace).toHaveBeenCalledWith('/(child)');
+    expect(view.queryByText('Çocuk profilini sil?')).toBeNull();
   });
 
   it('opens character selection for the selected profile when its character is missing', async () => {
@@ -70,5 +71,26 @@ describe('Parent Account child selection', () => {
       avatarId: null,
     });
     expect(router.replace).toHaveBeenCalledWith('/onboarding/character');
+  });
+
+  it('opens only the delete confirmation when the inline trash icon is pressed', async () => {
+    const view = await render(<ParentAccountScreen />);
+    await view.findByRole('radio', { name: 'Ada' });
+    const stopPropagation = jest.fn();
+
+    await fireEvent.press(view.getByTestId('delete-child-profile-child-b'), {
+      stopPropagation,
+    });
+
+    expect(stopPropagation).toHaveBeenCalled();
+    expect(view.getByText('Çocuk profilini sil?')).toBeTruthy();
+    expect(
+      view.getByText('Ada profilini silmek istediğine emin misin? Bu işlem geri alınamaz.'),
+    ).toBeTruthy();
+    expect(mockSelectActiveProfile).not.toHaveBeenCalled();
+    expect(router.replace).not.toHaveBeenCalled();
+
+    await fireEvent.press(view.getByRole('button', { name: 'Vazgeç' }));
+    expect(view.queryByText('Çocuk profilini sil?')).toBeNull();
   });
 });

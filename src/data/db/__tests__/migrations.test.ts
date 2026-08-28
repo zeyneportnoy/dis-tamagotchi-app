@@ -20,6 +20,7 @@ describe('database migrations', () => {
       'brushing_sessions',
       'child_profiles',
       'daily_progress',
+      'dentist_reminders',
       'families',
       'inventory_items',
       'profile_progress',
@@ -53,6 +54,7 @@ describe('database migrations', () => {
       { version: 12 },
       { version: 13 },
       { version: 14 },
+      { version: 15 },
     ]);
     database.close();
   });
@@ -129,6 +131,7 @@ describe('database migrations', () => {
       { version: 12 },
       { version: 13 },
       { version: 14 },
+      { version: 15 },
     ]);
     await expect(
       database.getFirstAsync<{
@@ -196,6 +199,47 @@ describe('database migrations', () => {
          WHERE child_profile_id = 'profile-1' AND local_day_key = '2026-08-08'`,
       ),
     ).resolves.toEqual({ morning_completed: 1, streak_after_day: 3 });
+    database.close();
+  });
+
+  it('rolls back the dentist reminder migration when its second statement fails', async () => {
+    const database = new NodeSQLiteDatabase();
+    await database.execAsync('PRAGMA foreign_keys = ON;');
+    await database.execAsync(
+      'CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY NOT NULL, name TEXT NOT NULL, applied_at TEXT NOT NULL);',
+    );
+    for (const migration of migrations.slice(0, 14)) {
+      for (const statement of migration.statements) await database.execAsync(statement);
+      await database.runAsync(
+        'INSERT INTO schema_migrations(version, name, applied_at) VALUES (?, ?, ?)',
+        migration.version,
+        migration.name,
+        '2026-08-28T00:00:00.000Z',
+      );
+    }
+
+    const execute = database.execAsync.bind(database);
+    const spy = jest.spyOn(database, 'execAsync').mockImplementation((statement) => {
+      if (statement.includes('dentist_reminders_first_due_idx')) {
+        return Promise.reject(new Error('INDEX_FAILURE'));
+      }
+      return execute(statement);
+    });
+
+    await expect(migrateDatabase(database as unknown as SQLiteDatabase)).rejects.toThrow(
+      'INDEX_FAILURE',
+    );
+    await expect(
+      database.getFirstAsync<{ name: string }>(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'dentist_reminders'",
+      ),
+    ).resolves.toBeNull();
+    await expect(
+      database.getFirstAsync<{ version: number }>(
+        'SELECT version FROM schema_migrations WHERE version = 15',
+      ),
+    ).resolves.toBeNull();
+    spy.mockRestore();
     database.close();
   });
 });

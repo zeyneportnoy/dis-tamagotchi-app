@@ -187,124 +187,137 @@ export default function CharacterScreen() {
 
   return (
     <Screen
+      edges={['left', 'right', 'bottom']}
       style={[styles.screen, { backgroundColor: sceneBackgroundForCharacter(selected) }]}
       testID="character-selection-screen"
     >
       <CharacterScreenBackdrop characterKey={selected} />
-      <View style={styles.copy}>
-        <Text style={styles.center} variant="title">
-          {t('onboarding.character.title')}
-        </Text>
-        <Text style={styles.center}>{t('onboarding.character.body')}</Text>
-      </View>
-
-      <View
-        {...wheelProps}
-        onLayout={(event: LayoutChangeEvent) => setCarouselWidth(event.nativeEvent.layout.width)}
-        style={styles.world}
-        testID="character-carousel-region"
+      <ScrollView
+        contentContainerStyle={styles.screenContent}
+        showsVerticalScrollIndicator={false}
+        style={styles.screenScroll}
+        testID="character-selection-scroll"
       >
-        <CharacterSceneDecor tone={sceneToneForCharacter(selected)} />
-        <Text style={styles.sparkleLeft}>✦</Text>
-        <Text style={styles.sparkleRight}>★</Text>
-        <Pressable
-          accessibilityLabel={t('onboarding.character.previous')}
-          accessibilityRole="button"
-          disabled={selectedIndex === 0}
-          onPress={() => choose(avatarAt(selectedIndexRef.current - 1))}
-          style={[styles.arrow, styles.arrowLeft, selectedIndex === 0 && styles.disabled]}
-        >
-          <Text style={styles.arrowText}>‹</Text>
-        </Pressable>
-        <ScrollView
-          contentContainerStyle={[
-            styles.carouselContent,
-            { paddingHorizontal: Math.max(0, (carouselWidth - slideWidth) / 2) },
-          ]}
-          decelerationRate="fast"
-          directionalLockEnabled={false}
-          horizontal
-          onScrollBeginDrag={() => {
-            programmaticTargetIndex.current = null;
-          }}
-          onScroll={Platform.OS === 'web' ? settleAfterScroll : undefined}
-          onScrollEndDrag={settle}
-          onMomentumScrollEnd={settle}
-          ref={carousel}
-          scrollEventThrottle={16}
-          pagingEnabled={false}
-          showsHorizontalScrollIndicator={false}
-          snapToAlignment="start"
-          snapToInterval={slideWidth}
-          style={styles.carousel}
-          testID="character-carousel"
-        >
-          {starterAvatarKeys.map((avatar) => (
-            <View key={avatar} style={[styles.slide, { width: slideWidth }]}>
-              <CharacterAvatar
-                characterKey={avatar}
-                growthStage={preview.growthStage}
-                phase={preview.phase}
-                size="large"
-                surface="plain"
-              />
-              <View style={styles.pedestal} />
-            </View>
-          ))}
-        </ScrollView>
-        <Pressable
-          accessibilityLabel={t('onboarding.character.next')}
-          accessibilityRole="button"
-          disabled={selectedIndex === starterAvatarKeys.length - 1}
-          onPress={() => choose(avatarAt(selectedIndexRef.current + 1))}
-          style={[
-            styles.arrow,
-            styles.arrowRight,
-            selectedIndex === starterAvatarKeys.length - 1 && styles.disabled,
-          ]}
-        >
-          <Text style={styles.arrowText}>›</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.identity}>
-        <Text numberOfLines={1} style={styles.characterCode}>
-          {t(`onboarding.character.options.${selected}`)}
-        </Text>
-        <View style={styles.previewRow}>
-          {starterAvatarKeys.map((avatar) => (
-            <Pressable
-              accessibilityLabel={t(`onboarding.character.options.${avatar}`)}
-              accessibilityRole="radio"
-              accessibilityState={{ selected: avatar === selected }}
-              key={avatar}
-              onPress={() => choose(avatar)}
-              style={[styles.preview, avatar === selected && styles.previewSelected]}
-            >
-              <CharacterAvatar characterKey={avatar} growthStage={4} size="tiny" surface="plain" />
-            </Pressable>
-          ))}
+        <View style={styles.copy}>
+          <Text style={styles.center} variant="title">
+            {t('onboarding.character.title')}
+          </Text>
+          <Text style={styles.center}>{t('onboarding.character.body')}</Text>
         </View>
-      </View>
 
-      <Button
-        disabled={saving}
-        label={t('common.continue')}
-        onPress={() => {
-          if (draft.profileId) {
-            setSaving(true);
-            void getFamilyUseCases()
-              .then((family) => family.updateProfile(draft.profileId!, { avatarId: selected }))
-              .then(() => {
-                draft.reset();
-                router.replace('/(child)');
-              })
-              .catch(() => setSaving(false));
-            return;
-          }
-          router.push('/onboarding/summary');
-        }}
-      />
+        <View
+          {...wheelProps}
+          onLayout={(event: LayoutChangeEvent) => setCarouselWidth(event.nativeEvent.layout.width)}
+          style={styles.world}
+          testID="character-carousel-region"
+        >
+          <CharacterSceneDecor tone={sceneToneForCharacter(selected)} />
+          <Text style={styles.sparkleLeft}>✦</Text>
+          <Text style={styles.sparkleRight}>★</Text>
+          <Pressable
+            accessibilityLabel={t('onboarding.character.previous')}
+            accessibilityRole="button"
+            disabled={selectedIndex === 0}
+            onPress={() => choose(avatarAt(selectedIndexRef.current - 1))}
+            style={[styles.arrow, styles.arrowLeft, selectedIndex === 0 && styles.disabled]}
+          >
+            <Text style={styles.arrowText}>‹</Text>
+          </Pressable>
+          <ScrollView
+            contentContainerStyle={[
+              styles.carouselContent,
+              { paddingHorizontal: Math.max(0, (carouselWidth - slideWidth) / 2) },
+            ]}
+            decelerationRate="fast"
+            directionalLockEnabled={false}
+            horizontal
+            onScrollBeginDrag={() => {
+              programmaticTargetIndex.current = null;
+            }}
+            onScroll={Platform.OS === 'web' ? settleAfterScroll : undefined}
+            onScrollEndDrag={settle}
+            onMomentumScrollEnd={settle}
+            ref={carousel}
+            scrollEventThrottle={16}
+            pagingEnabled={false}
+            showsHorizontalScrollIndicator={false}
+            snapToAlignment="start"
+            snapToInterval={slideWidth}
+            style={styles.carousel}
+            testID="character-carousel"
+          >
+            {starterAvatarKeys.map((avatar) => (
+              <View key={avatar} style={[styles.slide, { width: slideWidth }]}>
+                <CharacterAvatar
+                  characterKey={avatar}
+                  growthStage={preview.growthStage}
+                  phase={preview.phase}
+                  size="large"
+                  surface="plain"
+                />
+                <View style={styles.pedestal} />
+              </View>
+            ))}
+          </ScrollView>
+          <Pressable
+            accessibilityLabel={t('onboarding.character.next')}
+            accessibilityRole="button"
+            disabled={selectedIndex === starterAvatarKeys.length - 1}
+            onPress={() => choose(avatarAt(selectedIndexRef.current + 1))}
+            style={[
+              styles.arrow,
+              styles.arrowRight,
+              selectedIndex === starterAvatarKeys.length - 1 && styles.disabled,
+            ]}
+          >
+            <Text style={styles.arrowText}>›</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.identity}>
+          <Text numberOfLines={1} style={styles.characterCode}>
+            {t(`onboarding.character.options.${selected}`)}
+          </Text>
+          <View style={styles.previewRow}>
+            {starterAvatarKeys.map((avatar) => (
+              <Pressable
+                accessibilityLabel={t(`onboarding.character.options.${avatar}`)}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: avatar === selected }}
+                key={avatar}
+                onPress={() => choose(avatar)}
+                style={[styles.preview, avatar === selected && styles.previewSelected]}
+              >
+                <CharacterAvatar
+                  characterKey={avatar}
+                  growthStage={4}
+                  size="tiny"
+                  surface="plain"
+                />
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        <Button
+          disabled={saving}
+          label={t('common.continue')}
+          onPress={() => {
+            if (draft.profileId) {
+              setSaving(true);
+              void getFamilyUseCases()
+                .then((family) => family.updateProfile(draft.profileId!, { avatarId: selected }))
+                .then(() => {
+                  draft.reset();
+                  router.replace('/(child)');
+                })
+                .catch(() => setSaving(false));
+              return;
+            }
+            router.push('/onboarding/reminders');
+          }}
+        />
+      </ScrollView>
     </Screen>
   );
 }
@@ -374,7 +387,14 @@ const styles = StyleSheet.create({
     borderColor: colors.brandPrimary,
     transform: [{ scale: 1.12 }],
   },
-  screen: { justifyContent: 'space-between', paddingHorizontal: 0 },
+  screen: { justifyContent: 'flex-start', paddingHorizontal: 0, paddingTop: 0 },
+  screenContent: {
+    flexGrow: 1,
+    gap: spacing.lg,
+    justifyContent: 'flex-start',
+    paddingBottom: spacing.lg,
+  },
+  screenScroll: { flex: 1 },
   slide: { alignItems: 'center', justifyContent: 'center', overflow: 'visible' },
   sparkleLeft: {
     color: colors.brandHighlight,

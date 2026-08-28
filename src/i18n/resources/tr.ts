@@ -140,6 +140,21 @@ export const tr = {
         previous: 'Önceki diş',
         next: 'Sonraki diş',
       },
+      reminders: {
+        title: 'Fırçalama saatlerini hatırlatalım mı?',
+        body: 'Sabah ve akşam için sana uygun saatleri seçebilirsin.',
+        enable: 'Evet, ayarla',
+        skip: 'Şimdilik değil',
+        save: 'Saatleri kaydet ve devam et',
+        permissionDenied:
+          'Bildirim izni kapalı olduğu için saatler etkinleşmedi. Daha sonra Ayarlar’dan açabilirsin.',
+        error: 'Hatırlatıcılar kaydedilemedi. Yeniden deneyebilir veya şimdilik geçebilirsin.',
+      },
+      voice: {
+        title: 'Fırçalarken sana kim eşlik etsin?',
+        body: 'Bu seçimi daha sonra Ayarlar’dan değiştirebilirsin.',
+        error: 'Ses tercihi kaydedilemedi. Bir kez daha deneyelim.',
+      },
       summary: {
         title: 'Hazır mıyız?',
         nickname: 'Takma ad: {{nickname}}',
@@ -200,7 +215,7 @@ export const tr = {
       profileBody: 'Profil bilgilerini güvenle buradan yönetebilirsin.',
     },
     tasksScreen: {
-      doneAt: '{{time}}\'de yapıldı',
+      doneAt: "{{time}}'de yapıldı",
       notDoneYet: 'Henüz yapılmadı',
       missed: 'Bu seferlik kaçtı 😢',
       futureDay: 'Henüz gelmedi',
@@ -416,6 +431,13 @@ export const tr = {
       deleteAccount: 'Hesabımı Sil',
       deleteUnavailable:
         'Hesap silme isteği yayın öncesinde güvenli sunucu işlemiyle tamamlanacaktır. Bu ekran sahte bir silme başarısı göstermez.',
+      deleteChild: {
+        action: '{{name}} profilini sil',
+        cancel: 'Vazgeç',
+        confirm: 'Profili sil',
+        message: '{{name}} profilini silmek istediğine emin misin? Bu işlem geri alınamaz.',
+        title: 'Çocuk profilini sil?',
+      },
       settings: {
         open: 'Ayarlar',
         title: 'Ayarlar',
@@ -473,6 +495,11 @@ export const tr = {
             2: 'Diş arkadaşın seni bekliyor!',
           },
         },
+      },
+      dentistReminder: {
+        channelName: 'Diş hekimi kontrol hatırlatıcıları',
+        notificationTitle: '🦷 Diş hekimi kontrol zamanı',
+        notificationBody: '{{nickname}} için 6 aylık diş hekimi kontrolü zamanı geldi.',
       },
       moodLab: {
         open: 'Character Preview / Mood Lab',

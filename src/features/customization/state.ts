@@ -149,6 +149,11 @@ export async function loadCustomizationState(profileId: string): Promise<Customi
   return decodeCustomizationState(await AsyncStorage.getItem(customizationStorageKey(profileId)));
 }
 
+export async function deleteCustomizationState(profileId: string): Promise<void> {
+  await updateQueues.get(profileId)?.catch(() => undefined);
+  await AsyncStorage.removeItem(customizationStorageKey(profileId));
+}
+
 async function updateCustomizationState(
   profileId: string,
   update: (current: CustomizationState) => CustomizationState,
