@@ -1,5 +1,6 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
+import { Animated } from 'react-native';
 
 import BrushingScreen from '../brushing';
 
@@ -84,12 +85,21 @@ describe('Brushing session route', () => {
   });
 
   it('pauses, resumes and confirms early exit without completing a session', async () => {
+    const stopAnimation = jest.spyOn(Animated.Value.prototype, 'stopAnimation');
+    const timing = jest.spyOn(Animated, 'timing');
     const view = await render(<BrushingScreen />);
     await waitFor(() => expect(view.getByRole('button', { name: 'Duraklat' })).toBeTruthy());
     await fireEvent.press(view.getByRole('button', { name: 'Duraklat' }));
     expect(view.getByTestId('pause-controls')).toBeTruthy();
+    expect(
+      view.getByTestId('character-mood-waiting', { includeHiddenElements: true }),
+    ).toBeTruthy();
+    expect(stopAnimation).toHaveBeenCalled();
+    const timingCallsWhilePaused = timing.mock.calls.length;
     await fireEvent.press(view.getByRole('button', { name: 'Devam et' }));
     expect(view.getByRole('button', { name: 'Duraklat' })).toBeTruthy();
+    expect(view.getByTestId('character-mood-happy', { includeHiddenElements: true })).toBeTruthy();
+    expect(timing.mock.calls.length).toBeGreaterThan(timingCallsWhilePaused);
     await fireEvent.press(view.getByTestId('brushing-exit-button'));
     expect(view.getByText('Fırçalamadan çıkmak istiyor musun?')).toBeTruthy();
     expect(view.getByText('Bu fırçalama tamamlanmadı olarak kalacak.')).toBeTruthy();
@@ -118,5 +128,7 @@ describe('Brushing session route', () => {
       undefined,
     );
     expect(mockCompleteBrushingSession).not.toHaveBeenCalled();
+    stopAnimation.mockRestore();
+    timing.mockRestore();
   });
 });

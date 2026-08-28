@@ -129,10 +129,14 @@ const foamBubbleConfigs: readonly FoamBubbleConfig[] = [
   { delay: 340, duration: 640, dx: -20, dy: -44, left: 33, pop: 1.58, size: 8, top: 37 },
 ];
 
-function FoamBubble({ config }: { config: FoamBubbleConfig }) {
+function FoamBubble({ config, paused }: { config: FoamBubbleConfig; paused: boolean }) {
   const [life] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
+    if (paused) {
+      life.stopAnimation();
+      return;
+    }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.delay(config.delay),
@@ -148,7 +152,7 @@ function FoamBubble({ config }: { config: FoamBubbleConfig }) {
     );
     loop.start();
     return () => loop.stop();
-  }, [config.delay, config.duration, life]);
+  }, [config.delay, config.duration, life, paused]);
 
   return (
     <Animated.View
@@ -190,43 +194,103 @@ function AnimatedToothbrush({
   brushKey,
   characterKey,
   growthStage,
+  paused,
   progress,
   segmentIndex,
 }: {
   brushKey?: string;
   characterKey: ChildProfileViewModel['avatarId'];
   growthStage: ReturnType<typeof growthStageForXp>;
+  paused: boolean;
   progress: number;
   segmentIndex: number;
 }) {
   const [stroke] = useState(() => new Animated.Value(0));
   const [pathVariant, setPathVariant] = useState(0);
-  const rawPoints = brushPathFor(characterKey, growthStage, pathVariant + segmentIndex);
+  const strokeProgress = useRef(0);
+  const routeKey = `${segmentIndex}:${pathVariant}`;
+  const activeRouteKey = useRef(routeKey);
+  const rawPoints = brushPathFor(characterKey, growthStage, pathVariant, segmentIndex);
   // Compress the sweep toward its own centre so the whole brush — handle included —
   // stays inside the character silhouette on every frame of the animation.
   const centreX = rawPoints.reduce((sum, point) => sum + point.x, 0) / rawPoints.length;
   const centreY = rawPoints.reduce((sum, point) => sum + point.y, 0) / rawPoints.length;
   const points = rawPoints.map((point) => ({
-    x: centreX + (point.x - centreX) * 0.42,
-    y: centreY + (point.y - centreY) * 0.42,
+    x: centreX + (point.x - centreX) * 0.72,
+    y: centreY - 24 + (point.y - centreY) * 0.24,
   }));
 
   useEffect(() => {
-    stroke.setValue(0);
+    if (activeRouteKey.current !== routeKey) {
+      activeRouteKey.current = routeKey;
+      strokeProgress.current = 0;
+      stroke.setValue(0);
+    }
+    if (paused) {
+      stroke.stopAnimation((value) => {
+        strokeProgress.current = value;
+      });
+      return;
+    }
     const movement = Animated.timing(stroke, {
-      duration: 2900,
+      duration: Math.max(1, 2900 * (1 - strokeProgress.current)),
       easing: Easing.inOut(Easing.sin),
       toValue: 1,
       useNativeDriver: true,
     });
     movement.start(({ finished }) => {
-      if (finished) setPathVariant((current) => (current + 1) % 3);
+      if (finished) {
+        strokeProgress.current = 0;
+        setPathVariant((current) => (current + 1) % 3);
+      }
     });
-    return () => movement.stop();
-  }, [pathVariant, segmentIndex, stroke]);
+    return () => {
+      stroke.stopAnimation((value) => {
+        strokeProgress.current = value;
+      });
+    };
+  }, [paused, routeKey, stroke]);
 
   return (
     <View pointerEvents="none" style={styles.brushAnimation} testID="animated-toothbrush">
+      <Animated.View
+        style={[
+          styles.foamLayer,
+          {
+            opacity: stroke.interpolate({
+              inputRange: [0, 0.35, 0.7, 1],
+              outputRange: [0.9, 1, 0.95, 0.9],
+            }),
+            transform: [
+              {
+                translateX: stroke.interpolate({
+                  inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
+                  outputRange: points.map(({ x }) => x - 35),
+                }),
+              },
+              {
+                translateY: stroke.interpolate({
+                  inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
+                  outputRange: points.map(({ y }) => y - 40),
+                }),
+              },
+              {
+                translateY: stroke.interpolate({ inputRange: [0, 1], outputRange: [2, -9] }),
+              },
+              {
+                scale: stroke.interpolate({
+                  inputRange: [0, 0.5, 1],
+                  outputRange: [0.8, 1.12, 0.8],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        {foamBubbleConfigs.map((config, index) => (
+          <FoamBubble config={config} key={index} paused={paused} />
+        ))}
+      </Animated.View>
       <Animated.View
         style={[
           styles.brushPath,
@@ -247,39 +311,13 @@ function AnimatedToothbrush({
               {
                 rotate: stroke.interpolate({
                   inputRange: [0, 0.25, 0.5, 0.75, 1],
-                  outputRange: ['-14deg', '-5deg', '-11deg', '2deg', '-14deg'],
+                  outputRange: ['76deg', '67deg', '73deg', '60deg', '76deg'],
                 }),
               },
             ],
           },
         ]}
       >
-        <Animated.View
-          style={[
-            styles.foamLayer,
-            {
-              opacity: stroke.interpolate({
-                inputRange: [0, 0.35, 0.7, 1],
-                outputRange: [0.9, 1, 0.95, 0.9],
-              }),
-              transform: [
-                {
-                  translateY: stroke.interpolate({ inputRange: [0, 1], outputRange: [2, -9] }),
-                },
-                {
-                  scale: stroke.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [0.8, 1.12, 0.8],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          {foamBubbleConfigs.map((config, index) => (
-            <FoamBubble config={config} key={index} />
-          ))}
-        </Animated.View>
         <Image
           resizeMode="contain"
           source={brushImageSource(brushKey)}
@@ -1144,7 +1182,7 @@ export default function BrushingScreen() {
               <CharacterAvatar
                 characterKey={profile.avatarId}
                 growthStage={growthStageForXp(initialProgress.totalXp)}
-                mood="energetic"
+                mood={paused ? 'waiting' : 'energetic'}
                 phase="resting"
                 size="large"
                 surface="plain"
@@ -1154,6 +1192,7 @@ export default function BrushingScreen() {
               brushKey={equippedBrushKey}
               characterKey={profile.avatarId}
               growthStage={currentGrowthStage}
+              paused={paused}
               progress={Math.max(0, Math.min(1, snapshot.elapsedSeconds / 120))}
               segmentIndex={snapshot.segmentIndex}
             />
@@ -1242,7 +1281,6 @@ const styles = StyleSheet.create({
     height: 128,
     marginLeft: 78,
     marginTop: -50,
-    transform: [{ rotate: '138deg' }],
     width: 72,
   },
   brushPath: { left: 0, position: 'absolute', top: 0 },
@@ -1381,10 +1419,10 @@ const styles = StyleSheet.create({
   },
   foamLayer: {
     height: 92,
-    left: 112,
+    left: 0,
     overflow: 'visible',
     position: 'absolute',
-    top: 16,
+    top: 0,
     width: 92,
   },
   instruction: { fontSize: 22, fontWeight: '700', lineHeight: 30, textAlign: 'center' },

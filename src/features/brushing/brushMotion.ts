@@ -349,11 +349,25 @@ const contactAnchors: Record<StarterAvatarKey, StageAnchors> = {
   },
 };
 
-const pathOrders = [
-  [0, 1, 3, 2, 4, 5],
-  [1, 0, 2, 4, 5, 3],
-  [4, 2, 0, 1, 3, 5],
+const quadrantAnchorPairs = [
+  [1, 3],
+  [0, 2],
+  [3, 5],
+  [2, 4],
 ] as const;
+
+const quadrantPathOrders = [
+  [0, 2, 0, 1, 3, 1],
+  [3, 1, 3, 2, 0, 2],
+  [0, 1, 3, 1, 2, 0],
+] as const;
+
+function interpolateAnchor(from: Anchor, to: Anchor, ratio: number): BrushPoint {
+  return {
+    x: from[0] + (to[0] - from[0]) * ratio,
+    y: from[1] + (to[1] - from[1]) * ratio,
+  };
+}
 
 export function brushContactAnchorsFor(
   characterKey: StarterAvatarKey,
@@ -366,13 +380,28 @@ export function brushPathFor(
   characterKey: StarterAvatarKey,
   stage: CharacterGrowthStage,
   variant: number,
+  segmentIndex = 0,
 ): BrushPoint[] {
   const anchors = contactAnchors[characterKey][stage];
-  const order = pathOrders[Math.abs(variant) % pathOrders.length] ?? pathOrders[0];
-  return order.map((index) => {
-    const [x, y] = anchors[index] ?? anchors[0] ?? [0, 0];
-    return { x, y };
-  });
+  const [outerTopIndex, outerBottomIndex] =
+    quadrantAnchorPairs[Math.abs(segmentIndex) % quadrantAnchorPairs.length] ??
+    quadrantAnchorPairs[0];
+  const outerTop = anchors[outerTopIndex] ?? anchors[0] ?? [0, 0];
+  const outerBottom = anchors[outerBottomIndex] ?? anchors[0] ?? [0, 0];
+  const oppositeTop =
+    anchors[outerTopIndex % 2 === 0 ? outerTopIndex + 1 : outerTopIndex - 1] ?? outerTop;
+  const oppositeBottom =
+    anchors[outerBottomIndex % 2 === 0 ? outerBottomIndex + 1 : outerBottomIndex - 1] ??
+    outerBottom;
+  const surfacePoints = [
+    interpolateAnchor(oppositeTop, outerTop, 0.58),
+    interpolateAnchor(oppositeBottom, outerBottom, 0.58),
+    { x: outerTop[0], y: outerTop[1] },
+    { x: outerBottom[0], y: outerBottom[1] },
+  ];
+  const order =
+    quadrantPathOrders[Math.abs(variant) % quadrantPathOrders.length] ?? quadrantPathOrders[0];
+  return order.map((index) => surfacePoints[index] ?? surfacePoints[0]!);
 }
 
 export const brushMotionCharacterKeys = Object.keys(contactAnchors) as StarterAvatarKey[];
