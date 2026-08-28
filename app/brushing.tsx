@@ -12,6 +12,7 @@ import {
   ScrollView,
   StyleSheet,
   View,
+  type ImageSourcePropType,
   type LayoutRectangle,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -40,7 +41,6 @@ import {
 } from '@/domain/brushing';
 import {
   CharacterAvatar,
-  brushImageSource,
   characterSafeViewport,
   evolutionSequence,
   sceneBackgroundForCharacter,
@@ -82,6 +82,22 @@ const brushImageBristlePoint = { x: 29.5, y: 19 } as const;
 const brushImageRotationDegrees = -12;
 const brushRotationDegrees = [76, 67, 73, 60, 76] as const;
 const brushBristleAnchor = { x: 71, y: 93 } as const;
+const brushContactInset = { x: 3, y: 5 } as const;
+const brushingBrushSources: Readonly<Record<string, ImageSourcePropType>> = {
+  'classic-brush': require('../assets/rewards/brushes/brushing/classic-brush-brushing.png'),
+  'rainbow-brush': require('../assets/rewards/brushes/brushing/rainbow-brush-brushing.png'),
+  'star-brush': require('../assets/rewards/brushes/brushing/star-brush-brushing.png'),
+  'mini-cape': require('../assets/rewards/brushes/brushing/mini-cape-brushing.png'),
+  'dino-brush': require('../assets/rewards/brushes/brushing/dino-brush-brushing.png'),
+  'pink-brush': require('../assets/rewards/brushes/brushing/pink-brush-brushing.png'),
+  'space-brush': require('../assets/rewards/brushes/brushing/space-brush-brushing.png'),
+  'heart-brush': require('../assets/rewards/brushes/brushing/heart-brush-brushing.png'),
+};
+const defaultBrushingBrushSource: ImageSourcePropType = require('../assets/rewards/brushes/brushing/classic-brush-brushing.png');
+
+function brushingBrushImageSource(brushKey: string | undefined): ImageSourcePropType {
+  return (brushKey ? brushingBrushSources[brushKey] : undefined) ?? defaultBrushingBrushSource;
+}
 
 function rotatePoint(
   point: Readonly<{ x: number; y: number }>,
@@ -337,7 +353,10 @@ function AnimatedToothbrush({
                 translateX: stroke.interpolate({
                   inputRange: motionInputRange,
                   outputRange: points.map(
-                    ({ x }, index) => x - (renderedBristlePoints[index]?.x ?? brushBristleAnchor.x),
+                    ({ x }, index) =>
+                      x -
+                      (renderedBristlePoints[index]?.x ?? brushBristleAnchor.x) +
+                      brushContactInset.x,
                   ),
                 }),
               },
@@ -345,7 +364,10 @@ function AnimatedToothbrush({
                 translateY: stroke.interpolate({
                   inputRange: motionInputRange,
                   outputRange: points.map(
-                    ({ y }, index) => y - (renderedBristlePoints[index]?.y ?? brushBristleAnchor.y),
+                    ({ y }, index) =>
+                      y -
+                      (renderedBristlePoints[index]?.y ?? brushBristleAnchor.y) +
+                      brushContactInset.y,
                   ),
                 }),
               },
@@ -361,7 +383,7 @@ function AnimatedToothbrush({
       >
         <Image
           resizeMode="contain"
-          source={brushImageSource(brushKey)}
+          source={brushingBrushImageSource(brushKey)}
           style={styles.brushImage}
           testID="brushing-brush-image"
         />

@@ -54,6 +54,8 @@ export default function CharacterScreen() {
   const { t } = useTranslation();
   const draft = useOnboardingDraft();
   const carousel = useRef<ScrollView>(null);
+  const programmaticTargetIndex = useRef<number | null>(null);
+  const selectedIndexRef = useRef(0);
   const scrollSettleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wheelCooldown = useRef(false);
   const [carouselWidth, setCarouselWidth] = useState(0);
@@ -81,11 +83,18 @@ export default function CharacterScreen() {
   }, [draft]);
 
   useEffect(() => {
+    selectedIndexRef.current = selectedIndex;
+  }, [selectedIndex]);
+
+  useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      carousel.current?.scrollTo({ animated: false, x: selectedIndex * slideWidth });
+      carousel.current?.scrollTo({
+        animated: false,
+        x: selectedIndexRef.current * slideWidth,
+      });
     });
     return () => cancelAnimationFrame(frame);
-  }, [selectedIndex, slideWidth]);
+  }, [slideWidth]);
 
   useEffect(
     () => () => {
@@ -94,33 +103,58 @@ export default function CharacterScreen() {
     [],
   );
 
-  const choose = (avatar: StarterAvatarKey, index: number): void => {
+  const choose = (avatar: StarterAvatarKey): void => {
+    const index = starterAvatarKeys.indexOf(avatar);
+    if (index < 0) return;
+    if (scrollSettleTimer.current) clearTimeout(scrollSettleTimer.current);
+
+    selectedIndexRef.current = index;
+    programmaticTargetIndex.current = index;
     setPreviewIndex(0);
     draft.setAvatarId(avatar);
     carousel.current?.scrollTo({ animated: true, x: index * slideWidth });
   };
 
   const settle = (event: NativeSyntheticEvent<NativeScrollEvent>): void => {
+    const programmaticIndex = programmaticTargetIndex.current;
+    if (programmaticIndex !== null) {
+      programmaticTargetIndex.current = null;
+      const targetOffset = programmaticIndex * slideWidth;
+      if (Math.abs(event.nativeEvent.contentOffset.x - targetOffset) > 1) {
+        carousel.current?.scrollTo({ animated: false, x: targetOffset });
+      }
+      return;
+    }
+
     const measuredIndex = carouselIndexFromOffset(
       event.nativeEvent.contentOffset.x,
       slideWidth,
       starterAvatarKeys.length,
     );
-    const index = Math.max(selectedIndex - 1, Math.min(selectedIndex + 1, measuredIndex));
-    setPreviewIndex(0);
-    draft.setAvatarId(avatarAt(index));
-    carousel.current?.scrollTo({ animated: true, x: index * slideWidth });
+    const currentIndex = selectedIndexRef.current;
+    const index = Math.max(currentIndex - 1, Math.min(currentIndex + 1, measuredIndex));
+    choose(avatarAt(index));
   };
 
   const settleAfterScroll = (event: NativeSyntheticEvent<NativeScrollEvent>): void => {
     if (scrollSettleTimer.current) clearTimeout(scrollSettleTimer.current);
     const offset = event.nativeEvent.contentOffset.x;
     scrollSettleTimer.current = setTimeout(() => {
+      const programmaticIndex = programmaticTargetIndex.current;
+      if (programmaticIndex !== null) {
+        programmaticTargetIndex.current = null;
+        const targetOffset = programmaticIndex * slideWidth;
+        if (Math.abs(offset - targetOffset) > 1) {
+          carousel.current?.scrollTo({ animated: false, x: targetOffset });
+        }
+        return;
+      }
+
       const index = carouselIndexFromOffset(offset, slideWidth, starterAvatarKeys.length);
-      if (index === selectedIndex) {
+      if (index === selectedIndexRef.current) {
         carousel.current?.scrollTo({ animated: true, x: index * slideWidth });
       } else {
-        choose(avatarAt(index), index);
+        choose(avatarAt(index));
       }
     }, 120);
   };
@@ -135,14 +169,14 @@ export default function CharacterScreen() {
             const deltaX = event.nativeEvent?.deltaX ?? 0;
             const deltaY = event.nativeEvent?.deltaY ?? 0;
             const nextIndex = carouselIndexFromWheel(
-              selectedIndex,
+              selectedIndexRef.current,
               deltaX,
               deltaY,
               starterAvatarKeys.length,
             );
-            if (nextIndex === selectedIndex || wheelCooldown.current) return;
+            if (nextIndex === selectedIndexRef.current || wheelCooldown.current) return;
             event.preventDefault?.();
-            choose(avatarAt(nextIndex), nextIndex);
+            choose(avatarAt(nextIndex));
             wheelCooldown.current = true;
             setTimeout(() => {
               wheelCooldown.current = false;
@@ -177,7 +211,7 @@ export default function CharacterScreen() {
           accessibilityLabel={t('onboarding.character.previous')}
           accessibilityRole="button"
           disabled={selectedIndex === 0}
-          onPress={() => choose(avatarAt(selectedIndex - 1), selectedIndex - 1)}
+          onPress={() => choose(avatarAt(selectedIndexRef.current - 1))}
           style={[styles.arrow, styles.arrowLeft, selectedIndex === 0 && styles.disabled]}
         >
           <Text style={styles.arrowText}>‹</Text>
@@ -190,6 +224,9 @@ export default function CharacterScreen() {
           decelerationRate="fast"
           directionalLockEnabled={false}
           horizontal
+          onScrollBeginDrag={() => {
+            programmaticTargetIndex.current = null;
+          }}
           onScroll={Platform.OS === 'web' ? settleAfterScroll : undefined}
           onScrollEndDrag={settle}
           onMomentumScrollEnd={settle}
@@ -219,7 +256,7 @@ export default function CharacterScreen() {
           accessibilityLabel={t('onboarding.character.next')}
           accessibilityRole="button"
           disabled={selectedIndex === starterAvatarKeys.length - 1}
-          onPress={() => choose(avatarAt(selectedIndex + 1), selectedIndex + 1)}
+          onPress={() => choose(avatarAt(selectedIndexRef.current + 1))}
           style={[
             styles.arrow,
             styles.arrowRight,
@@ -231,15 +268,17 @@ export default function CharacterScreen() {
       </View>
 
       <View style={styles.identity}>
-        <Text style={styles.characterCode}>{t(`onboarding.character.options.${selected}`)}</Text>
+        <Text numberOfLines={1} style={styles.characterCode}>
+          {t(`onboarding.character.options.${selected}`)}
+        </Text>
         <View style={styles.previewRow}>
-          {starterAvatarKeys.map((avatar, index) => (
+          {starterAvatarKeys.map((avatar) => (
             <Pressable
               accessibilityLabel={t(`onboarding.character.options.${avatar}`)}
               accessibilityRole="radio"
               accessibilityState={{ selected: avatar === selected }}
               key={avatar}
-              onPress={() => choose(avatar, index)}
+              onPress={() => choose(avatar)}
               style={[styles.preview, avatar === selected && styles.previewSelected]}
             >
               <CharacterAvatar characterKey={avatar} growthStage={4} size="tiny" surface="plain" />
@@ -294,10 +333,14 @@ const styles = StyleSheet.create({
   carousel: { flex: 1 },
   carouselContent: { alignItems: 'stretch' },
   characterCode: {
+    alignSelf: 'stretch',
     color: colors.brandPrimary,
     fontFamily: typography.family.display,
     fontSize: 24,
     fontWeight: '700',
+    lineHeight: 34,
+    paddingHorizontal: spacing.sm,
+    textAlign: 'center',
   },
   copy: {
     backgroundColor: 'rgba(255,255,255,0.5)',
