@@ -35,9 +35,11 @@ import {
   sceneToneForCharacter,
 } from '@/features/character';
 import {
+  CharacterSceneEffect,
   RoomMaterialItem,
   defaultPlacementForRoomMaterial,
   emptyCustomizationState,
+  isCharacterSceneEffectKey,
   loadCustomizationState,
   presentCustomizationInventory,
   roomMaterialsForTheme,
@@ -189,6 +191,7 @@ export default function ChildHomeScreen() {
   const isYoungerExperience = active.ageBand === '4_6';
   const roomBackground = equipped.find((item) => item.slot === 'background');
   const roomEffect = equipped.find((item) => item.slot === 'effect');
+  const roomEffectKey = isCharacterSceneEffectKey(roomEffect?.key) ? roomEffect.key : null;
   const selectedRoomMaterials = roomMaterialsForTheme(roomBackground?.key).filter((item) =>
     customization.selectedRoomMaterials.includes(item.key),
   );
@@ -269,13 +272,6 @@ export default function ChildHomeScreen() {
               <View style={styles.rug} />
             </>
           )}
-          {roomEffect ? (
-            <View pointerEvents="none" style={styles.selectedRoomEffect}>
-              <Text style={styles.effectOne}>{roomEffect.icon}</Text>
-              <Text style={styles.effectTwo}>{roomEffect.icon}</Text>
-              <Text style={styles.effectThree}>{roomEffect.icon}</Text>
-            </View>
-          ) : null}
           {selectedRoomMaterials.map((material) => (
             <RoomMaterialItem
               accessibilityLabel={t(`collection.roomMaterials.${material.key}`)}
@@ -294,7 +290,14 @@ export default function ChildHomeScreen() {
           ))}
           <Text style={[styles.sceneSparkle, styles.sceneSparkleLeft]}>✦</Text>
           <Text style={[styles.sceneSparkle, styles.sceneSparkleRight]}>✦</Text>
-          <View style={styles.heroCharacter}>
+          <View pointerEvents="none" style={styles.heroCharacter}>
+            {roomEffectKey ? (
+              <CharacterSceneEffect
+                animated={process.env.NODE_ENV !== 'test'}
+                effectKey={roomEffectKey}
+                testID="home-character-effect"
+              />
+            ) : null}
             <CharacterAvatar
               characterKey={active.avatarId}
               growthStage={growthStage}
@@ -468,10 +471,6 @@ const styles = StyleSheet.create({
     lineHeight: 94,
     transform: [{ scaleX: 1.4 }],
   },
-  selectedRoomEffect: { height: '100%', position: 'absolute', width: '100%', zIndex: 2 },
-  effectOne: { fontSize: 25, left: 45, lineHeight: 34, position: 'absolute', top: 120 },
-  effectTwo: { fontSize: 30, lineHeight: 40, position: 'absolute', right: 48, top: 82 },
-  effectThree: { bottom: 92, fontSize: 22, lineHeight: 31, position: 'absolute', right: 70 },
   chevron: { color: colors.brandPrimary, fontSize: 24, fontWeight: '800', lineHeight: 26 },
   cloudOne: {
     backgroundColor: colors.white,

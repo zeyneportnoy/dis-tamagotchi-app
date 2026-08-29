@@ -374,3 +374,13 @@ onboarding ve Mood Lab aynı render bileşenini kullanır.
   reconcile edilir; açık attempt sonuçlanana kadar ertelenir ve missed `-10` yalnız bir kez yazılır.
 - Skor `MAX(0, current_score - 10)` davranışıyla sıfırın altına inmez. Karakter evresi yalnız güncel
   skordan 0/160/400/1000/1800 eşikleriyle türetilir; skor düşünce evre de geriye dönebilir.
+
+# 2026-08-29 — Koleksiyon efektleri karakter-sahnesi yerel katmanıdır
+
+- Efekt sunumu büyük PNG, kart thumbnail'i veya tüm ekran koordinatları yerine `CharacterAvatar`
+  güvenli viewport'una bağlı, kırpılan ve yalnız kodla çizilen küçük pastel bir katman kullanır.
+  Collection önizlemesi ile Child Home aynı katmanı render eder.
+- Köpük ve Kalp Uçuşması ürün kataloğundan çıkarılır; brushing köpüğü değişmez. Kalan altı efektin
+  mevcut anahtarları, kilit eşikleri ve child-specific equip persistence davranışı korunur.
+- Altı efektin tamamı seçili kaldıkları sürece düşük yoğunluklu, sürekli bir loop çalıştırır; Kutlama
+  da karakter etkileşimi gerektirmeden küçük yıldız ve confetti hareketini sürdürür.

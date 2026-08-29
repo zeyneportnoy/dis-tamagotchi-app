@@ -46,9 +46,12 @@ import {
   sceneToneForCharacter,
 } from '@/features/character';
 import {
+  CharacterSceneEffect,
+  EffectCardPreview,
   RoomMaterialItem,
   defaultPlacementForRoomMaterial,
   emptyCustomizationState,
+  isCharacterSceneEffectKey,
   isRoomMaterialUnlocked,
   loadCustomizationState,
   presentCustomizationInventory,
@@ -370,6 +373,9 @@ export default function CollectionScreen() {
   if (!items || !profile) return <LoadingState />;
   const selectedBackground = items.find((item) => item.equipped && item.slot === 'background');
   const selectedEffect = items.find((item) => item.equipped && item.slot === 'effect');
+  const selectedSceneEffectKey = isCharacterSceneEffectKey(selectedEffect?.key)
+    ? selectedEffect.key
+    : null;
   const roomMaterials = roomMaterialsForTheme(selectedBackground?.key);
   const selectedRoomMaterials = roomMaterials.filter((item) =>
     customization.selectedRoomMaterials.includes(item.key),
@@ -423,16 +429,6 @@ export default function CollectionScreen() {
             />
           ) : null}
           <View style={styles.previewFloor} />
-          {selectedEffect ? (
-            <View pointerEvents="none" style={styles.effectLayer}>
-              <Image
-                source={premiumRewardSource(selectedEffect.key)}
-                style={styles.effectTop}
-                testID="collection-preview-effect"
-              />
-              <Image source={premiumRewardSource(selectedEffect.key)} style={styles.effectLeft} />
-            </View>
-          ) : null}
           {selectedRoomMaterials.map((material) => (
             <RoomMaterialItem
               accessibilityLabel={t(`collection.roomMaterials.${material.key}`)}
@@ -456,6 +452,13 @@ export default function CollectionScreen() {
               { bottom: collectionPreviewBottomForStage(growthStage) },
             ]}
           >
+            {selectedSceneEffectKey ? (
+              <CharacterSceneEffect
+                animated={process.env.NODE_ENV !== 'test'}
+                effectKey={selectedSceneEffectKey}
+                testID="collection-preview-effect"
+              />
+            ) : null}
             <CharacterAvatar
               characterKey={profile.avatarId}
               growthStage={growthStage}
@@ -487,11 +490,14 @@ export default function CollectionScreen() {
                   },
                 ]}
               >
-                <Image
-                  resizeMode="contain"
-                  source={characterIconSource(profile.avatarId, categoryIconName(slot))}
-                  style={styles.categoryIcon}
-                />
+                <View style={styles.categoryIconFrame}>
+                  <Image
+                    resizeMode="contain"
+                    source={characterIconSource(profile.avatarId, categoryIconName(slot))}
+                    style={styles.categoryIcon}
+                    testID={`collection-category-icon-${slot}`}
+                  />
+                </View>
                 <Text
                   style={[
                     styles.categoryLabel,
@@ -642,12 +648,18 @@ export default function CollectionScreen() {
                   item.equipped && styles.itemIconSelected,
                 ]}
               >
-                <Image
-                  resizeMode="contain"
-                  source={premiumRewardSource(item.key)}
-                  style={activeSlot === 'brush' ? styles.brushRewardIcon : styles.rewardIcon}
-                  testID={`collection-item-visual-${item.key}`}
-                />
+                {activeSlot === 'effect' && isCharacterSceneEffectKey(item.key) ? (
+                  <View testID={`collection-item-visual-${item.key}`}>
+                    <EffectCardPreview effectKey={item.key} />
+                  </View>
+                ) : (
+                  <Image
+                    resizeMode="contain"
+                    source={premiumRewardSource(item.key)}
+                    style={activeSlot === 'brush' ? styles.brushRewardIcon : styles.rewardIcon}
+                    testID={`collection-item-visual-${item.key}`}
+                  />
+                )}
               </View>
               <Text style={styles.itemName}>{t(`rewards.items.${item.key}`)}</Text>
               <Text style={styles.itemStatus}>
@@ -700,9 +712,11 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.78)',
     borderRadius: radii.md,
     borderWidth: 2,
+    gap: 6,
     justifyContent: 'center',
-    minHeight: minimumTouchTarget + 12,
-    paddingVertical: spacing.xs,
+    minHeight: 96,
+    paddingBottom: spacing.xs,
+    paddingTop: spacing.sm,
     width: 84,
     shadowColor: '#7B6792',
     shadowOffset: { height: 3, width: 0 },
@@ -710,8 +724,9 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
   },
   categoryActive: { backgroundColor: '#EFE8FF', borderColor: colors.brandPrimary },
-  categoryIcon: { height: 28, width: 28 },
-  categoryLabel: { fontSize: 10, fontWeight: '700', textAlign: 'center' },
+  categoryIcon: { height: 48, width: 48 },
+  categoryIconFrame: { alignItems: 'center', height: 48, justifyContent: 'center', width: 48 },
+  categoryLabel: { fontSize: 11, fontWeight: '700', textAlign: 'center' },
   categoryLabelActive: { color: colors.brandPrimary, fontWeight: '900' },
   content: { gap: spacing.md, paddingBottom: spacing.xl },
   dragGhost: { opacity: 0.9, position: 'absolute', zIndex: 20 },
@@ -771,17 +786,6 @@ const styles = StyleSheet.create({
   decorCushion: { borderRadius: 50, bottom: 2, height: 100, left: '32%', width: 120 },
   decorRug: { borderRadius: 52, bottom: -2, height: 105, left: '25%', width: 160 },
   decorWall: { borderRadius: 41, height: 82, right: 24, top: 48, width: 82 },
-  effectLayer: { height: '100%', position: 'absolute', width: '100%', zIndex: 2 },
-  effectTop: { borderRadius: 38, height: 76, position: 'absolute', right: 18, top: 28, width: 76 },
-  effectLeft: {
-    borderRadius: 28,
-    height: 56,
-    left: 18,
-    opacity: 0.78,
-    position: 'absolute',
-    top: 128,
-    width: 56,
-  },
   itemCard: {
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.72)',

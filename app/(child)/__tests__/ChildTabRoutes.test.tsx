@@ -152,6 +152,11 @@ describe('Child tab routes', () => {
     // Collection opens on the "Fırça" tab; switch to backgrounds for this scenario.
     await fireEvent.press(view.getByText('Arka Plan'));
     await waitFor(() => expect(view.getByText('Pastel Oyun Odası')).toBeTruthy());
+    for (const slot of ['brush', 'background', 'decor', 'effect']) {
+      const categoryIcon = view.getByTestId(`collection-category-icon-${slot}`);
+      expect(StyleSheet.flatten(categoryIcon.props.style)).toMatchObject({ height: 48, width: 48 });
+      expect(categoryIcon.props.resizeMode).toBe('contain');
+    }
     expect(view.getByText('Şeker Bulutlar')).toBeTruthy();
     expect(view.getByText('Gökkuşağı Işıltısı')).toBeTruthy();
     expect(view.getByText('Gece Işıltısı')).toBeTruthy();

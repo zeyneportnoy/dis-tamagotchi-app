@@ -4,10 +4,9 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { classifyBrushingSlot, closedBrushingSlotsSince, toLocalDateKey } from '@/domain/brushing';
 import type { BrushingPeriod, BrushingSession, BrushingSessionRepository } from '@/domain/family';
 import {
-  FIRST_DAILY_SLOT_BONUS_XP,
+  MAIN_SLOT_REWARD_XP,
   MAX_MOOD,
   SESSION_MOOD_DELTA,
-  SESSION_XP,
   levelForXp,
   newlyUnlockedReward,
   nextFullDayStreak,
@@ -401,7 +400,7 @@ export class SQLiteBrushingSessionRepository
       );
 
       const progressBefore = await this.requireProgress(input.profileId);
-      const xpGranted = SESSION_XP + (firstSlotCompletion ? FIRST_DAILY_SLOT_BONUS_XP : 0);
+      const xpGranted = period !== null && firstSlotCompletion ? MAIN_SLOT_REWARD_XP : 0;
       const nextXp = progressBefore.totalXp + xpGranted;
       const moodDelta = Math.min(SESSION_MOOD_DELTA, MAX_MOOD - progressBefore.mood);
       const unlockedItemKey = newlyUnlockedReward(progressBefore.totalXp, nextXp);
@@ -422,36 +421,38 @@ export class SQLiteBrushingSessionRepository
         finishedAtIso,
         input.profileId,
       );
-      await this.database.runAsync(
-        `INSERT OR IGNORE INTO inventory_items(child_profile_id, item_key, unlocked_at, equipped, slot)
-         VALUES (?, 'cozy-scarf', ?, 1, 'decor')`,
-        input.profileId,
-        finishedAtIso,
-      );
-      for (const [key, slot] of [
-        ['pastel-playroom', 'background'],
-        ['bubble-glow', 'effect'],
-        ['classic-brush', 'brush'],
-      ] as const) {
+      if (xpGranted > 0) {
         await this.database.runAsync(
           `INSERT OR IGNORE INTO inventory_items(child_profile_id, item_key, unlocked_at, equipped, slot)
-           VALUES (?, ?, ?, 1, ?)`,
+           VALUES (?, 'cozy-scarf', ?, 1, 'decor')`,
           input.profileId,
-          key,
           finishedAtIso,
-          slot,
         );
-      }
-      if (unlockedItemKey) {
-        const unlockedSlot = rewardItemForKey(unlockedItemKey).slot;
-        await this.database.runAsync(
-          `INSERT OR IGNORE INTO inventory_items(child_profile_id, item_key, unlocked_at, slot)
-           VALUES (?, ?, ?, ?)`,
-          input.profileId,
-          unlockedItemKey,
-          finishedAtIso,
-          unlockedSlot,
-        );
+        for (const [key, slot] of [
+          ['pastel-playroom', 'background'],
+          ['bubble-glow', 'effect'],
+          ['classic-brush', 'brush'],
+        ] as const) {
+          await this.database.runAsync(
+            `INSERT OR IGNORE INTO inventory_items(child_profile_id, item_key, unlocked_at, equipped, slot)
+             VALUES (?, ?, ?, 1, ?)`,
+            input.profileId,
+            key,
+            finishedAtIso,
+            slot,
+          );
+        }
+        if (unlockedItemKey) {
+          const unlockedSlot = rewardItemForKey(unlockedItemKey).slot;
+          await this.database.runAsync(
+            `INSERT OR IGNORE INTO inventory_items(child_profile_id, item_key, unlocked_at, slot)
+             VALUES (?, ?, ?, ?)`,
+            input.profileId,
+            unlockedItemKey,
+            finishedAtIso,
+            unlockedSlot,
+          );
+        }
       }
       await this.database.runAsync(
         `UPDATE brushing_sessions SET reward_granted_at = ?, xp_granted = ?, mood_delta = ?,

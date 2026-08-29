@@ -1,5 +1,12 @@
 export { RoomMaterialItem } from './RoomMaterialItem';
 export {
+  CharacterSceneEffect,
+  EffectCardPreview,
+  characterSceneEffectKeys,
+  isCharacterSceneEffectKey,
+} from './CharacterSceneEffect';
+export type { CharacterSceneEffectKey } from './CharacterSceneEffect';
+export {
   isRoomMaterialKey,
   isRoomMaterialUnlocked,
   isRoomThemeKey,

@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { StoredAgeBand } from '@/domain/family';
+import type { BrushingPeriod, StoredAgeBand } from '@/domain/family';
 
 const lastCompletionMessageKey = 'brushing.completion.last-message-index';
 
@@ -17,6 +17,37 @@ export const completionMessageKeysSevenEleven = [
   'brushing.celebrations.sevenEleven.keepGoing',
   'brushing.celebrations.sevenEleven.sparkling',
 ] as const;
+
+export type CompletionRewardPresentation =
+  | Readonly<{ kind: 'earned' }>
+  | Readonly<{
+      detailKey:
+        | 'brushing.noReward.offSlotDetail'
+        | 'brushing.noReward.nextEvening'
+        | 'brushing.noReward.dayComplete';
+      kind: 'notEarned';
+      titleKey: 'brushing.noReward.offSlotTitle' | 'brushing.noReward.alreadyEarnedTitle';
+    }>;
+
+export function completionRewardPresentation(
+  period: BrushingPeriod | null,
+  xpGranted: number,
+): CompletionRewardPresentation {
+  if (xpGranted > 0) return { kind: 'earned' };
+  if (period === null) {
+    return {
+      detailKey: 'brushing.noReward.offSlotDetail',
+      kind: 'notEarned',
+      titleKey: 'brushing.noReward.offSlotTitle',
+    };
+  }
+  return {
+    detailKey:
+      period === 'morning' ? 'brushing.noReward.nextEvening' : 'brushing.noReward.dayComplete',
+    kind: 'notEarned',
+    titleKey: 'brushing.noReward.alreadyEarnedTitle',
+  };
+}
 
 export async function nextCompletionMessageKey(ageBand: StoredAgeBand): Promise<string> {
   const keys = ageBand === '4_6' ? completionMessageKeysFourSix : completionMessageKeysSevenEleven;

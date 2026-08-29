@@ -37,8 +37,8 @@ async function seedProfile(
 
 describe('SQLiteBrushingSessionRepository', () => {
   it.each([
-    [new Date(2026, 7, 8, 8, 28), new Date(2026, 7, 8, 8, 30), 'morning', 1, 0],
-    [new Date(2026, 7, 8, 20, 28), new Date(2026, 7, 8, 20, 30), 'evening', 0, 1],
+    [new Date(2026, 7, 8, 8), new Date(2026, 7, 8, 8, 2), 'morning', 1, 0],
+    [new Date(2026, 7, 8, 18), new Date(2026, 7, 8, 18, 2), 'evening', 0, 1],
   ] as const)(
     'stores a completed session started at %s in its fixed main slot',
     async (startedAt, completedAt, period, morningCompleted, eveningCompleted) => {
@@ -56,7 +56,12 @@ describe('SQLiteBrushingSessionRepository', () => {
         durationSeconds: 120,
       });
 
-      expect(session).toMatchObject({ completed: true, durationSeconds: 120, period });
+      expect(session).toMatchObject({
+        completed: true,
+        durationSeconds: 120,
+        period,
+        xpGranted: 20,
+      });
       await expect(repository.listCompleted('profile-1')).resolves.toEqual([session]);
       await expect(
         database.getFirstAsync<{
@@ -117,38 +122,116 @@ describe('SQLiteBrushingSessionRepository', () => {
     rmSync(directory, { recursive: true, force: true });
   });
 
-  it('grants XP once per session and does not advance the same daily slot twice', async () => {
+  it('rewards each child/day/main slot once and gives repeated slots no progress or unlocks', async () => {
     const database = new NodeSQLiteDatabase();
     await migrateDatabase(database as unknown as SQLiteDatabase);
     await seedProfile(database, 'profile-1');
+    await database.runAsync(
+      `INSERT INTO profile_progress(child_profile_id, status_date, total_xp)
+       VALUES ('profile-1', '2026-08-08', 70)`,
+    );
+    let now = new Date(2026, 7, 8, 8, 2);
     const repository = new SQLiteBrushingSessionRepository(
       database as unknown as SQLiteDatabase,
       undefined,
-      () => new Date(2026, 7, 8, 8, 30),
+      () => now,
     );
-    const input = {
-      sessionId: 'session-idempotent',
+    const morningInput = {
+      sessionId: 'morning-08-00',
       profileId: 'profile-1',
-      startedAt: '2026-08-08T05:00:00.000Z',
+      startedAt: new Date(2026, 7, 8, 8).toISOString(),
       durationSeconds: 120,
     };
-    const first = await repository.finish(input);
-    const duplicate = await repository.finish(input);
-    expect(first).toMatchObject({ xpGranted: 20, moodDelta: 5, firstSlotCompletion: true });
-    expect(duplicate).toEqual(first);
-    await expect(
-      database.getFirstAsync<{ count: number; xp: number }>(
-        `SELECT count(*) AS count, sum(xp_granted) AS xp FROM brushing_sessions`,
-      ),
-    ).resolves.toEqual({ count: 1, xp: 20 });
-
-    const repeat = await repository.finish({ ...input, sessionId: 'session-repeat' });
-    expect(repeat).toMatchObject({ xpGranted: 10, firstSlotCompletion: false });
-    expect(repeat.dailyProgress).toMatchObject({
-      morningCompleted: true,
-      eveningCompleted: false,
-      fullDayCompleted: false,
+    const firstMorning = await repository.finish(morningInput);
+    const duplicateSession = await repository.finish(morningInput);
+    expect(firstMorning).toMatchObject({
+      firstSlotCompletion: true,
+      moodDelta: 5,
+      unlockedItemKey: 'star-crown',
+      xpGranted: 20,
     });
+    expect(duplicateSession).toEqual(firstMorning);
+    const inventoryAfterFirstMorning = await database.getFirstAsync<{ count: number }>(
+      `SELECT count(*) AS count FROM inventory_items WHERE child_profile_id = 'profile-1'`,
+    );
+
+    now = new Date(2026, 7, 8, 10, 2);
+    const repeatMorning = await repository.finish({
+      ...morningInput,
+      sessionId: 'morning-10-00',
+      startedAt: new Date(2026, 7, 8, 10).toISOString(),
+    });
+    expect(repeatMorning).toMatchObject({
+      firstSlotCompletion: false,
+      streakAdvanced: false,
+      unlockedItemKey: null,
+      xpGranted: 0,
+    });
+    await expect(
+      database.getFirstAsync<{ current_streak: number; total_xp: number }>(
+        `SELECT current_streak, total_xp FROM profile_progress WHERE child_profile_id = 'profile-1'`,
+      ),
+    ).resolves.toEqual({ current_streak: 0, total_xp: 90 });
+    await expect(
+      database.getFirstAsync<{ count: number }>(
+        `SELECT count(*) AS count FROM inventory_items WHERE child_profile_id = 'profile-1'`,
+      ),
+    ).resolves.toEqual(inventoryAfterFirstMorning);
+
+    now = new Date(2026, 7, 8, 19, 2);
+    const firstEvening = await repository.finish({
+      sessionId: 'evening-19-00',
+      profileId: 'profile-1',
+      startedAt: new Date(2026, 7, 8, 19).toISOString(),
+      durationSeconds: 120,
+    });
+    expect(firstEvening).toMatchObject({
+      firstSlotCompletion: true,
+      streakAdvanced: true,
+      unlockedItemKey: 'cloud-room',
+      xpGranted: 20,
+    });
+    const inventoryAfterFirstEvening = await database.getFirstAsync<{ count: number }>(
+      `SELECT count(*) AS count FROM inventory_items WHERE child_profile_id = 'profile-1'`,
+    );
+
+    now = new Date(2026, 7, 8, 21, 2);
+    const repeatEvening = await repository.finish({
+      sessionId: 'evening-21-00',
+      profileId: 'profile-1',
+      startedAt: new Date(2026, 7, 8, 21).toISOString(),
+      durationSeconds: 120,
+    });
+    expect(repeatEvening).toMatchObject({
+      firstSlotCompletion: false,
+      streakAdvanced: false,
+      unlockedItemKey: null,
+      xpGranted: 0,
+    });
+    await expect(
+      database.getFirstAsync<{ current_streak: number; total_xp: number }>(
+        `SELECT current_streak, total_xp FROM profile_progress WHERE child_profile_id = 'profile-1'`,
+      ),
+    ).resolves.toEqual({ current_streak: 1, total_xp: 110 });
+    await expect(
+      database.getFirstAsync<{ count: number }>(
+        `SELECT count(*) AS count FROM inventory_items WHERE child_profile_id = 'profile-1'`,
+      ),
+    ).resolves.toEqual(inventoryAfterFirstEvening);
+
+    now = new Date(2026, 7, 9, 8, 2);
+    const nextDayMorning = await repository.finish({
+      sessionId: 'next-day-morning-08-00',
+      profileId: 'profile-1',
+      startedAt: new Date(2026, 7, 9, 8).toISOString(),
+      durationSeconds: 120,
+    });
+    expect(nextDayMorning).toMatchObject({ firstSlotCompletion: true, xpGranted: 20 });
+    await expect(
+      database.getFirstAsync<{ total_xp: number }>(
+        `SELECT total_xp FROM profile_progress WHERE child_profile_id = 'profile-1'`,
+      ),
+    ).resolves.toEqual({ total_xp: 130 });
     database.close();
   });
 
@@ -237,27 +320,38 @@ describe('SQLiteBrushingSessionRepository', () => {
     database.close();
   });
 
-  it('uses start time only and leaves sessions outside fixed slots unassigned', async () => {
+  it.each([
+    new Date(2026, 7, 8, 12),
+    new Date(2026, 7, 8, 13),
+    new Date(2026, 7, 8, 16),
+    new Date(2026, 7, 8, 17, 59),
+  ])('gives zero reward to an off-slot session started at %s', async (startedAt) => {
     const database = new NodeSQLiteDatabase();
     await migrateDatabase(database as unknown as SQLiteDatabase);
     await seedProfile(database, 'profile-1');
+    const finishedAt = new Date(startedAt.getTime() + 120_000);
     const repository = new SQLiteBrushingSessionRepository(
       database as unknown as SQLiteDatabase,
       undefined,
-      () => new Date(2026, 7, 8, 12, 2),
+      () => finishedAt,
     );
     const offSlot = await repository.finish({
-      sessionId: 'off-slot',
+      sessionId: `off-slot-${startedAt.getHours()}-${startedAt.getMinutes()}`,
       profileId: 'profile-1',
-      startedAt: new Date(2026, 7, 8, 12).toISOString(),
+      startedAt: startedAt.toISOString(),
       durationSeconds: 120,
     });
     expect(offSlot.session.period).toBeNull();
-    expect(offSlot).toMatchObject({ xpGranted: 10, firstSlotCompletion: false });
+    expect(offSlot).toMatchObject({ xpGranted: 0, firstSlotCompletion: false });
     expect(offSlot.dailyProgress).toMatchObject({
       morningCompleted: false,
       eveningCompleted: false,
     });
+    await expect(
+      database.getFirstAsync<{ total_xp: number }>(
+        `SELECT total_xp FROM profile_progress WHERE child_profile_id = 'profile-1'`,
+      ),
+    ).resolves.toEqual({ total_xp: 0 });
     database.close();
   });
 
@@ -613,17 +707,23 @@ describe('SQLiteBrushingSessionRepository', () => {
       `UPDATE child_profiles SET parent_auth_user_id = 'parent-b', sync_status = 'synced'
        WHERE id = 'profile-b'`,
     );
+    let rewardNow = new Date(2026, 7, 8, 9, 2);
     const reward = new SQLiteBrushingSessionRepository(
       first as unknown as SQLiteDatabase,
       undefined,
-      () => new Date(2026, 7, 8, 8, 30),
+      () => rewardNow,
       async () => 'parent-a',
     );
-    for (const sessionId of ['a-1', 'a-2', 'a-3']) {
+    for (const [sessionId, startedAt, finishedAt] of [
+      ['a-1', new Date(2026, 7, 8, 9), new Date(2026, 7, 8, 9, 2)],
+      ['a-2', new Date(2026, 7, 8, 11), new Date(2026, 7, 8, 11, 2)],
+      ['a-3', new Date(2026, 7, 8, 19), new Date(2026, 7, 8, 19, 2)],
+    ] as const) {
+      rewardNow = finishedAt;
       await reward.finish({
         sessionId,
         profileId: 'profile-a',
-        startedAt: '2026-08-08T05:00:00.000Z',
+        startedAt: startedAt.toISOString(),
         durationSeconds: 120,
       });
     }

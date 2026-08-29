@@ -51,6 +51,7 @@ import {
   brushingVoiceCues,
   chooseCompletionJingleIndex,
   completionJingles,
+  completionRewardPresentation,
   growthCompletionMessageKey,
   getBrushingVoiceCue,
   getBrushingVoiceProfile,
@@ -1056,6 +1057,10 @@ export default function BrushingScreen() {
 
   if (result) {
     const completionStage = growthStageForXp(result.progress.totalXp);
+    const rewardPresentation = completionRewardPresentation(
+      result.session.period,
+      result.xpGranted,
+    );
     return (
       <Screen
         style={[
@@ -1086,18 +1091,20 @@ export default function BrushingScreen() {
                   : 'brushing.completeBody',
               )}
             </Text>
-            <View style={styles.rewardRow}>
-              <View style={styles.rewardChip}>
-                <Text style={styles.rewardValue}>
-                  {t('brushing.rewardAmount', { amount: result.xpGranted })}
-                </Text>
+            {rewardPresentation.kind === 'earned' ? (
+              <View style={styles.rewardRow}>
+                <View style={styles.rewardChip}>
+                  <Text style={styles.rewardValue}>
+                    {t('brushing.rewardAmount', { amount: result.xpGranted })}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.rewardChip}>
-                <Text style={styles.rewardValue}>
-                  {t('brushing.moodGain', { count: result.moodDelta })}
-                </Text>
+            ) : (
+              <View style={styles.noRewardCopy} testID="brushing-no-reward-copy">
+                <Text style={styles.noRewardTitle}>{t(rewardPresentation.titleKey)}</Text>
+                <Text style={styles.centerText}>{t(rewardPresentation.detailKey)}</Text>
               </View>
-            </View>
+            )}
             <Text style={styles.centerText}>
               {t('brushing.dailyResult', {
                 evening: result.dailyProgress.eveningCompleted ? '✓' : '•',
@@ -1453,6 +1460,8 @@ const styles = StyleSheet.create({
   },
   confettiParticle: { height: 11, position: 'absolute', width: 11 },
   confettiRound: { borderRadius: radii.pill },
+  noRewardCopy: { alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.md },
+  noRewardTitle: { fontWeight: '900', textAlign: 'center' },
   controls: { gap: spacing.md },
   dialog: {
     backgroundColor: colors.white,

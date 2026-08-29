@@ -45,12 +45,22 @@ describe('character growth stages', () => {
     });
   });
 
-  it('never promises a stage transition before the guaranteed session XP reaches it', () => {
-    expect(estimatedBrushingsToNextStage(140)).toBe(2);
-    expect(estimatedBrushingsToNextStage(150)).toBe(1);
-    expect(growthStageForXp(150 + 10)).toBe(1);
-    expect(estimatedBrushingsToNextStage(390)).toBe(1);
-    expect(growthStageForXp(390 + 10)).toBe(2);
+  it.each([
+    [40, 120, 6],
+    [30, 130, 7],
+    [60, 100, 5],
+    [120, 40, 2],
+    [140, 20, 1],
+    [159, 1, 1],
+  ] as const)(
+    'at %i Mine, estimates %i remaining as %i rewarded brushings',
+    (xp, remainingXp, brushings) => {
+      expect(growthProgressForXp(xp).remainingXp).toBe(remainingXp);
+      expect(estimatedBrushingsToNextStage(xp)).toBe(brushings);
+    },
+  );
+
+  it('reports no remaining brushings at the final stage', () => {
     expect(estimatedBrushingsToNextStage(1800)).toBe(0);
   });
 

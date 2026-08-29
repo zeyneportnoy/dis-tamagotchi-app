@@ -80,8 +80,6 @@ export function premiumRewardSource(key: RewardItemKey): ImageSourcePropType {
     'mini-shelf': premiumRewardSources.miniShelf,
     'moon-lamp': premiumRewardSources.starLamp,
     'color-pillow': premiumRewardSources.heartRug,
-    'bubble-glow': premiumRewardSources.bubbles,
-    'heart-flight': premiumRewardSources.hearts,
     'rainbow-light': premiumRewardSources.rainbowLight,
     'gold-sparkle': premiumRewardSources.goldSparkle,
     'star-sparkle': premiumRewardSources.starSparkle,

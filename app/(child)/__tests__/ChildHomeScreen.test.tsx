@@ -119,7 +119,7 @@ describe('Child Home route', () => {
     ).toHaveLength(2);
     expect(view.getByText('Diş yumurtası')).toBeTruthy();
     expect(view.getByText('Çatlıyor evresine 160 Mine kaldı')).toBeTruthy();
-    expect(view.getByText('Yaklaşık 16 fırçalama')).toBeTruthy();
+    expect(view.getByText('Yaklaşık 8 fırçalama')).toBeTruthy();
     expect(view.getByText('Sabah')).toBeTruthy();
     expect(view.getByText('Akşam')).toBeTruthy();
     const brushButton = view.getByRole('button', { name: 'Fırçalayalım!' });
@@ -246,7 +246,7 @@ describe('Child Home route', () => {
     expect(view.getByRole('button', { name: 'Akşam. Tamamlandı' })).toBeTruthy();
     expect(view.getAllByText('✓')).toHaveLength(2);
     expect(view.getByText('Çatlıyor evresine 160 Mine kaldı')).toBeTruthy();
-    expect(view.getByText('Yaklaşık 16 fırçalama')).toBeTruthy();
+    expect(view.getByText('Yaklaşık 8 fırçalama')).toBeTruthy();
     expect(view.queryByText('Seri: 3 gün')).toBeNull();
   });
 });

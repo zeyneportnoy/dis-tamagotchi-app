@@ -3,13 +3,11 @@ export type AccessorySlot = 'wearable' | 'background' | 'decor' | 'effect' | 'br
 export const rewardCatalog = [
   { key: 'pastel-playroom', icon: '🏡', slot: 'background', unlockXp: 0 },
   { key: 'cozy-scarf', icon: '☁️', slot: 'decor', unlockXp: 0 },
-  { key: 'bubble-glow', icon: '🫧', slot: 'effect', unlockXp: 0 },
   { key: 'classic-brush', icon: '🪥', slot: 'brush', unlockXp: 0 },
   { key: 'sparkle-crown', icon: '👑', slot: 'wearable', unlockXp: 40 },
   { key: 'star-crown', icon: '⭐', slot: 'wearable', unlockXp: 80 },
   { key: 'cloud-room', icon: '☁️', slot: 'background', unlockXp: 100 },
   { key: 'heart-rug', icon: '💗', slot: 'decor', unlockXp: 120 },
-  { key: 'heart-flight', icon: '💕', slot: 'effect', unlockXp: 140 },
   { key: 'mini-hat', icon: '🎩', slot: 'wearable', unlockXp: 160 },
   { key: 'pink-brush', icon: '🌸', slot: 'brush', unlockXp: 180 },
   { key: 'star-glasses', icon: '👓', slot: 'wearable', unlockXp: 200 },
@@ -17,28 +15,28 @@ export const rewardCatalog = [
   { key: 'super-glasses', icon: '🕶️', slot: 'wearable', unlockXp: 240 },
   { key: 'toy-box', icon: '🧸', slot: 'decor', unlockXp: 260 },
   { key: 'color-glasses', icon: '🌈', slot: 'wearable', unlockXp: 280 },
-  { key: 'rainbow-light', icon: '🌈', slot: 'effect', unlockXp: 300 },
+  { key: 'rainbow-light', icon: '◌', slot: 'effect', unlockXp: 300 },
   { key: 'star-brush', icon: '⭐', slot: 'brush', unlockXp: 320 },
   { key: 'bow-clip', icon: '🎀', slot: 'wearable', unlockXp: 340 },
   { key: 'heart-badge', icon: '💡', slot: 'decor', unlockXp: 360 },
   { key: 'space-room', icon: '🚀', slot: 'background', unlockXp: 400 },
   { key: 'star-badge', icon: '🪴', slot: 'decor', unlockXp: 440 },
-  { key: 'gold-sparkle', icon: '🌟', slot: 'effect', unlockXp: 480 },
+  { key: 'gold-sparkle', icon: '✦', slot: 'effect', unlockXp: 480 },
   { key: 'mini-cape', icon: '🪥', slot: 'brush', unlockXp: 520 },
   { key: 'undersea-room', icon: '🩸', slot: 'background', unlockXp: 560 },
-  { key: 'star-sparkle', icon: '✨', slot: 'effect', unlockXp: 600 },
+  { key: 'star-sparkle', icon: '·', slot: 'effect', unlockXp: 600 },
   { key: 'mini-shelf', icon: '📚', slot: 'decor', unlockXp: 640 },
   { key: 'rainbow-brush', icon: '🌈', slot: 'brush', unlockXp: 680 },
-  { key: 'confetti-glow', icon: '🎉', slot: 'effect', unlockXp: 720 },
+  { key: 'confetti-glow', icon: '✧', slot: 'effect', unlockXp: 720 },
   { key: 'mini-halo', icon: '💫', slot: 'wearable', unlockXp: 760 },
   { key: 'rainbow-cape', icon: '🌅', slot: 'background', unlockXp: 800 },
   { key: 'moon-lamp', icon: '🌙', slot: 'decor', unlockXp: 840 },
   { key: 'dino-brush', icon: '🦕', slot: 'brush', unlockXp: 880 },
-  { key: 'magic-dust', icon: '🪄', slot: 'effect', unlockXp: 920 },
+  { key: 'magic-dust', icon: '◯', slot: 'effect', unlockXp: 920 },
   { key: 'night-room', icon: '🌌', slot: 'background', unlockXp: 960 },
   { key: 'color-pillow', icon: '🟣', slot: 'decor', unlockXp: 1000 },
   { key: 'space-brush', icon: '🚀', slot: 'brush', unlockXp: 1040 },
-  { key: 'cloud-effect', icon: '☁️', slot: 'effect', unlockXp: 1080 },
+  { key: 'cloud-effect', icon: '✦', slot: 'effect', unlockXp: 1080 },
   { key: 'forest-room', icon: '🌲', slot: 'background', unlockXp: 1120 },
   { key: 'heart-brush', icon: '💗', slot: 'brush', unlockXp: 1200 },
 ] as const;
@@ -49,8 +47,7 @@ export function rewardItemForKey(key: RewardItemKey) {
   return rewardCatalog.find((item) => item.key === key)!;
 }
 
-export const SESSION_XP = 10;
-export const FIRST_DAILY_SLOT_BONUS_XP = 10;
+export const MAIN_SLOT_REWARD_XP = 20;
 export const SESSION_MOOD_DELTA = 5;
 export const MAX_MOOD = 100;
 
@@ -106,7 +103,7 @@ export function growthProgressForXp(xp: number): Readonly<{
 export function estimatedBrushingsToNextStage(xp: number): number {
   const progress = growthProgressForXp(xp);
   if (progress.isFinalStage) return 0;
-  return Math.ceil(progress.remainingXp / SESSION_XP);
+  return Math.ceil(progress.remainingXp / MAIN_SLOT_REWARD_XP);
 }
 
 export function levelForXp(xp: number): 1 | 2 | 3 {
