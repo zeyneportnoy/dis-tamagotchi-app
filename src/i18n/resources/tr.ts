@@ -33,7 +33,19 @@ export const tr = {
       passwordConfirmation: 'Şifre tekrar',
       createAccount: 'Hesap Oluştur',
       termsAcknowledgement: 'Kullanım Koşulları’nı kabul ediyorum.',
+      termsDocumentLink: 'Kullanım Koşulları',
+      termsAcknowledgementSuffix: '’nı kabul ediyorum.',
       privacyAcknowledgement: 'KVKK Aydınlatma Metni’ni okudum ve bilgilendirildim.',
+      privacyDocumentLink: 'KVKK Aydınlatma Metni',
+      privacyAcknowledgementSuffix: '’ni okudum ve bilgilendirildim.',
+      guardianConsent: {
+        title: 'Ebeveyn / Yasal Veli Onayı',
+        bodyOne:
+          'DentHero’da oluşturacağım çocuk profilinin ebeveyni veya yasal velisi olduğumu onaylıyorum.',
+        bodyTwo:
+          'Çocuğa ait takma ad, doğum tarihi, yaş grubu, diş fırçalama kayıtları, ilerleme bilgileri ve uygulama tercihlerinin DentHero hizmetinin sunulması amacıyla işleneceği konusunda bilgilendirildiğimi kabul ediyorum.',
+        checkbox: 'Çocuğun ebeveyni veya yasal velisi olduğumu onaylıyorum.',
+      },
       signupError: 'Bilgileri kontrol edip yeniden deneyin.',
       loginTitle: 'Veli girişi',
       loginBody: 'Çocuk profillerine güvenli biçimde eriş.',
@@ -75,8 +87,174 @@ export const tr = {
       placeholder:
         'Yayın öncesinde veri sorumlusuna ve gerçek veri işleme faaliyetlerine göre hukuk danışmanı tarafından nihai hale getirilecektir.',
       incomplete: '[YAYIN ÖNCESİ TAMAMLANACAK]',
-      termsTitle: 'Kullanım Koşulları',
-      privacyTitle: 'KVKK Aydınlatma Metni / Gizlilik Bildirimi',
+      termsTitle: 'DentHero Kullanım Koşulları',
+      termsDocument: {
+        intro:
+          'Bu Kullanım Koşulları, DentHero mobil uygulamasının kullanımına ilişkin kuralları düzenler. Uygulamayı kullanarak bu koşulları kabul etmiş olursunuz.',
+        purposeTitle: '1. DentHero’nun Amacı',
+        purposeP1:
+          'DentHero, çocukların düzenli ağız ve diş bakım alışkanlığı kazanmalarına yardımcı olmak amacıyla ebeveyn veya yasal veli gözetiminde kullanılan eğitici ve motive edici bir mobil uygulamadır.',
+        purposeP2:
+          'DentHero bir sağlık kuruluşu değildir ve uygulama üzerinden teşhis, tedavi veya kişiye özel tıbbi değerlendirme sunulmaz.',
+        purposeP3:
+          'Uygulamadaki bilgiler, hatırlatmalar ve yönlendirmeler diş hekimi muayenesinin veya profesyonel sağlık hizmetinin yerine geçmez.',
+        guardianTitle: '2. Ebeveyn / Yasal Veli Kullanımı',
+        guardianP1:
+          'DentHero’daki ana kullanıcı hesabı ebeveyn veya yasal veli tarafından oluşturulur.',
+        guardianP2:
+          'Çocuk profilleri ebeveyn veya yasal veli hesabı üzerinden oluşturulur ve yönetilir.',
+        guardianP3:
+          'Kullanıcı, oluşturduğu çocuk profilleriyle ilgili gerekli yetkiye sahip olduğunu kabul eder.',
+        securityTitle: '3. Hesap Güvenliği',
+        securityP1:
+          'Kullanıcı, hesabında kullanılan e-posta adresi ve şifrenin güvenliğinden sorumludur.',
+        securityP2:
+          'Hesabın yetkisiz kullanıldığının düşünülmesi halinde şifrenin değiştirilmesi ve gerekli güvenlik önlemlerinin alınması kullanıcının sorumluluğundadır.',
+        rewardsTitle: '4. Fırçalama, Mine Puan ve Ödüller',
+        rewardsP1:
+          'DentHero içerisindeki Mine Puan, seri, karakter gelişimi, koleksiyonlar, arka planlar, efektler ve benzeri unsurlar yalnızca uygulama içi motivasyon ve oyunlaştırma amacı taşır.',
+        rewardsP2:
+          'Mine Puan veya diğer uygulama içi kazanımların parasal değeri yoktur, nakde çevrilemez ve uygulama dışında kullanılamaz.',
+        remindersTitle: '5. Hatırlatmalar',
+        remindersP1:
+          'Diş fırçalama ve diş hekimi hatırlatmaları kullanıcıya yardımcı olmak amacıyla sunulur.',
+        remindersP2:
+          'Bildirimlerin zamanında ulaşması cihaz ayarları, işletim sistemi veya bildirim izinleri gibi DentHero’nun doğrudan kontrolünde olmayan koşullardan etkilenebilir.',
+        remindersP3:
+          'Hatırlatma alınmaması sağlık bakımının ertelenmesi için gerekçe olarak değerlendirilmemelidir.',
+        usageTitle: '6. Uygulamanın Kullanımı',
+        usageP1: 'DentHero yalnızca hukuka uygun amaçlarla kullanılabilir.',
+        usageP2: 'Kullanıcı;',
+        usageBullet1:
+          '- uygulamanın güvenliğini veya çalışmasını bozacak girişimlerde bulunmamayı,',
+        usageBullet2: '- başka kullanıcıların hesaplarına izinsiz erişmeye çalışmamayı,',
+        usageBullet3: '- uygulamayı hukuka aykırı amaçlarla kullanmamayı,',
+        usageBullet4:
+          '- uygulamanın teknik altyapısına zarar verecek işlemler gerçekleştirmemeyi',
+        usageP3: 'kabul eder.',
+        ipTitle: '7. Fikri Mülkiyet Hakları',
+        ipP1:
+          'DentHero adı, uygulama tasarımları, karakterler, görseller, metinler, grafikler, yazılım ve uygulamada yer alan diğer içerikler ilgili fikri mülkiyet mevzuatı kapsamında korunur.',
+        ipP2:
+          'Bu içerikler izin alınmadan ticari amaçlarla kopyalanamaz, çoğaltılamaz, dağıtılamaz veya başka ürünlerde kullanılamaz.',
+        dataTitle: '8. Kişisel Veriler',
+        dataP1:
+          'Kişisel verilerin nasıl işlendiğine ilişkin bilgiler ayrı olarak sunulan KVKK Aydınlatma Metni içerisinde açıklanmaktadır.',
+        dataP2:
+          'Kullanım Koşulları’nın kabul edilmesi, kişisel verilerin işlenmesine ilişkin genel bir açık rıza anlamına gelmez.',
+        deletionTitle: '9. Hesabın Silinmesi',
+        deletionP1:
+          'Kullanıcı, DentHero hesabını uygulamada sunulan hesap silme özelliğini kullanarak silebilir.',
+        deletionP2:
+          'Hesap silme işlemi sonrasında kişisel veriler, yasal saklama yükümlülükleri saklı kalmak üzere ilgili mevzuat ve KVKK Aydınlatma Metni doğrultusunda silinir, yok edilir veya anonim hale getirilir.',
+        changesTitle: '10. Uygulamada Değişiklik Yapılması',
+        changesP1:
+          'DentHero’nun güvenliği, teknik gereklilikler, kullanıcı deneyiminin geliştirilmesi veya yeni özelliklerin sunulması amacıyla uygulamada zaman zaman değişiklik ve güncellemeler yapılabilir.',
+        changesP2:
+          'Kullanıcıların haklarını önemli ölçüde etkileyen Kullanım Koşulları değişiklikleri uygun yöntemlerle kullanıcılara bildirilir.',
+        availabilityTitle: '11. Hizmetin Kullanılabilirliği',
+        availabilityP1:
+          'DentHero hizmetinin kesintisiz veya hatasız şekilde çalışacağı garanti edilemez.',
+        availabilityP2:
+          'Bakım, güncelleme, teknik sorunlar veya DentHero’nun kontrolü dışındaki hizmet sağlayıcılardan kaynaklanan nedenlerle uygulamaya geçici olarak erişilemeyebilir.',
+        liabilityTitle: '12. Sorumluluğun Sınırları',
+        liabilityP1: 'DentHero’nun amacı ağız ve diş bakım alışkanlıklarını desteklemektir.',
+        liabilityP2:
+          'Uygulama içerisinde sunulan içerikler profesyonel diş hekimliği hizmetinin yerine geçmez. Sağlıkla ilgili bir sorun veya şüphe bulunması halinde diş hekimine veya ilgili sağlık profesyoneline başvurulmalıdır.',
+        liabilityP3:
+          'Yürürlükteki mevzuat gereğince sınırlandırılması mümkün olmayan tüketici ve kullanıcı hakları saklıdır.',
+        lawTitle: '13. Uygulanacak Hukuk',
+        lawP1: 'Bu Kullanım Koşulları Türkiye Cumhuriyeti hukukuna tabidir.',
+        lawP2:
+          'Kullanıcının tüketici mevzuatı ve diğer emredici hukuk kurallarından kaynaklanan hakları saklıdır.',
+      },
+      privacyTitle: 'Kişisel Verilerin İşlenmesine İlişkin Aydınlatma Metni',
+      privacyDocument: {
+        intro:
+          'DentHero, çocukların düzenli ağız ve diş bakım alışkanlığı kazanmalarına yardımcı olmak amacıyla ebeveyn veya yasal veli gözetiminde kullanılan bir mobil uygulamadır.',
+        controllerTitle: 'VERİ SORUMLUSU',
+        controllerBody:
+          '6698 sayılı Kişisel Verilerin Korunması Kanunu (“KVKK”) kapsamında DentHero uygulamasının veri sorumlusu Zeynep Öztürkmen’dir.',
+        dataTitle: 'İŞLENEN KİŞİSEL VERİLER',
+        dataIntro:
+          'DentHero’nun kullanımı kapsamında aşağıdaki kişisel veriler işlenebilir:',
+        dataParent: '• Ebeveyne ait e-posta adresi ve hesap bilgileri,',
+        dataChild: '• Çocuğa ait takma ad, doğum tarihi ve yaş grubu,',
+        dataCharacter: '• Seçilen karakter ve profil tercihleri,',
+        dataBrushing: '• Diş fırçalama oturumları ve tamamlanma kayıtları,',
+        dataProgress: '• Mine Puan, seri ve ilerleme bilgileri,',
+        dataCustomization: '• Seçilen fırça, arka plan, efekt ve oda tercihleri,',
+        dataVoice: '• Ses ve hatırlatıcı tercihleri,',
+        dataDentist: '• Diş hekimi hatırlatma tercihleri,',
+        dataTechnical:
+          '• Hesabın ve uygulamanın güvenli şekilde çalışması için gerekli sınırlı teknik ve oturum bilgileri.',
+        dataOutro:
+          'DentHero, uygulamanın çalışması için gerekli olmayan çocuğa ait kişisel bilgilerin girilmesini talep etmez. Çocuğun tam adı yerine takma ad kullanılabilir.',
+        purposesTitle: 'KİŞİSEL VERİLERİN İŞLENME AMAÇLARI',
+        purposesIntro: 'Kişisel veriler;',
+        purposeAccount: '• Kullanıcı hesabının oluşturulması ve yönetilmesi,',
+        purposeSecurity: '• Hesap güvenliğinin sağlanması,',
+        purposeExperience: '• Çocuğa özel DentHero deneyiminin sunulması,',
+        purposeBrushing: '• Diş fırçalama ilerlemesinin takip edilmesi,',
+        purposeRewards: '• Mine Puan ve ödül sisteminin çalıştırılması,',
+        purposePreferences: '• Kullanıcı tercihlerinin saklanması,',
+        purposeSync:
+          '• Kullanıcı bilgilerinin farklı oturumlar ve cihazlar arasında korunması ve senkronize edilmesi,',
+        purposeReminders: '• Kullanıcının seçtiği hatırlatmaların sağlanması,',
+        purposeTechnical: '• Teknik sorunların tespit edilmesi ve giderilmesi,',
+        purposeFunctionality: '• Uygulamanın güvenliğinin ve işlevselliğinin sağlanması,',
+        purposeLegal: '• Hukuki yükümlülüklerin yerine getirilmesi',
+        purposesOutro: 'amaçlarıyla sınırlı olarak işlenir.',
+        legalReasonsTitle: 'KİŞİSEL VERİLERİN İŞLENMESİNİN HUKUKİ SEBEPLERİ',
+        legalReasonsBody:
+          'Kişisel veriler, KVKK’nın 5. maddesinde yer alan; bir sözleşmenin kurulması veya ifasıyla doğrudan doğruya ilgili olması, veri sorumlusunun hukuki yükümlülüklerini yerine getirebilmesi ve ilgili kişinin temel hak ve özgürlüklerine zarar vermemek kaydıyla veri sorumlusunun meşru menfaatleri için veri işlenmesinin zorunlu olması hukuki sebeplerine dayanılarak işlenebilir.',
+        legalReasonsConsent:
+          'Açık rıza gerektiren ayrı bir veri işleme faaliyeti bulunması halinde ilgili kullanıcıdan ayrıca açık rıza alınır.',
+        childDataTitle: 'ÇOCUĞA AİT VERİLER',
+        childDataAccount: 'DentHero’da çocuk bağımsız olarak kullanıcı hesabı oluşturmaz.',
+        childDataProfiles:
+          'Çocuk profilleri ebeveyn veya yasal veli hesabı üzerinden oluşturulur ve yönetilir.',
+        childDataPurpose:
+          'Çocuğa ait bilgiler yalnızca DentHero’nun kişiselleştirilmesi, fırçalama alışkanlıklarının takip edilmesi, ilerleme ve ödül sisteminin çalıştırılması ve kullanıcının seçtiği özelliklerin sunulması amacıyla işlenir.',
+        transfersTitle: 'KİŞİSEL VERİLERİN AKTARILMASI',
+        transfersIntro: 'Kişisel veriler, DentHero’nun çalışması için gerekli olduğu ölçüde;',
+        transferHosting: '• Veri barındırma ve bulut altyapısı sağlayıcıları,',
+        transferAuth: '• Kullanıcı doğrulama ve hesap yönetimi hizmet sağlayıcıları,',
+        transferEmail: '• E-posta gönderim hizmetleri,',
+        transferSecurity: '• Teknik altyapı ve güvenlik hizmet sağlayıcıları,',
+        transferAuthorities: '• Kanunen yetkili kamu kurum ve kuruluşları',
+        transfersOutro: 'ile paylaşılabilir.',
+        transfersAdvertising: 'DentHero kişisel verileri reklam amacıyla üçüncü kişilere satmaz.',
+        transfersAbroad:
+          'DentHero tarafından kullanılan bazı teknik altyapı hizmetlerinin yurt dışında bulunması nedeniyle kişisel veriler, KVKK’nın yurt dışına veri aktarımına ilişkin hükümleri çerçevesinde ve ilgili mevzuatta öngörülen aktarım mekanizmaları kullanılarak yurt dışında bulunan hizmet sağlayıcılara aktarılabilir.',
+        collectionTitle: 'KİŞİSEL VERİLERİN TOPLANMA YÖNTEMİ',
+        collectionIntro: 'Kişisel veriler;',
+        collectionDirect: '• Kullanıcının DentHero uygulamasına doğrudan girdiği bilgiler,',
+        collectionAccount: '• Hesap oluşturma ve profil oluşturma işlemleri,',
+        collectionUsage: '• Uygulama kullanımı sırasında elektronik ortamda oluşan kayıtlar',
+        collectionOutro: 'aracılığıyla otomatik veya kısmen otomatik yöntemlerle toplanır.',
+        retentionTitle: 'KİŞİSEL VERİLERİN SAKLANMASI',
+        retentionBody:
+          'Kişisel veriler, işlenme amaçlarının gerektirdiği süre boyunca ve ilgili mevzuatta öngörülen sürelerle sınırlı olarak saklanır.',
+        retentionDeletion:
+          'Kişisel verilerin işlenmesini gerektiren sebeplerin ortadan kalkması veya kullanıcı hesabının silinmesi halinde, kanuni saklama yükümlülükleri saklı kalmak üzere kişisel veriler silinir, yok edilir veya anonim hale getirilir.',
+        rightsTitle: 'KVKK KAPSAMINDA HAKLARINIZ',
+        rightsIntro: 'KVKK’nın 11. maddesi kapsamında;',
+        rightProcessing: '• Kişisel verilerinizin işlenip işlenmediğini öğrenme,',
+        rightInformation: '• Kişisel verileriniz işlenmişse buna ilişkin bilgi talep etme,',
+        rightPurpose:
+          '• Kişisel verilerinizin işlenme amacını ve amacına uygun kullanılıp kullanılmadığını öğrenme,',
+        rightRecipients: '• Kişisel verilerinizin aktarıldığı üçüncü kişileri öğrenme,',
+        rightCorrection: '• Eksik veya yanlış işlenen kişisel verilerin düzeltilmesini isteme,',
+        rightDeletion:
+          '• Kanunda öngörülen şartların oluşması halinde kişisel verilerin silinmesini veya yok edilmesini isteme,',
+        rightNotification:
+          '• Düzeltme, silme veya yok etme işlemlerinin kişisel verilerin aktarıldığı üçüncü kişilere bildirilmesini isteme,',
+        rightOther: '• Kanunda belirtilen diğer haklarınızı kullanma',
+        rightsOutro: 'hakkına sahipsiniz.',
+        contact:
+          'KVKK kapsamındaki talepler DentHero’nun kullanıcı iletişim kanalları üzerinden veri sorumlusuna iletilebilir.',
+      },
       termsSections: {
         scope: 'Hizmetin Kapsamı',
         parent: 'Veli Hesabı',

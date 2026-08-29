@@ -15,6 +15,7 @@ export default function SignUpScreen() {
   const [passwordConfirmation, setPasswordConfirmation] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
+  const [guardianConfirmed, setGuardianConfirmed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
   const [passwordTooShort, setPasswordTooShort] = useState(false);
@@ -108,20 +109,31 @@ export default function SignUpScreen() {
       <Acknowledgement
         checked={termsAccepted}
         label={t('auth.termsAcknowledgement')}
+        linkLabel={t('auth.termsDocumentLink')}
         onOpenDocument={() => router.push('/legal/terms')}
         onPress={() => setTermsAccepted((value) => !value)}
+        trailingLabel={t('auth.termsAcknowledgementSuffix')}
       />
       <Acknowledgement
         checked={privacyAcknowledged}
         label={t('auth.privacyAcknowledgement')}
+        linkLabel={t('auth.privacyDocumentLink')}
         onOpenDocument={() => router.push('/legal/privacy')}
         onPress={() => setPrivacyAcknowledged((value) => !value)}
+        trailingLabel={t('auth.privacyAcknowledgementSuffix')}
+      />
+      <Acknowledgement
+        checked={guardianConfirmed}
+        label={t('auth.guardianConsent.checkbox')}
+        onPress={() => setGuardianConfirmed((value) => !value)}
       />
       {failed ? (
         <Text>{configured ? t('auth.signupError') : t('auth.configMissingBody')}</Text>
       ) : null}
       <Button
-        disabled={saving || !configured || !termsAccepted || !privacyAcknowledged}
+        disabled={
+          saving || !configured || !termsAccepted || !privacyAcknowledged || !guardianConfirmed
+        }
         label={t('auth.createAccount')}
         onPress={() => void submit()}
       />

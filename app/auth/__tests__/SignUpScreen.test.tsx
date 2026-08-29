@@ -23,7 +23,7 @@ jest.mock('@/features/auth', () => {
 describe('SignUpScreen legal acknowledgements', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('keeps account creation disabled until both existing acknowledgements are selected', async () => {
+  it('keeps account creation disabled until every required acknowledgement is selected', async () => {
     const view = await render(<SignUpScreen />);
 
     expect(view.getByRole('button', { name: 'Hesap Oluştur' })).toBeDisabled();
@@ -36,22 +36,49 @@ describe('SignUpScreen legal acknowledgements', () => {
         name: 'KVKK Aydınlatma Metni’ni okudum ve bilgilendirildim.',
       }),
     );
+    expect(view.getByRole('button', { name: 'Hesap Oluştur' })).toBeDisabled();
+    await fireEvent.press(
+      view.getByRole('checkbox', {
+        name: 'Çocuğun ebeveyni veya yasal velisi olduğumu onaylıyorum.',
+      }),
+    );
     expect(view.getByRole('button', { name: 'Hesap Oluştur' })).not.toBeDisabled();
   });
 
-  it('opens both existing legal document routes from their links', async () => {
+  it('makes only the document name in each acknowledgement a link, not the whole sentence', async () => {
     const view = await render(<SignUpScreen />);
 
-    await fireEvent.press(
-      view.getByRole('link', { name: 'Kullanım Koşulları’nı kabul ediyorum.' }),
-    );
-    await fireEvent.press(
-      view.getByRole('link', {
-        name: 'KVKK Aydınlatma Metni’ni okudum ve bilgilendirildim.',
-      }),
-    );
+    await fireEvent.press(view.getByRole('link', { name: 'Kullanım Koşulları' }));
+    await fireEvent.press(view.getByRole('link', { name: 'KVKK Aydınlatma Metni' }));
 
     expect(router.push).toHaveBeenNthCalledWith(1, '/legal/terms');
     expect(router.push).toHaveBeenNthCalledWith(2, '/legal/privacy');
+    // The rest of each sentence is plain text, not a link.
+    expect(view.queryByRole('link', { name: 'Kullanım Koşulları’nı kabul ediyorum.' })).toBeNull();
+    expect(
+      view.queryByRole('link', { name: 'KVKK Aydınlatma Metni’ni okudum ve bilgilendirildim.' }),
+    ).toBeNull();
+    expect(
+      view.queryByRole('link', {
+        name: 'Çocuğun ebeveyni veya yasal velisi olduğumu onaylıyorum.',
+      }),
+    ).toBeNull();
+  });
+
+  it('no longer renders the long guardian consent heading or explanatory paragraphs', async () => {
+    const view = await render(<SignUpScreen />);
+
+    expect(view.queryByText('Ebeveyn / Yasal Veli Onayı')).toBeNull();
+    expect(
+      view.queryByText(
+        'DentHero’da oluşturacağım çocuk profilinin ebeveyni veya yasal velisi olduğumu onaylıyorum.',
+      ),
+    ).toBeNull();
+    expect(
+      view.queryByText(
+        'Çocuğa ait takma ad, doğum tarihi, yaş grubu, diş fırçalama kayıtları, ilerleme bilgileri ve uygulama tercihlerinin DentHero hizmetinin sunulması amacıyla işleneceği konusunda bilgilendirildiğimi kabul ediyorum.',
+      ),
+    ).toBeNull();
+    expect(view.getAllByRole('checkbox')).toHaveLength(3);
   });
 });

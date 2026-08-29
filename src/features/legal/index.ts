@@ -1,1 +1,1 @@
-export { LegalDocument } from './LegalDocument';
+export { LegalDocument, type LegalDocumentSection } from './LegalDocument';

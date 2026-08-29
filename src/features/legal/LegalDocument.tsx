@@ -3,14 +3,26 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BackButton, Screen, Text, colors, radii, spacing } from '@/design-system';
 
-type Props = Readonly<{
-  title: string;
-  sections: readonly string[];
-  placeholder: string;
-  incomplete: string;
+export type LegalDocumentSection = Readonly<{
+  heading?: string;
+  paragraphs: readonly string[];
 }>;
 
-export function LegalDocument({ incomplete, placeholder, sections, title }: Props) {
+type Props = Readonly<{
+  title: string;
+  documentSections?: readonly LegalDocumentSection[];
+  sections?: readonly string[];
+  placeholder?: string;
+  incomplete?: string;
+}>;
+
+export function LegalDocument({
+  documentSections,
+  incomplete,
+  placeholder,
+  sections,
+  title,
+}: Props) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -24,15 +36,30 @@ export function LegalDocument({ incomplete, placeholder, sections, title }: Prop
         testID="legal-document-scroll"
       >
         <Text variant="title">{title}</Text>
-        <View style={styles.notice}>
-          <Text>{placeholder}</Text>
-        </View>
-        {sections.map((section) => (
-          <View key={section} style={styles.card}>
-            <Text style={styles.heading}>{section}</Text>
-            <Text>{incomplete}</Text>
-          </View>
-        ))}
+        {documentSections ? (
+          documentSections.map((section, sectionIndex) => (
+            <View key={`${section.heading ?? 'intro'}-${sectionIndex}`} style={styles.section}>
+              {section.heading ? <Text style={styles.heading}>{section.heading}</Text> : null}
+              {section.paragraphs.map((paragraph, paragraphIndex) => (
+                <Text key={`${sectionIndex}-${paragraphIndex}`}>{paragraph}</Text>
+              ))}
+            </View>
+          ))
+        ) : (
+          <>
+            {placeholder ? (
+              <View style={styles.notice}>
+                <Text>{placeholder}</Text>
+              </View>
+            ) : null}
+            {sections?.map((section) => (
+              <View key={section} style={styles.card}>
+                <Text style={styles.heading}>{section}</Text>
+                {incomplete ? <Text>{incomplete}</Text> : null}
+              </View>
+            ))}
+          </>
+        )}
       </ScrollView>
     </Screen>
   );
@@ -50,4 +77,5 @@ const styles = StyleSheet.create({
   heading: { fontWeight: '900' },
   notice: { backgroundColor: '#FFF0C9', borderRadius: radii.md, padding: spacing.md },
   screen: { justifyContent: 'flex-start', padding: 0, paddingHorizontal: spacing.lg },
+  section: { gap: spacing.sm },
 });
