@@ -4,16 +4,23 @@ import { join } from 'node:path';
 
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { ChildExperienceUseCases } from '@/application/child';
 import { migrateDatabase } from '@/data/db';
+import { growthStageForXp } from '@/domain/rewards';
 import { NodeSQLiteDatabase } from '@/test/NodeSQLiteDatabase';
 
 import { SQLiteBrushingSessionRepository } from '../SQLiteBrushingSessionRepository';
 import { SQLiteInventoryRepository } from '../SQLiteInventoryRepository';
+import { SQLiteProfileProgressRepository } from '../SQLiteProfileProgressRepository';
 
 jest.mock('expo-crypto', () => ({ randomUUID: jest.fn() }));
 jest.mock('expo-sqlite', () => ({}));
 
-async function seedProfile(database: NodeSQLiteDatabase, profileId: string): Promise<void> {
+async function seedProfile(
+  database: NodeSQLiteDatabase,
+  profileId: string,
+  createdAt = '2026-08-08T00:00:00.000Z',
+): Promise<void> {
   await database.runAsync(
     `INSERT OR IGNORE INTO families (id, created_at, locale, timezone)
      VALUES ('family-1', '2026-08-08T00:00:00.000Z', 'tr', 'Europe/Istanbul')`,
@@ -21,19 +28,20 @@ async function seedProfile(database: NodeSQLiteDatabase, profileId: string): Pro
   await database.runAsync(
     `INSERT INTO child_profiles
       (id, family_id, nickname, age_band, avatar_id, created_at)
-     VALUES (?, 'family-1', ?, '4_6', 'inci', '2026-08-08T00:00:00.000Z')`,
+     VALUES (?, 'family-1', ?, '4_6', 'inci', ?)`,
     profileId,
     profileId,
+    createdAt,
   );
 }
 
 describe('SQLiteBrushingSessionRepository', () => {
   it.each([
-    [new Date(2026, 7, 8, 8, 30), 'morning', 1, 0],
-    [new Date(2026, 7, 8, 20, 30), 'evening', 0, 1],
+    [new Date(2026, 7, 8, 8, 28), new Date(2026, 7, 8, 8, 30), 'morning', 1, 0],
+    [new Date(2026, 7, 8, 20, 28), new Date(2026, 7, 8, 20, 30), 'evening', 0, 1],
   ] as const)(
-    'stores a completed %s session and updates only its period',
-    async (completedAt, period, morningCompleted, eveningCompleted) => {
+    'stores a completed session started at %s in its fixed main slot',
+    async (startedAt, completedAt, period, morningCompleted, eveningCompleted) => {
       const database = new NodeSQLiteDatabase();
       await migrateDatabase(database as unknown as SQLiteDatabase);
       await seedProfile(database, 'profile-1');
@@ -44,7 +52,7 @@ describe('SQLiteBrushingSessionRepository', () => {
       );
       const session = await repository.complete({
         profileId: 'profile-1',
-        startedAt: '2026-08-08T05:00:00.000Z',
+        startedAt: startedAt.toISOString(),
         durationSeconds: 120,
       });
 
@@ -229,36 +237,334 @@ describe('SQLiteBrushingSessionRepository', () => {
     database.close();
   });
 
-  it('honors an explicit card slot while the primary flow can still use clock time', async () => {
+  it('uses start time only and leaves sessions outside fixed slots unassigned', async () => {
     const database = new NodeSQLiteDatabase();
     await migrateDatabase(database as unknown as SQLiteDatabase);
     await seedProfile(database, 'profile-1');
     const repository = new SQLiteBrushingSessionRepository(
       database as unknown as SQLiteDatabase,
       undefined,
-      () => new Date(2026, 7, 8, 20, 30),
+      () => new Date(2026, 7, 8, 12, 2),
     );
-    const forcedMorning = await repository.finish({
-      sessionId: 'forced-morning',
+    const offSlot = await repository.finish({
+      sessionId: 'off-slot',
       profileId: 'profile-1',
-      startedAt: '2026-08-08T17:00:00.000Z',
+      startedAt: new Date(2026, 7, 8, 12).toISOString(),
       durationSeconds: 120,
-      period: 'morning',
     });
-    expect(forcedMorning.session.period).toBe('morning');
-    expect(forcedMorning.dailyProgress).toMatchObject({
-      morningCompleted: true,
+    expect(offSlot.session.period).toBeNull();
+    expect(offSlot).toMatchObject({ xpGranted: 10, firstSlotCompletion: false });
+    expect(offSlot.dailyProgress).toMatchObject({
+      morningCompleted: false,
       eveningCompleted: false,
     });
-    const automaticEvening = await repository.finish({
-      sessionId: 'automatic-evening',
+    database.close();
+  });
+
+  it.each([
+    [new Date(2026, 7, 8, 11, 59), new Date(2026, 7, 8, 12, 1), 'morning'],
+    [new Date(2026, 7, 8, 23, 59), new Date(2026, 7, 9, 0, 1), 'evening'],
+  ] as const)(
+    'counts a session started at %s and completed at %s as the original %s slot',
+    async (startedAt, finishedAt, period) => {
+      const database = new NodeSQLiteDatabase();
+      await migrateDatabase(database as unknown as SQLiteDatabase);
+      await seedProfile(
+        database,
+        'profile-1',
+        new Date(
+          startedAt.getFullYear(),
+          startedAt.getMonth(),
+          startedAt.getDate(),
+          period === 'morning' ? 4 : 18,
+        ).toISOString(),
+      );
+      const repository = new SQLiteBrushingSessionRepository(
+        database as unknown as SQLiteDatabase,
+        undefined,
+        () => finishedAt,
+      );
+      const result = await repository.finish({
+        sessionId: `cross-${period}`,
+        profileId: 'profile-1',
+        startedAt: startedAt.toISOString(),
+        durationSeconds: 120,
+      });
+
+      expect(result.session).toMatchObject({
+        localDayKey: '2026-08-08',
+        period,
+      });
+      expect(result.dailyProgress).toMatchObject({
+        morningCompleted: period === 'morning',
+        eveningCompleted: period === 'evening',
+      });
+      await expect(repository.reconcileMissedSlots('profile-1')).resolves.toEqual([
+        expect.objectContaining({ outcome: 'completed', penaltyAmount: 0, period }),
+      ]);
+      await expect(
+        database.getFirstAsync<{ total_xp: number }>(
+          `SELECT total_xp FROM profile_progress WHERE child_profile_id = 'profile-1'`,
+        ),
+      ).resolves.toEqual({ total_xp: 20 });
+      database.close();
+    },
+  );
+
+  it('applies morning and evening missed penalties once each', async () => {
+    const database = new NodeSQLiteDatabase();
+    await migrateDatabase(database as unknown as SQLiteDatabase);
+    await seedProfile(database, 'profile-1', new Date(2026, 7, 8, 4).toISOString());
+    await database.runAsync(
+      `INSERT INTO profile_progress(child_profile_id, status_date, total_xp)
+       VALUES ('profile-1', '2026-08-08', 30)`,
+    );
+    let now = new Date(2026, 7, 8, 11, 59, 59);
+    const repository = new SQLiteBrushingSessionRepository(
+      database as unknown as SQLiteDatabase,
+      undefined,
+      () => now,
+    );
+
+    await expect(repository.reconcileMissedSlots('profile-1')).resolves.toEqual([]);
+    now = new Date(2026, 7, 8, 12);
+    await expect(repository.reconcileMissedSlots('profile-1')).resolves.toEqual([
+      expect.objectContaining({
+        outcome: 'missed',
+        penaltyAmount: -10,
+        period: 'morning',
+        scoreAfter: 20,
+        scoreBefore: 30,
+      }),
+    ]);
+    await expect(repository.reconcileMissedSlots('profile-1')).resolves.toEqual([]);
+
+    now = new Date(2026, 7, 9, 0);
+    await expect(repository.reconcileMissedSlots('profile-1')).resolves.toEqual([
+      expect.objectContaining({
+        outcome: 'missed',
+        penaltyAmount: -10,
+        period: 'evening',
+        scoreAfter: 10,
+        scoreBefore: 20,
+      }),
+    ]);
+    await expect(repository.reconcileMissedSlots('profile-1')).resolves.toEqual([]);
+    await expect(
+      database.getFirstAsync<{ count: number; total_xp: number }>(
+        `SELECT
+          (SELECT count(*) FROM brushing_slot_evaluations
+           WHERE child_profile_id = 'profile-1' AND outcome = 'missed') AS count,
+          total_xp
+         FROM profile_progress WHERE child_profile_id = 'profile-1'`,
+      ),
+    ).resolves.toEqual({ count: 2, total_xp: 10 });
+    database.close();
+  });
+
+  it('does not create retroactive evaluations for slots closed before profile creation', async () => {
+    const database = new NodeSQLiteDatabase();
+    await migrateDatabase(database as unknown as SQLiteDatabase);
+    const createdAt = new Date(2026, 7, 8, 13);
+    await seedProfile(database, 'profile-1', createdAt.toISOString());
+    await database.runAsync(
+      `INSERT INTO profile_progress(child_profile_id, status_date, total_xp)
+       VALUES ('profile-1', '2026-08-08', 50)`,
+    );
+    const repository = new SQLiteBrushingSessionRepository(
+      database as unknown as SQLiteDatabase,
+      undefined,
+      () => new Date(2026, 7, 9, 12),
+    );
+
+    await repository.reconcileMissedSlots('profile-1');
+    await expect(
+      database.getAllAsync<{ local_day_key: string; period: string }>(
+        `SELECT local_day_key, period FROM brushing_slot_evaluations
+         WHERE child_profile_id = 'profile-1' ORDER BY local_day_key, period`,
+      ),
+    ).resolves.toEqual([
+      { local_day_key: '2026-08-08', period: 'evening' },
+      { local_day_key: '2026-08-09', period: 'morning' },
+    ]);
+    await expect(
+      database.getFirstAsync<{ total_xp: number }>(
+        `SELECT total_xp FROM profile_progress WHERE child_profile_id = 'profile-1'`,
+      ),
+    ).resolves.toEqual({ total_xp: 30 });
+    database.close();
+  });
+
+  it('keeps score at zero while recording the fixed missed-slot penalty once', async () => {
+    const database = new NodeSQLiteDatabase();
+    await migrateDatabase(database as unknown as SQLiteDatabase);
+    await seedProfile(database, 'profile-1', new Date(2026, 7, 8, 4).toISOString());
+    await database.runAsync(
+      `INSERT INTO profile_progress(child_profile_id, status_date, total_xp)
+       VALUES ('profile-1', '2026-08-08', 5)`,
+    );
+    const repository = new SQLiteBrushingSessionRepository(
+      database as unknown as SQLiteDatabase,
+      undefined,
+      () => new Date(2026, 7, 8, 12),
+    );
+
+    await expect(repository.reconcileMissedSlots('profile-1')).resolves.toEqual([
+      expect.objectContaining({
+        penaltyAmount: -10,
+        scoreAfter: 0,
+        scoreBefore: 5,
+      }),
+    ]);
+    await expect(repository.reconcileMissedSlots('profile-1')).resolves.toEqual([]);
+    await expect(
+      database.getFirstAsync<{ total_xp: number }>(
+        `SELECT total_xp FROM profile_progress WHERE child_profile_id = 'profile-1'`,
+      ),
+    ).resolves.toEqual({ total_xp: 0 });
+    database.close();
+  });
+
+  it.each([
+    [405, 395, 2, 1],
+    [165, 155, 1, 0],
+  ] as const)(
+    'moves the character stage backward when a penalty changes %i to %i',
+    async (scoreBefore, scoreAfter, stageBefore, stageAfter) => {
+      const database = new NodeSQLiteDatabase();
+      await migrateDatabase(database as unknown as SQLiteDatabase);
+      await seedProfile(database, 'profile-1', new Date(2026, 7, 8, 4).toISOString());
+      await database.runAsync(
+        `INSERT INTO profile_progress(child_profile_id, status_date, total_xp, level)
+         VALUES ('profile-1', '2026-08-08', ?, ?)`,
+        scoreBefore,
+        scoreBefore >= 400 ? 2 : 1,
+      );
+      const repository = new SQLiteBrushingSessionRepository(
+        database as unknown as SQLiteDatabase,
+        undefined,
+        () => new Date(2026, 7, 8, 12),
+      );
+
+      expect(growthStageForXp(scoreBefore)).toBe(stageBefore);
+      await repository.reconcileMissedSlots('profile-1');
+      const progress = await database.getFirstAsync<{ total_xp: number }>(
+        `SELECT total_xp FROM profile_progress WHERE child_profile_id = 'profile-1'`,
+      );
+      expect(progress?.total_xp).toBe(scoreAfter);
+      expect(growthStageForXp(progress?.total_xp ?? 0)).toBe(stageAfter);
+      database.close();
+    },
+  );
+
+  it('defers a closed-slot penalty while its started session is still active', async () => {
+    const database = new NodeSQLiteDatabase();
+    await migrateDatabase(database as unknown as SQLiteDatabase);
+    await seedProfile(database, 'profile-1', new Date(2026, 7, 8, 4).toISOString());
+    await database.runAsync(
+      `INSERT INTO profile_progress(child_profile_id, status_date, total_xp)
+       VALUES ('profile-1', '2026-08-08', 100)`,
+    );
+    const startedAt = new Date(2026, 7, 8, 11, 59);
+    let now = startedAt;
+    const repository = new SQLiteBrushingSessionRepository(
+      database as unknown as SQLiteDatabase,
+      undefined,
+      () => now,
+    );
+    await repository.begin({
+      sessionId: 'active-at-close',
       profileId: 'profile-1',
-      startedAt: '2026-08-08T17:05:00.000Z',
+      startedAt: startedAt.toISOString(),
+    });
+
+    now = new Date(2026, 7, 8, 12);
+    await expect(repository.reconcileMissedSlots('profile-1')).resolves.toEqual([]);
+    await expect(
+      database.getFirstAsync<{ total_xp: number }>(
+        `SELECT total_xp FROM profile_progress WHERE child_profile_id = 'profile-1'`,
+      ),
+    ).resolves.toEqual({ total_xp: 100 });
+
+    now = new Date(2026, 7, 8, 12, 1);
+    await repository.finish({
+      sessionId: 'active-at-close',
+      profileId: 'profile-1',
+      startedAt: startedAt.toISOString(),
       durationSeconds: 120,
     });
-    expect(automaticEvening.session.period).toBe('evening');
-    expect(automaticEvening.dailyProgress.fullDayCompleted).toBe(true);
+    await expect(repository.reconcileMissedSlots('profile-1')).resolves.toEqual([
+      expect.objectContaining({ outcome: 'completed', penaltyAmount: 0, period: 'morning' }),
+    ]);
+    await expect(
+      database.getFirstAsync<{ total_xp: number }>(
+        `SELECT total_xp FROM profile_progress WHERE child_profile_id = 'profile-1'`,
+      ),
+    ).resolves.toEqual({ total_xp: 120 });
     database.close();
+  });
+
+  it('reconciles a closed unevaluated slot after the app database is reopened', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'dis-tamagotchi-reconciliation-db-'));
+    const path = join(directory, 'test.db');
+    const first = new NodeSQLiteDatabase(path);
+    await migrateDatabase(first as unknown as SQLiteDatabase);
+    const startedAt = new Date(2026, 7, 8, 11, 59);
+    await seedProfile(first, 'profile-1', new Date(2026, 7, 8, 4).toISOString());
+    await first.runAsync(
+      `INSERT INTO profile_progress(child_profile_id, status_date, total_xp)
+       VALUES ('profile-1', '2026-08-08', 30)`,
+    );
+    const firstRepository = new SQLiteBrushingSessionRepository(
+      first as unknown as SQLiteDatabase,
+      undefined,
+      () => startedAt,
+    );
+    await firstRepository.begin({
+      sessionId: 'interrupted-by-close',
+      profileId: 'profile-1',
+      startedAt: startedAt.toISOString(),
+    });
+    first.close();
+
+    const reopened = new NodeSQLiteDatabase(path);
+    const reopenedAt = new Date(2026, 7, 8, 12, 5);
+    const reopenedRepository = new SQLiteBrushingSessionRepository(
+      reopened as unknown as SQLiteDatabase,
+      undefined,
+      () => reopenedAt,
+    );
+    const useCases = new ChildExperienceUseCases(
+      new SQLiteProfileProgressRepository(reopened as unknown as SQLiteDatabase, () => reopenedAt),
+      reopenedRepository,
+      new SQLiteInventoryRepository(reopened as unknown as SQLiteDatabase, async () => null),
+    );
+    await expect(useCases.getProgress('profile-1')).resolves.toMatchObject({ totalXp: 20 });
+    await expect(useCases.getProgress('profile-1')).resolves.toMatchObject({ totalXp: 20 });
+    await expect(
+      reopened.getFirstAsync<{
+        outcome: string;
+        penalty_amount: number;
+        period: string;
+        score_after: number;
+      }>(
+        `SELECT outcome, penalty_amount, period, score_after FROM brushing_slot_evaluations
+         WHERE child_profile_id = 'profile-1' AND local_day_key = '2026-08-08'`,
+      ),
+    ).resolves.toEqual({
+      outcome: 'missed',
+      penalty_amount: -10,
+      period: 'morning',
+      score_after: 20,
+    });
+    await expect(
+      reopened.getFirstAsync<{ completed: number; resolved_at: string }>(
+        `SELECT completed, resolved_at FROM brushing_session_attempts
+         WHERE session_id = 'interrupted-by-close'`,
+      ),
+    ).resolves.toMatchObject({ completed: 0 });
+    reopened.close();
+    rmSync(directory, { recursive: true, force: true });
   });
 
   it('rolls back session, XP, daily progress and inventory when the transaction fails', async () => {

@@ -1,7 +1,7 @@
 import { randomUUID } from 'expo-crypto';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { determineBrushingPeriod, toLocalDateKey } from '@/domain/brushing';
+import { classifyBrushingSlot, closedBrushingSlotsSince, toLocalDateKey } from '@/domain/brushing';
 import type { BrushingPeriod, BrushingSession, BrushingSessionRepository } from '@/domain/family';
 import {
   FIRST_DAILY_SLOT_BONUS_XP,
@@ -14,6 +14,7 @@ import {
   previousLocalDayKey,
   rewardItemForKey,
   type BrushingRewardResult,
+  type BrushingSlotEvaluation,
   type DailyProgress,
   type FinishBrushingSessionInput,
   type RewardSessionRepository,
@@ -26,7 +27,7 @@ type SessionRow = {
   completed_at: string;
   duration_seconds: number;
   completed: number;
-  period: BrushingPeriod;
+  period: BrushingPeriod | null;
   created_at: string;
   reward_granted_at: string | null;
   xp_granted: number;
@@ -38,6 +39,27 @@ type SessionRow = {
   morning_completed_after: number;
   evening_completed_after: number;
   streak_after: number;
+};
+
+type AttemptRow = {
+  session_id: string;
+  profile_id: string;
+  started_at: string;
+  local_day_key: string;
+  period: BrushingPeriod | null;
+  resolved_at: string | null;
+  completed: number | null;
+};
+
+type EvaluationRow = {
+  child_profile_id: string;
+  local_day_key: string;
+  period: BrushingPeriod;
+  outcome: 'completed' | 'missed';
+  penalty_amount: -10 | 0;
+  score_before: number;
+  score_after: number;
+  evaluated_at: string;
 };
 
 type DailyRow = {
@@ -103,6 +125,8 @@ const mapProgress = (row: ProgressRow) => ({
 export class SQLiteBrushingSessionRepository
   implements BrushingSessionRepository, RewardSessionRepository
 {
+  private readonly activeSessionIds = new Set<string>();
+
   constructor(
     private readonly database: SQLiteDatabase,
     private readonly createId: () => string = randomUUID,
@@ -123,6 +147,144 @@ export class SQLiteBrushingSessionRepository
     if (!owned) throw new Error('PROFILE_NOT_FOUND');
   }
 
+  private parseTimestamp(value: string): Date {
+    const timestamp = new Date(value);
+    if (Number.isNaN(timestamp.getTime())) throw new Error('INVALID_SESSION_START');
+    return timestamp;
+  }
+
+  async begin(input: { sessionId: string; profileId: string; startedAt: string }): Promise<void> {
+    await this.assertOwned(input.profileId);
+    const startedAt = this.parseTimestamp(input.startedAt);
+    const period = classifyBrushingSlot(startedAt);
+    const localDayKey = toLocalDateKey(startedAt);
+    await this.database.runAsync(
+      `INSERT OR IGNORE INTO brushing_session_attempts
+        (session_id, profile_id, started_at, local_day_key, period)
+       VALUES (?, ?, ?, ?, ?)`,
+      input.sessionId,
+      input.profileId,
+      input.startedAt,
+      localDayKey,
+      period,
+    );
+    const attempt = await this.database.getFirstAsync<AttemptRow>(
+      'SELECT * FROM brushing_session_attempts WHERE session_id = ?',
+      input.sessionId,
+    );
+    if (!attempt) throw new Error('SESSION_ATTEMPT_NOT_FOUND');
+    if (attempt.profile_id !== input.profileId || attempt.started_at !== input.startedAt) {
+      throw new Error('SESSION_ATTEMPT_MISMATCH');
+    }
+    if (attempt.resolved_at) throw new Error('SESSION_ALREADY_RESOLVED');
+    this.activeSessionIds.add(input.sessionId);
+  }
+
+  async reconcileMissedSlots(profileId: string): Promise<readonly BrushingSlotEvaluation[]> {
+    await this.assertOwned(profileId);
+    const now = this.now();
+    const nowIso = now.toISOString();
+    const created: BrushingSlotEvaluation[] = [];
+
+    await this.database.withTransactionAsync(async () => {
+      const profile = await this.database.getFirstAsync<{ created_at: string }>(
+        `SELECT created_at FROM child_profiles WHERE id = ? AND archived_at IS NULL`,
+        profileId,
+      );
+      if (!profile) throw new Error('PROFILE_NOT_FOUND');
+      await this.ensureProgress(profileId, toLocalDateKey(now));
+
+      const openAttempts = await this.database.getAllAsync<AttemptRow>(
+        `SELECT * FROM brushing_session_attempts
+         WHERE profile_id = ? AND resolved_at IS NULL`,
+        profileId,
+      );
+      for (const attempt of openAttempts) {
+        if (this.activeSessionIds.has(attempt.session_id)) continue;
+        await this.database.runAsync(
+          `UPDATE brushing_session_attempts
+           SET resolved_at = ?, completed = 0
+           WHERE session_id = ? AND resolved_at IS NULL`,
+          nowIso,
+          attempt.session_id,
+        );
+      }
+
+      const profileCreatedAt = this.parseTimestamp(profile.created_at);
+      for (const slot of closedBrushingSlotsSince(profileCreatedAt, now)) {
+        const existing = await this.database.getFirstAsync<EvaluationRow>(
+          `SELECT * FROM brushing_slot_evaluations
+           WHERE child_profile_id = ? AND local_day_key = ? AND period = ?`,
+          profileId,
+          slot.localDayKey,
+          slot.period,
+        );
+        if (existing) continue;
+
+        const activeAttempt = await this.database.getFirstAsync<{ session_id: string }>(
+          `SELECT session_id FROM brushing_session_attempts
+           WHERE profile_id = ? AND local_day_key = ? AND period = ? AND resolved_at IS NULL
+           LIMIT 1`,
+          profileId,
+          slot.localDayKey,
+          slot.period,
+        );
+        if (activeAttempt) continue;
+
+        await this.database.runAsync(
+          `INSERT OR IGNORE INTO daily_progress(child_profile_id, local_day_key)
+           VALUES (?, ?)`,
+          profileId,
+          slot.localDayKey,
+        );
+        const daily = await this.requireDaily(profileId, slot.localDayKey);
+        const completed =
+          slot.period === 'morning' ? daily.morningCompleted : daily.eveningCompleted;
+        const progress = await this.requireProgress(profileId);
+        const scoreBefore = progress.totalXp;
+        const scoreAfter = completed ? scoreBefore : Math.max(0, scoreBefore - 10);
+        const outcome = completed ? 'completed' : 'missed';
+        const penaltyAmount = completed ? 0 : -10;
+
+        if (!completed) {
+          await this.database.runAsync(
+            `UPDATE profile_progress SET total_xp = ?, level = ?
+             WHERE child_profile_id = ?`,
+            scoreAfter,
+            levelForXp(scoreAfter),
+            profileId,
+          );
+        }
+        await this.database.runAsync(
+          `INSERT INTO brushing_slot_evaluations
+            (child_profile_id, local_day_key, period, outcome, penalty_amount,
+             score_before, score_after, evaluated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          profileId,
+          slot.localDayKey,
+          slot.period,
+          outcome,
+          penaltyAmount,
+          scoreBefore,
+          scoreAfter,
+          nowIso,
+        );
+        created.push({
+          childProfileId: profileId,
+          localDayKey: slot.localDayKey,
+          period: slot.period,
+          outcome,
+          penaltyAmount,
+          scoreBefore,
+          scoreAfter,
+          evaluatedAt: nowIso,
+        });
+      }
+    });
+
+    return created;
+  }
+
   async complete(input: {
     sessionId?: string;
     profileId: string;
@@ -140,10 +302,11 @@ export class SQLiteBrushingSessionRepository
 
   async finish(input: FinishBrushingSessionInput): Promise<BrushingRewardResult> {
     await this.assertOwned(input.profileId);
+    const startedAt = this.parseTimestamp(input.startedAt);
     const finishedAt = this.now();
     const finishedAtIso = finishedAt.toISOString();
-    const period = input.period ?? determineBrushingPeriod(finishedAt);
-    const localDayKey = toLocalDateKey(finishedAt);
+    const period = classifyBrushingSlot(startedAt);
+    const localDayKey = toLocalDateKey(startedAt);
     let result: BrushingRewardResult | null = null;
 
     await this.database.withTransactionAsync(async () => {
@@ -156,6 +319,17 @@ export class SQLiteBrushingSessionRepository
         result = await this.readResult(existing);
         return;
       }
+
+      await this.database.runAsync(
+        `INSERT OR IGNORE INTO brushing_session_attempts
+          (session_id, profile_id, started_at, local_day_key, period)
+         VALUES (?, ?, ?, ?, ?)`,
+        input.sessionId,
+        input.profileId,
+        input.startedAt,
+        localDayKey,
+        period,
+      );
 
       const completed = input.completed ?? input.durationSeconds >= 120;
       await this.database.runAsync(
@@ -173,6 +347,13 @@ export class SQLiteBrushingSessionRepository
         finishedAtIso,
         localDayKey,
       );
+      await this.database.runAsync(
+        `UPDATE brushing_session_attempts SET resolved_at = ?, completed = ?
+         WHERE session_id = ?`,
+        finishedAtIso,
+        completed ? 1 : 0,
+        input.sessionId,
+      );
 
       await this.ensureProgress(input.profileId, localDayKey);
       if (!completed || input.durationSeconds < 120) {
@@ -189,7 +370,11 @@ export class SQLiteBrushingSessionRepository
       );
       const dailyBefore = await this.requireDaily(input.profileId, localDayKey);
       const firstSlotCompletion =
-        period === 'morning' ? !dailyBefore.morningCompleted : !dailyBefore.eveningCompleted;
+        period === null
+          ? false
+          : period === 'morning'
+            ? !dailyBefore.morningCompleted
+            : !dailyBefore.eveningCompleted;
       const morningCompleted = dailyBefore.morningCompleted || period === 'morning';
       const eveningCompleted = dailyBefore.eveningCompleted || period === 'evening';
       const becomesFullDay = !dailyBefore.fullDayCompleted && morningCompleted && eveningCompleted;
@@ -289,6 +474,7 @@ export class SQLiteBrushingSessionRepository
     });
 
     if (!result) throw new Error('SESSION_RESULT_NOT_FOUND');
+    this.activeSessionIds.delete(input.sessionId);
     return result;
   }
 

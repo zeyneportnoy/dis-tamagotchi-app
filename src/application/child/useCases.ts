@@ -22,8 +22,13 @@ export class ChildExperienceUseCases {
     private readonly inventory: InventoryRepository,
   ) {}
 
-  getProgress(profileId: string): Promise<ProfileProgress> {
+  async getProgress(profileId: string): Promise<ProfileProgress> {
+    await this.sessions.reconcileMissedSlots(profileId);
     return this.progress.get(profileId);
+  }
+
+  beginBrushingSession(sessionId: string, profileId: string, startedAt: string): Promise<void> {
+    return this.sessions.begin({ sessionId, profileId, startedAt });
   }
 
   setBrushingCompleted(
@@ -38,14 +43,12 @@ export class ChildExperienceUseCases {
     sessionId: string,
     profileId: string,
     startedAt: string,
-    period?: BrushingPeriod,
   ): Promise<BrushingRewardResult> {
     return this.sessions.finish({
       sessionId,
       profileId,
       startedAt,
       durationSeconds: BRUSHING_TOTAL_SECONDS,
-      period,
     });
   }
 
@@ -54,7 +57,6 @@ export class ChildExperienceUseCases {
     profileId: string,
     startedAt: string,
     durationSeconds: number,
-    period?: BrushingPeriod,
   ): Promise<void> {
     await this.sessions.finish({
       sessionId,
@@ -62,7 +64,6 @@ export class ChildExperienceUseCases {
       startedAt,
       durationSeconds,
       completed: false,
-      period,
     });
   }
 

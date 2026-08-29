@@ -8,49 +8,56 @@ import {
 describe('character growth stages', () => {
   it.each([
     [0, 0],
-    [59, 0],
-    [60, 1],
-    [119, 1],
-    [120, 2],
-    [319, 2],
-    [320, 3],
-    [639, 3],
-    [640, 4],
-    [1200, 4],
+    [159, 0],
+    [160, 1],
+    [399, 1],
+    [400, 2],
+    [999, 2],
+    [1000, 3],
+    [1799, 3],
+    [1800, 4],
+    [2400, 4],
   ] as const)('maps %i XP to visual stage %i', (xp, stage) => {
     expect(growthStageForXp(xp)).toBe(stage);
   });
 
   it('keeps the developed target capped', () => {
-    expect(nextGrowthThreshold(0)).toBe(60);
-    expect(nextGrowthThreshold(4)).toBe(640);
+    expect(nextGrowthThreshold(0)).toBe(160);
+    expect(nextGrowthThreshold(4)).toBe(1800);
   });
 
   it('describes visible progress without changing growth thresholds', () => {
-    expect(growthProgressForXp(155)).toEqual({
+    expect(growthProgressForXp(550)).toEqual({
       currentStage: 2,
       isFinalStage: false,
       nextStage: 3,
-      ratio: 0.175,
-      remainingXp: 165,
-      targetXp: 320,
+      ratio: 0.25,
+      remainingXp: 450,
+      targetXp: 1000,
     });
-    expect(growthProgressForXp(700)).toEqual({
+    expect(growthProgressForXp(1900)).toEqual({
       currentStage: 4,
       isFinalStage: true,
       nextStage: null,
       ratio: 1,
       remainingXp: 0,
-      targetXp: 640,
+      targetXp: 1800,
     });
   });
 
   it('never promises a stage transition before the guaranteed session XP reaches it', () => {
-    expect(estimatedBrushingsToNextStage(40)).toBe(2);
-    expect(estimatedBrushingsToNextStage(50)).toBe(1);
-    expect(growthStageForXp(50 + 10)).toBe(1);
-    expect(estimatedBrushingsToNextStage(110)).toBe(1);
-    expect(growthStageForXp(110 + 10)).toBe(2);
-    expect(estimatedBrushingsToNextStage(640)).toBe(0);
+    expect(estimatedBrushingsToNextStage(140)).toBe(2);
+    expect(estimatedBrushingsToNextStage(150)).toBe(1);
+    expect(growthStageForXp(150 + 10)).toBe(1);
+    expect(estimatedBrushingsToNextStage(390)).toBe(1);
+    expect(growthStageForXp(390 + 10)).toBe(2);
+    expect(estimatedBrushingsToNextStage(1800)).toBe(0);
+  });
+
+  it('derives backward evolution directly from the current score', () => {
+    expect(growthStageForXp(405)).toBe(2);
+    expect(growthStageForXp(395)).toBe(1);
+    expect(growthStageForXp(165)).toBe(1);
+    expect(growthStageForXp(155)).toBe(0);
   });
 });

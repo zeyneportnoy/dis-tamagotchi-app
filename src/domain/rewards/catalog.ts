@@ -56,7 +56,7 @@ export const MAX_MOOD = 100;
 
 export type CharacterGrowthStage = 0 | 1 | 2 | 3 | 4;
 
-export const characterGrowthThresholds = [0, 60, 120, 320, 640] as const;
+export const characterGrowthThresholds = [0, 160, 400, 1000, 1800] as const;
 
 export const characterGrowthStageNames = [
   'egg',

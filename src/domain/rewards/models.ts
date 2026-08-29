@@ -38,5 +38,21 @@ export type FinishBrushingSessionInput = Readonly<{
   startedAt: string;
   durationSeconds: number;
   completed?: boolean;
-  period?: BrushingPeriod;
+}>;
+
+export type BeginBrushingSessionInput = Readonly<{
+  sessionId: string;
+  profileId: string;
+  startedAt: string;
+}>;
+
+export type BrushingSlotEvaluation = Readonly<{
+  childProfileId: string;
+  localDayKey: string;
+  period: BrushingPeriod;
+  outcome: 'completed' | 'missed';
+  penaltyAmount: -10 | 0;
+  scoreBefore: number;
+  scoreAfter: number;
+  evaluatedAt: string;
 }>;

@@ -356,3 +356,21 @@ onboarding ve Mood Lab aynı render bileşenini kullanır.
   bildirim izni yoksa tarihler korunur ve profil oluşturma başarısız sayılmaz.
 - Dentist notification içeriği yalnız yerel takma adı kullanır. Bu onboarding değişikliği yeni
   Supabase alanı, senkronizasyon şeması veya çocuk verisi toplama alanı eklemez.
+
+# 2026-08-29 — Ödül biriminin kullanıcıya görünen adı sunum katmanında merkezidir
+
+- Kullanıcıya görünen ödül birimi adı `common.rewardCurrencyName` i18n kaynağından “Mine” olarak
+  çözülür. Home, brushing sonucu/ilerlemesi ve Collection metinleri bu ortak etiketi kullanır.
+- Domain içindeki `xp` adları, ödül matematiği, eşikler ve SQLite alanları değiştirilmez; ürün adı
+  ileride yalnız sunum kaynağından güncellenebilir.
+
+# 2026-08-29 — Ana slot cezaları session başlangıcı ve yerel SQLite reconciliation kullanır
+
+- Ana slotlar cihazın yerel saatinde sabittir: sabah 04:00–12:00, akşam 18:00–00:00. Session
+  sınıflandırması bitiş, reminder veya açılan karttan değil yalnız kalıcı `started_at` değerinden
+  türetilir; slot dışında başlayan session hiçbir ana slotu tamamlamaz.
+- Migration 17 açık session attempt’lerini ve profil/gün/slot birleşik anahtarlı değerlendirmeleri
+  yerel SQLite’ta saklar. Profil yükünde kapanmış slotlar profil oluşturma zamanından itibaren
+  reconcile edilir; açık attempt sonuçlanana kadar ertelenir ve missed `-10` yalnız bir kez yazılır.
+- Skor `MAX(0, current_score - 10)` davranışıyla sıfırın altına inmez. Karakter evresi yalnız güncel
+  skordan 0/160/400/1000/1800 eşikleriyle türetilir; skor düşünce evre de geriye dönebilir.

@@ -2,6 +2,7 @@ import {
   BRUSHING_SEGMENT_COUNT,
   BRUSHING_SEGMENT_SECONDS,
   BRUSHING_TOTAL_SECONDS,
+  closedBrushingSlotsSince,
   determineBrushingPeriod,
   getBrushingTimerSnapshot,
   pauseBrushingTimer,
@@ -37,10 +38,22 @@ describe('brushing timer', () => {
     expect(getBrushingTimerSnapshot(resumed, 50_000).elapsedSeconds).toBe(20);
   });
 
-  it('derives morning and evening from the local completion hour', () => {
+  it('classifies only the fixed morning and evening main-slot boundaries', () => {
     expect(determineBrushingPeriod(new Date(2026, 7, 8, 4))).toBe('morning');
-    expect(determineBrushingPeriod(new Date(2026, 7, 8, 15, 59))).toBe('morning');
-    expect(determineBrushingPeriod(new Date(2026, 7, 8, 16))).toBe('evening');
-    expect(determineBrushingPeriod(new Date(2026, 7, 8, 3, 59))).toBe('evening');
+    expect(determineBrushingPeriod(new Date(2026, 7, 8, 11, 59, 59))).toBe('morning');
+    expect(determineBrushingPeriod(new Date(2026, 7, 8, 12))).toBeNull();
+    expect(determineBrushingPeriod(new Date(2026, 7, 8, 17, 59, 59))).toBeNull();
+    expect(determineBrushingPeriod(new Date(2026, 7, 8, 18))).toBe('evening');
+    expect(determineBrushingPeriod(new Date(2026, 7, 8, 23, 59, 59))).toBe('evening');
+    expect(determineBrushingPeriod(new Date(2026, 7, 9, 0))).toBeNull();
+    expect(determineBrushingPeriod(new Date(2026, 7, 9, 3, 59, 59))).toBeNull();
+  });
+
+  it('returns only closed slots that end after profile creation', () => {
+    const slots = closedBrushingSlotsSince(new Date(2026, 7, 8, 13), new Date(2026, 7, 9, 12));
+    expect(slots.map(({ localDayKey, period }) => `${localDayKey}:${period}`)).toEqual([
+      '2026-08-08:evening',
+      '2026-08-09:morning',
+    ]);
   });
 });

@@ -17,7 +17,9 @@ describe('database migrations', () => {
     expect(tables.map((table) => table.name)).toEqual([
       'active_parent_profile',
       'active_profile',
+      'brushing_session_attempts',
       'brushing_sessions',
+      'brushing_slot_evaluations',
       'child_profiles',
       'daily_progress',
       'dentist_reminders',
@@ -61,6 +63,7 @@ describe('database migrations', () => {
       { version: 14 },
       { version: 15 },
       { version: 16 },
+      { version: 17 },
     ]);
     database.close();
   });
@@ -139,6 +142,7 @@ describe('database migrations', () => {
       { version: 14 },
       { version: 15 },
       { version: 16 },
+      { version: 17 },
     ]);
     await expect(
       database.getFirstAsync<{
@@ -326,6 +330,108 @@ describe('database migrations', () => {
         'SELECT version FROM schema_migrations WHERE version = 16',
       ),
     ).resolves.toBeNull();
+    spy.mockRestore();
+    database.close();
+  });
+
+  it('upgrades existing sessions and makes off-slot classification persistable', async () => {
+    const database = new NodeSQLiteDatabase();
+    await database.execAsync('PRAGMA foreign_keys = ON;');
+    await database.execAsync(
+      'CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY NOT NULL, name TEXT NOT NULL, applied_at TEXT NOT NULL);',
+    );
+    for (const migration of migrations.slice(0, 16)) {
+      for (const statement of migration.statements) await database.execAsync(statement);
+      await database.runAsync(
+        'INSERT INTO schema_migrations(version, name, applied_at) VALUES (?, ?, ?)',
+        migration.version,
+        migration.name,
+        '2026-08-29T00:00:00.000Z',
+      );
+    }
+    await database.runAsync(
+      `INSERT INTO families(id, created_at, locale, timezone)
+       VALUES ('family-1', '2026-08-29T00:00:00.000Z', 'tr', 'Europe/Istanbul')`,
+    );
+    await database.runAsync(
+      `INSERT INTO child_profiles
+        (id, family_id, nickname, age_band, avatar_id, created_at, updated_at)
+       VALUES ('profile-1', 'family-1', 'Ege', '4_6', 'inci',
+         '2026-08-29T00:00:00.000Z', '2026-08-29T00:00:00.000Z')`,
+    );
+    await database.runAsync(
+      `INSERT INTO brushing_sessions
+        (id, profile_id, started_at, completed_at, duration_seconds, completed, period, created_at)
+       VALUES ('session-1', 'profile-1', '2026-08-29T05:00:00.000Z',
+         '2026-08-29T05:02:00.000Z', 120, 1, 'morning', '2026-08-29T05:02:00.000Z')`,
+    );
+
+    await migrateDatabase(database as unknown as SQLiteDatabase);
+
+    await expect(
+      database.getFirstAsync<{ id: string; period: string }>(
+        `SELECT id, period FROM brushing_sessions WHERE id = 'session-1'`,
+      ),
+    ).resolves.toEqual({ id: 'session-1', period: 'morning' });
+    const periodColumn = await database.getFirstAsync<{ notnull: number }>(
+      `SELECT "notnull" FROM pragma_table_info('brushing_sessions') WHERE name = 'period'`,
+    );
+    expect(periodColumn).toEqual({ notnull: 0 });
+    await expect(
+      database.getAllAsync<{ name: string }>(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'table' AND name IN ('brushing_session_attempts', 'brushing_slot_evaluations')
+         ORDER BY name`,
+      ),
+    ).resolves.toEqual([
+      { name: 'brushing_session_attempts' },
+      { name: 'brushing_slot_evaluations' },
+    ]);
+    database.close();
+  });
+
+  it('rolls back the main-slot reconciliation migration when its final index fails', async () => {
+    const database = new NodeSQLiteDatabase();
+    await database.execAsync('PRAGMA foreign_keys = ON;');
+    await database.execAsync(
+      'CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY NOT NULL, name TEXT NOT NULL, applied_at TEXT NOT NULL);',
+    );
+    for (const migration of migrations.slice(0, 16)) {
+      for (const statement of migration.statements) await database.execAsync(statement);
+      await database.runAsync(
+        'INSERT INTO schema_migrations(version, name, applied_at) VALUES (?, ?, ?)',
+        migration.version,
+        migration.name,
+        '2026-08-29T00:00:00.000Z',
+      );
+    }
+
+    const execute = database.execAsync.bind(database);
+    const spy = jest.spyOn(database, 'execAsync').mockImplementation((statement) => {
+      if (statement.includes('brushing_slot_evaluations_profile_idx')) {
+        return Promise.reject(new Error('INDEX_FAILURE'));
+      }
+      return execute(statement);
+    });
+
+    await expect(migrateDatabase(database as unknown as SQLiteDatabase)).rejects.toThrow(
+      'INDEX_FAILURE',
+    );
+    await expect(
+      database.getFirstAsync<{ version: number }>(
+        'SELECT version FROM schema_migrations WHERE version = 17',
+      ),
+    ).resolves.toBeNull();
+    await expect(
+      database.getAllAsync<{ name: string }>(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'table' AND name IN ('brushing_session_attempts', 'brushing_slot_evaluations')`,
+      ),
+    ).resolves.toEqual([]);
+    const periodColumn = await database.getFirstAsync<{ notnull: number }>(
+      `SELECT "notnull" FROM pragma_table_info('brushing_sessions') WHERE name = 'period'`,
+    );
+    expect(periodColumn).toEqual({ notnull: 1 });
     spy.mockRestore();
     database.close();
   });

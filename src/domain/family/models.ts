@@ -73,7 +73,7 @@ export type BrushingSession = Readonly<{
   completedAt: string;
   durationSeconds: number;
   completed: boolean;
-  period: BrushingPeriod;
+  period: BrushingPeriod | null;
   createdAt: string;
   rewardGrantedAt: string | null;
   xpGranted: number;

@@ -5,15 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import { getChildExperienceUseCases } from '@/application/child';
 import { getFamilyUseCases } from '@/application/family';
-import {
-  ErrorState,
-  LoadingState,
-  Screen,
-  Text,
-  colors,
-  radii,
-  spacing,
-} from '@/design-system';
+import { ErrorState, LoadingState, Screen, Text, colors, radii, spacing } from '@/design-system';
 import { toLocalDateKey } from '@/domain/brushing';
 import { deriveHomeCharacterMood } from '@/domain/character';
 import type { BrushingSession, ProfileProgress, StarterAvatarKey } from '@/domain/family';
@@ -27,6 +19,7 @@ type DailyMap = Record<string, DailyEntry>;
 function buildDailyMap(sessions: readonly BrushingSession[]): DailyMap {
   const map: DailyMap = {};
   for (const session of sessions) {
+    if (!session.period) continue;
     const dayKey = session.localDayKey ?? toLocalDateKey(new Date(session.completedAt));
     const entry = map[dayKey] ?? { evening: null, morning: null };
     map[dayKey] = { ...entry, [session.period]: session.completedAt };
@@ -190,7 +183,9 @@ export default function TasksScreen() {
           <Pressable
             accessibilityLabel={t('childHome.morningShort')}
             accessibilityRole="button"
-            onPress={() => router.push({ pathname: '/brushing', params: { slot: 'morning' } } as Href)}
+            onPress={() =>
+              router.push({ pathname: '/brushing', params: { slot: 'morning' } } as Href)
+            }
             style={styles.todayRow}
             testID="tasks-morning-row"
           >
@@ -200,14 +195,18 @@ export default function TasksScreen() {
           <Pressable
             accessibilityLabel={t('childHome.eveningShort')}
             accessibilityRole="button"
-            onPress={() => router.push({ pathname: '/brushing', params: { slot: 'evening' } } as Href)}
+            onPress={() =>
+              router.push({ pathname: '/brushing', params: { slot: 'evening' } } as Href)
+            }
             style={styles.todayRow}
             testID="tasks-evening-row"
           >
             <Text style={styles.todayIcon}>🌙</Text>
             <Text style={styles.todayCopy}>{slotLineForToday(progress, 'evening', t)}</Text>
           </Pressable>
-          <Text style={styles.streak}>{t('childHome.streak', { count: progress.currentStreak })}</Text>
+          <Text style={styles.streak}>
+            {t('childHome.streak', { count: progress.currentStreak })}
+          </Text>
         </View>
 
         <View style={styles.calendarCard} testID="tasks-calendar">
@@ -217,7 +216,9 @@ export default function TasksScreen() {
               accessibilityRole="button"
               hitSlop={8}
               onPress={() =>
-                setMonthCursor((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))
+                setMonthCursor(
+                  (current) => new Date(current.getFullYear(), current.getMonth() - 1, 1),
+                )
               }
             >
               <Text style={styles.calendarNav}>‹</Text>
@@ -228,7 +229,9 @@ export default function TasksScreen() {
               accessibilityRole="button"
               hitSlop={8}
               onPress={() =>
-                setMonthCursor((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))
+                setMonthCursor(
+                  (current) => new Date(current.getFullYear(), current.getMonth() + 1, 1),
+                )
               }
             >
               <Text style={styles.calendarNav}>›</Text>
@@ -297,7 +300,8 @@ function slotLineForToday(
   t: (key: string, options?: Record<string, unknown>) => string,
 ): string {
   const done = period === 'morning' ? progress.morningCompleted : progress.eveningCompleted;
-  if (done && progress.lastBrushingAt) return t('tasksScreen.doneAt', { time: formatTime(progress.lastBrushingAt) });
+  if (done && progress.lastBrushingAt)
+    return t('tasksScreen.doneAt', { time: formatTime(progress.lastBrushingAt) });
   if (done) return t('childHome.completed');
   return t('childHome.waiting');
 }
@@ -337,7 +341,12 @@ const styles = StyleSheet.create({
   detailRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
   detailTitle: { fontSize: 15, fontWeight: '800', marginBottom: spacing.xs },
   encouragement: { fontSize: 13, marginTop: spacing.xs, opacity: 0.7 },
-  header: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.lg },
+  header: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
   heading: { textAlign: 'left' },
   headerText: { flex: 1, gap: 2 },
   legendItem: { fontSize: 11, opacity: 0.7 },

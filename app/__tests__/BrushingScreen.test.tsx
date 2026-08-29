@@ -22,10 +22,12 @@ jest.mock('@/features/auth', () => ({
 const mockCompleteBrushingSession = jest.fn(() =>
   Promise.resolve({ id: 'session-1', completed: true }),
 );
+const mockBeginBrushingSession = jest.fn(() => Promise.resolve());
 const mockAbandonBrushingSession = jest.fn(() => Promise.resolve());
 jest.mock('@/application/child', () => ({
   getChildExperienceUseCases: () =>
     Promise.resolve({
+      beginBrushingSession: mockBeginBrushingSession,
       completeBrushingSession: mockCompleteBrushingSession,
       abandonBrushingSession: mockAbandonBrushingSession,
       getEquippedItems: () => Promise.resolve([]),
@@ -82,6 +84,13 @@ describe('Brushing session route', () => {
     expect(
       view.getByText('Bu bölgedeki dişlerin dışını, içini ve çiğneme yerlerini fırçala.'),
     ).toBeTruthy();
+    await waitFor(() =>
+      expect(mockBeginBrushingSession).toHaveBeenCalledWith(
+        'session-abandoned',
+        'profile-1',
+        expect.any(String),
+      ),
+    );
   });
 
   it('pauses, resumes and confirms early exit without completing a session', async () => {
@@ -125,7 +134,6 @@ describe('Brushing session route', () => {
       'profile-1',
       expect.any(String),
       expect.any(Number),
-      undefined,
     );
     expect(mockCompleteBrushingSession).not.toHaveBeenCalled();
     stopAnimation.mockRestore();

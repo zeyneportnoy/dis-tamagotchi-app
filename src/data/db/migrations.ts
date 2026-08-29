@@ -316,4 +316,72 @@ export const migrations: readonly Migration[] = [
       `CREATE INDEX child_profiles_date_of_birth_idx ON child_profiles(date_of_birth);`,
     ],
   },
+  {
+    version: 17,
+    name: 'add_main_slot_reconciliation',
+    statements: [
+      `ALTER TABLE brushing_sessions RENAME TO brushing_sessions_period_legacy;`,
+      `CREATE TABLE brushing_sessions (
+        id TEXT PRIMARY KEY NOT NULL,
+        profile_id TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        completed_at TEXT NOT NULL,
+        duration_seconds INTEGER NOT NULL CHECK(duration_seconds >= 0),
+        completed INTEGER NOT NULL CHECK(completed IN (0, 1)),
+        period TEXT CHECK(period IN ('morning', 'evening')),
+        created_at TEXT NOT NULL,
+        reward_granted_at TEXT,
+        xp_granted INTEGER NOT NULL DEFAULT 0 CHECK(xp_granted >= 0),
+        mood_delta INTEGER NOT NULL DEFAULT 0,
+        unlocked_item_key TEXT,
+        local_day_key TEXT,
+        first_slot_completion INTEGER NOT NULL DEFAULT 0 CHECK(first_slot_completion IN (0, 1)),
+        streak_advanced INTEGER NOT NULL DEFAULT 0 CHECK(streak_advanced IN (0, 1)),
+        morning_completed_after INTEGER NOT NULL DEFAULT 0 CHECK(morning_completed_after IN (0, 1)),
+        evening_completed_after INTEGER NOT NULL DEFAULT 0 CHECK(evening_completed_after IN (0, 1)),
+        streak_after INTEGER NOT NULL DEFAULT 0 CHECK(streak_after >= 0),
+        FOREIGN KEY (profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+      );`,
+      `INSERT INTO brushing_sessions
+        (id, profile_id, started_at, completed_at, duration_seconds, completed, period, created_at,
+         reward_granted_at, xp_granted, mood_delta, unlocked_item_key, local_day_key,
+         first_slot_completion, streak_advanced, morning_completed_after,
+         evening_completed_after, streak_after)
+       SELECT id, profile_id, started_at, completed_at, duration_seconds, completed, period,
+         created_at, reward_granted_at, xp_granted, mood_delta, unlocked_item_key, local_day_key,
+         first_slot_completion, streak_advanced, morning_completed_after,
+         evening_completed_after, streak_after
+       FROM brushing_sessions_period_legacy;`,
+      `DROP TABLE brushing_sessions_period_legacy;`,
+      `CREATE INDEX brushing_sessions_profile_completed_idx
+        ON brushing_sessions(profile_id, completed_at);`,
+      `CREATE TABLE brushing_session_attempts (
+        session_id TEXT PRIMARY KEY NOT NULL,
+        profile_id TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        local_day_key TEXT NOT NULL,
+        period TEXT CHECK(period IN ('morning', 'evening')),
+        resolved_at TEXT,
+        completed INTEGER CHECK(completed IN (0, 1)),
+        FOREIGN KEY (profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+      );`,
+      `CREATE INDEX brushing_session_attempts_open_slot_idx
+        ON brushing_session_attempts(profile_id, local_day_key, period)
+        WHERE resolved_at IS NULL;`,
+      `CREATE TABLE brushing_slot_evaluations (
+        child_profile_id TEXT NOT NULL,
+        local_day_key TEXT NOT NULL,
+        period TEXT NOT NULL CHECK(period IN ('morning', 'evening')),
+        outcome TEXT NOT NULL CHECK(outcome IN ('completed', 'missed')),
+        penalty_amount INTEGER NOT NULL CHECK(penalty_amount IN (-10, 0)),
+        score_before INTEGER NOT NULL CHECK(score_before >= 0),
+        score_after INTEGER NOT NULL CHECK(score_after >= 0),
+        evaluated_at TEXT NOT NULL,
+        PRIMARY KEY(child_profile_id, local_day_key, period),
+        FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+      );`,
+      `CREATE INDEX brushing_slot_evaluations_profile_idx
+        ON brushing_slot_evaluations(child_profile_id, evaluated_at);`,
+    ],
+  },
 ];

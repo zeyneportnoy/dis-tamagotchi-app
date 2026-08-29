@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { router, useNavigation } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { useAudioPlayer } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
@@ -72,7 +72,7 @@ import {
   type BrushingRewardResult,
 } from '@/domain/rewards';
 import { loadCustomizationState } from '@/features/customization';
-import type { BrushingPeriod, ProfileProgress } from '@/domain/family';
+import type { ProfileProgress } from '@/domain/family';
 
 const regionKeys = ['rightUpper', 'leftUpper', 'rightLower', 'leftLower'] as const;
 type BrushingRegion = (typeof regionKeys)[number];
@@ -606,7 +606,7 @@ function ResultGrowth({
           )}
         </View>
         <Text style={styles.resultXp}>
-          {result.progress.totalXp} / {target} XP
+          {t('brushing.rewardProgress', { current: result.progress.totalXp, target })}
         </Text>
         <Text style={styles.remainingXp}>
           {growth.isFinalStage
@@ -627,9 +627,6 @@ function ResultGrowth({
 export default function BrushingScreen() {
   const { t } = useTranslation();
   const { session } = useAuth();
-  const params = useLocalSearchParams<{ slot?: string }>();
-  const requestedSlot: BrushingPeriod | undefined =
-    params.slot === 'morning' || params.slot === 'evening' ? params.slot : undefined;
   const navigation = useNavigation();
   const startedAt = useRef<string | null>(null);
   const sessionId = useRef(randomUUID());
@@ -941,12 +938,18 @@ export default function BrushingScreen() {
   useEffect(() => {
     if (!profile || voiceProfile === null || nicknamePersonalization === null || startedAt.current)
       return;
-    void Promise.resolve().then(() => {
-      const initialNow = Date.now();
-      startedAt.current = new Date(initialNow).toISOString();
-      setTimer(startBrushingTimer(initialNow));
-      setNowMs(initialNow);
-    });
+    const initialNow = Date.now();
+    const sessionStartedAt = new Date(initialNow).toISOString();
+    startedAt.current = sessionStartedAt;
+    void getChildExperienceUseCases()
+      .then((useCases) =>
+        useCases.beginBrushingSession(sessionId.current, profile.id, sessionStartedAt),
+      )
+      .then(() => {
+        setTimer(startBrushingTimer(initialNow));
+        setNowMs(initialNow);
+      })
+      .catch(() => setFailed(true));
   }, [nicknamePersonalization, profile, voiceProfile]);
 
   useEffect(
@@ -1002,16 +1005,11 @@ export default function BrushingScreen() {
     completionStarted.current = true;
     void getChildExperienceUseCases()
       .then((useCases) =>
-        useCases.completeBrushingSession(
-          sessionId.current,
-          profile.id,
-          sessionStartedAt,
-          requestedSlot,
-        ),
+        useCases.completeBrushingSession(sessionId.current, profile.id, sessionStartedAt),
       )
       .then(setResult)
       .catch(() => setFailed(true));
-  }, [profile, requestedSlot, snapshot?.completed]);
+  }, [profile, snapshot?.completed]);
 
   useEffect(() => {
     if (!result || !profile || completionMessageKey) return;
@@ -1090,7 +1088,9 @@ export default function BrushingScreen() {
             </Text>
             <View style={styles.rewardRow}>
               <View style={styles.rewardChip}>
-                <Text style={styles.rewardValue}>+{result.xpGranted} XP</Text>
+                <Text style={styles.rewardValue}>
+                  {t('brushing.rewardAmount', { amount: result.xpGranted })}
+                </Text>
               </View>
               <View style={styles.rewardChip}>
                 <Text style={styles.rewardValue}>
@@ -1187,7 +1187,6 @@ export default function BrushingScreen() {
           profile.id,
           sessionStartedAt,
           elapsedSeconds,
-          requestedSlot,
         );
       }
       allowExit.current = true;

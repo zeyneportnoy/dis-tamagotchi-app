@@ -1,8 +1,16 @@
-import type { BrushingRewardResult, FinishBrushingSessionInput, InventoryItem } from './models';
+import type {
+  BeginBrushingSessionInput,
+  BrushingRewardResult,
+  BrushingSlotEvaluation,
+  FinishBrushingSessionInput,
+  InventoryItem,
+} from './models';
 import type { RewardItemKey } from './catalog';
 
 export interface RewardSessionRepository {
+  begin(input: BeginBrushingSessionInput): Promise<void>;
   finish(input: FinishBrushingSessionInput): Promise<BrushingRewardResult>;
+  reconcileMissedSlots(profileId: string): Promise<readonly BrushingSlotEvaluation[]>;
 }
 
 export interface InventoryRepository {

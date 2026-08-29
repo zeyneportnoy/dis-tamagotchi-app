@@ -105,7 +105,7 @@ describe('Child Home route', () => {
     await waitFor(() => expect(view.getByText('Merhaba, Ada! 👋')).toBeTruthy());
     expect(mockGetProgress).toHaveBeenLastCalledWith('profile-2');
     expect(view.getAllByTestId('character-kaan', { includeHiddenElements: true })).toHaveLength(2);
-    expect(view.getByText('Bebek diş evresine 30 XP kaldı')).toBeTruthy();
+    expect(view.getByText('Çatlıyor evresine 70 Mine kaldı')).toBeTruthy();
   });
 
   it('shows the active profile character, brushing cards and primary action', async () => {
@@ -118,8 +118,8 @@ describe('Child Home route', () => {
       view.getAllByTestId('character-phase-resting', { includeHiddenElements: true }),
     ).toHaveLength(2);
     expect(view.getByText('Diş yumurtası')).toBeTruthy();
-    expect(view.getByText('Çatlıyor evresine 60 XP kaldı')).toBeTruthy();
-    expect(view.getByText('Yaklaşık 6 fırçalama')).toBeTruthy();
+    expect(view.getByText('Çatlıyor evresine 160 Mine kaldı')).toBeTruthy();
+    expect(view.getByText('Yaklaşık 16 fırçalama')).toBeTruthy();
     expect(view.getByText('Sabah')).toBeTruthy();
     expect(view.getByText('Akşam')).toBeTruthy();
     const brushButton = view.getByRole('button', { name: 'Fırçalayalım!' });
@@ -245,8 +245,8 @@ describe('Child Home route', () => {
     expect(await view.findByRole('button', { name: 'Sabah. Tamamlandı' })).toBeTruthy();
     expect(view.getByRole('button', { name: 'Akşam. Tamamlandı' })).toBeTruthy();
     expect(view.getAllByText('✓')).toHaveLength(2);
-    expect(view.getByText('Çatlıyor evresine 60 XP kaldı')).toBeTruthy();
-    expect(view.getByText('Yaklaşık 6 fırçalama')).toBeTruthy();
+    expect(view.getByText('Çatlıyor evresine 160 Mine kaldı')).toBeTruthy();
+    expect(view.getByText('Yaklaşık 16 fırçalama')).toBeTruthy();
     expect(view.queryByText('Seri: 3 gün')).toBeNull();
   });
 });
