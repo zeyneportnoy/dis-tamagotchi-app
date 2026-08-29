@@ -1,13 +1,38 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import type { AccessorySlot } from '@/domain/rewards';
-import type { LocalChildPreferenceSyncRepository } from '@/domain/sync';
+import {
+  isBackgroundRewardKey,
+  isBackgroundUnlockedForScore,
+  isBrushRewardKey,
+  isBrushUnlockedForScore,
+  isEffectRewardKey,
+  isEffectUnlockedForScore,
+  type AccessorySlot,
+  type RewardItemKey,
+} from '@/domain/rewards';
+import type { CloudChildPreferences, LocalChildPreferenceSyncRepository } from '@/domain/sync';
 import {
   customizationStorageKey,
   decodeCustomizationState,
   type CustomizationState,
 } from '@/features/customization';
+
+type ScoreGatedSlot = 'brush' | 'background' | 'effect';
+
+const isRewardKeyForSlot = (slot: ScoreGatedSlot, key: string): boolean =>
+  slot === 'brush'
+    ? isBrushRewardKey(key)
+    : slot === 'background'
+      ? isBackgroundRewardKey(key)
+      : isEffectRewardKey(key);
+
+const isUnlockedForSlot = (slot: ScoreGatedSlot, key: string, score: number): boolean =>
+  slot === 'brush'
+    ? isBrushUnlockedForScore(key, score)
+    : slot === 'background'
+      ? isBackgroundUnlockedForScore(key, score)
+      : isEffectUnlockedForScore(key, score);
 
 type ChildRow = {
   id: string;
@@ -114,12 +139,63 @@ export class SQLiteChildPreferenceSyncRepository implements LocalChildPreference
     return (await AsyncStorage.getItem(customizationStorageKey(profileId))) !== null;
   }
 
-  async hydrateCustomization(profileId: string, roomConfiguration: unknown): Promise<void> {
-    if (roomConfiguration == null) return;
-    // Re-decode so only valid keys/placements land locally, then persist verbatim.
+  async hydrateCustomization(
+    profileId: string,
+    preferences: CloudChildPreferences,
+  ): Promise<void> {
+    const { roomConfiguration } = preferences;
     const raw =
-      typeof roomConfiguration === 'string' ? roomConfiguration : JSON.stringify(roomConfiguration);
-    const state = decodeCustomizationState(raw);
+      roomConfiguration == null
+        ? null
+        : typeof roomConfiguration === 'string'
+          ? roomConfiguration
+          : JSON.stringify(roomConfiguration);
+    const decoded = decodeCustomizationState(raw);
+
+    // Overlay the dedicated selection columns so the DEV developer-override path
+    // reflects the cloud choice even when room_configuration carried none.
+    const developerEquipped = { ...decoded.developerEquipped };
+    const selections: readonly [ScoreGatedSlot, string | null][] = [
+      ['brush', preferences.selectedBrushId],
+      ['background', preferences.selectedBackgroundId],
+      ['effect', preferences.selectedEffectId],
+    ];
+    for (const [slot, key] of selections) {
+      if (key && isRewardKeyForSlot(slot, key)) developerEquipped[slot] = key as RewardItemKey;
+    }
+    const state: CustomizationState = { ...decoded, developerEquipped };
     await AsyncStorage.setItem(customizationStorageKey(profileId), JSON.stringify(state));
+
+    // Production source of truth: equip score-unlocked selections in
+    // `inventory_items` too. Locked picks are skipped — the existing render-time
+    // guards keep them inactive until the balance is high enough.
+    const progress = await this.database.getFirstAsync<{ total_xp: number }>(
+      `SELECT total_xp FROM profile_progress WHERE child_profile_id = ?`,
+      profileId,
+    );
+    const score = Math.max(0, progress?.total_xp ?? 0);
+    for (const [slot, key] of selections) {
+      if (!key || !isRewardKeyForSlot(slot, key) || !isUnlockedForSlot(slot, key, score)) continue;
+      await this.database.withTransactionAsync(async () => {
+        await this.database.runAsync(
+          `INSERT OR IGNORE INTO inventory_items(child_profile_id, item_key, unlocked_at, equipped, slot)
+           VALUES (?, ?, ?, 0, ?)`,
+          profileId,
+          key,
+          new Date().toISOString(),
+          slot,
+        );
+        await this.database.runAsync(
+          `UPDATE inventory_items SET equipped = 0 WHERE child_profile_id = ? AND slot = ?`,
+          profileId,
+          slot,
+        );
+        await this.database.runAsync(
+          `UPDATE inventory_items SET equipped = 1 WHERE child_profile_id = ? AND item_key = ?`,
+          profileId,
+          key,
+        );
+      });
+    }
   }
 }

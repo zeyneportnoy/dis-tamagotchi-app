@@ -6,8 +6,8 @@ import { appHeaderHeight, minimumTouchTarget } from '@/design-system';
 
 import ParentSettingsScreen from '../settings';
 
-const mockSetBrushingVoiceProfile = jest.fn((_parentUserId: string, _profile: string) =>
-  Promise.resolve(),
+const mockSetBrushingVoiceProfile = jest.fn(
+  (_parentUserId: string, _childProfileId: string, _profile: string) => Promise.resolve(),
 );
 const mockPreviewPlay = jest.fn();
 const mockUpdateProfile = jest.fn();
@@ -65,8 +65,8 @@ jest.mock('@/features/brushing', () => ({
     samet: [{ source: 2 }],
   },
   getBrushingVoiceProfile: () => Promise.resolve('gokce'),
-  setBrushingVoiceProfile: (parentUserId: string, profile: string) =>
-    mockSetBrushingVoiceProfile(parentUserId, profile),
+  setBrushingVoiceProfile: (parentUserId: string, childProfileId: string, profile: string) =>
+    mockSetBrushingVoiceProfile(parentUserId, childProfileId, profile),
 }));
 
 jest.mock('expo-router', () => ({
@@ -108,7 +108,7 @@ describe('Parent Settings navigation header', () => {
       ),
     );
     await fireEvent.press(view.getByRole('radio', { name: 'Samet' }));
-    expect(mockSetBrushingVoiceProfile).toHaveBeenCalledWith('parent-a', 'samet');
+    expect(mockSetBrushingVoiceProfile).toHaveBeenCalledWith('parent-a', 'child-a', 'samet');
     await waitFor(() =>
       expect(view.getByRole('radio', { name: 'Samet' }).props.accessibilityState.checked).toBe(
         true,

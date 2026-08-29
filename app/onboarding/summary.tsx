@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useAudioPlayer } from 'expo-audio';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
@@ -10,31 +10,26 @@ import { Button, Screen, SelectionCard, Text, colors, radii, spacing } from '@/d
 import {
   brushingVoiceCues,
   brushingVoiceProfiles,
-  getBrushingVoiceProfile,
   setBrushingVoiceProfile,
   type BrushingVoiceProfile,
 } from '@/features/brushing';
 import { CharacterAvatar } from '@/features/character';
 import { useOnboardingDraft } from '@/features/onboarding/OnboardingDraftContext';
 import { useAuth } from '@/features/auth';
-import { dentistReminderService } from '@/features/reminders';
+import { dentistReminderService, reminderSettingsService } from '@/features/reminders';
 
 export default function SummaryScreen() {
   const { t } = useTranslation();
   const draft = useOnboardingDraft();
   const { session } = useAuth();
-  const [voiceProfile, setVoiceProfile] = useState<BrushingVoiceProfile | null>(null);
+  // Voice is per-child and the child does not exist until this screen creates
+  // it, so the picker starts on the default and the choice is persisted with the
+  // new profile id below.
+  const [voiceProfile, setVoiceProfile] = useState<BrushingVoiceProfile | null>('gokce');
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
   const gokcePreview = useAudioPlayer(brushingVoiceCues.gokce[0].source);
   const sametPreview = useAudioPlayer(brushingVoiceCues.samet[0].source);
-
-  useEffect(() => {
-    if (!session?.userId) return;
-    void getBrushingVoiceProfile(session.userId)
-      .then(setVoiceProfile)
-      .catch(() => setVoiceProfile('gokce'));
-  }, [session?.userId]);
 
   const createProfile = async (selectedVoiceProfile: BrushingVoiceProfile) => {
     if (saving) return;
@@ -42,16 +37,27 @@ export default function SummaryScreen() {
     if (!draft.dateOfBirth || !draft.ageBand) return router.replace('/onboarding/age-band');
     if (!draft.avatarId) return router.replace('/onboarding/character');
     if (!session?.userId) return setFailed(true);
+    const parentUserId = session.userId;
     setSaving(true);
     setFailed(false);
     try {
-      await setBrushingVoiceProfile(session.userId, selectedVoiceProfile);
       const useCases = await getFamilyUseCases();
       const profile = await useCases.createProfile({
         nickname: draft.nickname,
         dateOfBirth: draft.dateOfBirth,
         avatarId: draft.avatarId,
       });
+      await setBrushingVoiceProfile(parentUserId, profile.id, selectedVoiceProfile);
+      if (draft.remindersEnabled) {
+        for (const slot of ['morning', 'evening'] as const) {
+          await reminderSettingsService
+            .update(parentUserId, profile.id, slot, {
+              enabled: true,
+              time: slot === 'morning' ? draft.morningReminderTime : draft.eveningReminderTime,
+            })
+            .catch(() => undefined);
+        }
+      }
       await dentistReminderService.ensureScheduledForProfile(profile).catch(() => undefined);
       draft.reset();
       router.replace('/(child)');

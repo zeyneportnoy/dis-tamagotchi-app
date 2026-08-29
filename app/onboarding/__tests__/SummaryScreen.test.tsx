@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { StyleSheet } from 'react-native';
 
 import SummaryScreen from '../summary';
-import { getBrushingVoiceProfile, setBrushingVoiceProfile } from '@/features/brushing';
+import { setBrushingVoiceProfile } from '@/features/brushing';
 import { dentistReminderService } from '@/features/reminders';
 
 const mockCreateProfile = jest.fn();
@@ -38,11 +38,11 @@ jest.mock('@/features/brushing', () => ({
     samet: [{ source: 2 }],
   },
   brushingVoiceProfiles: ['gokce', 'samet', 'off'],
-  getBrushingVoiceProfile: jest.fn(),
   setBrushingVoiceProfile: jest.fn(),
 }));
 jest.mock('@/features/reminders', () => ({
   dentistReminderService: { ensureScheduledForProfile: jest.fn() },
+  reminderSettingsService: { update: jest.fn(() => Promise.resolve({ permissionDenied: false })) },
 }));
 jest.mock('@/features/onboarding/OnboardingDraftContext', () => ({
   useOnboardingDraft: () => ({
@@ -50,18 +50,19 @@ jest.mock('@/features/onboarding/OnboardingDraftContext', () => ({
     avatarId: 'inci',
     dateOfBirth: '2020-01-15',
     nickname: 'Ege',
+    remindersEnabled: false,
+    morningReminderTime: '08:00',
+    eveningReminderTime: '20:30',
     reset: mockReset,
   }),
 }));
 
-const mockGetVoiceProfile = jest.mocked(getBrushingVoiceProfile);
 const mockSetVoiceProfile = jest.mocked(setBrushingVoiceProfile);
 const mockEnsureDentistReminder = jest.mocked(dentistReminderService.ensureScheduledForProfile);
 
 describe('profile summary', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetVoiceProfile.mockResolvedValue('gokce');
     mockSetVoiceProfile.mockResolvedValue(undefined);
     mockEnsureDentistReminder.mockResolvedValue({
       firstDueAt: '2027-02-28T09:30:00.000Z',
@@ -73,7 +74,7 @@ describe('profile summary', () => {
     mockCreateProfile.mockResolvedValue({ id: 'profile-1', nickname: 'Ege' });
     mockClaimLegacyProfiles.mockResolvedValue(undefined);
     const view = await render(<SummaryScreen />);
-    await waitFor(() => expect(mockGetVoiceProfile).toHaveBeenCalledWith('parent-1'));
+    await waitFor(() => expect(view.getByTestId('create-profile-button')).toBeTruthy());
 
     await fireEvent.press(view.getByTestId('create-profile-button'));
 
@@ -85,7 +86,7 @@ describe('profile summary', () => {
       }),
     );
     expect(mockReset).toHaveBeenCalled();
-    expect(mockSetVoiceProfile).toHaveBeenCalledWith('parent-1', 'gokce');
+    expect(mockSetVoiceProfile).toHaveBeenCalledWith('parent-1', 'profile-1', 'gokce');
     expect(mockEnsureDentistReminder).toHaveBeenCalledWith({
       id: 'profile-1',
       nickname: 'Ege',
@@ -102,7 +103,9 @@ describe('profile summary', () => {
 
       await fireEvent.press(view.getByTestId(`onboarding-voice-${profile}`));
 
-      await waitFor(() => expect(mockSetVoiceProfile).toHaveBeenCalledWith('parent-1', profile));
+      await waitFor(() =>
+        expect(mockSetVoiceProfile).toHaveBeenCalledWith('parent-1', `profile-${profile}`, profile),
+      );
       expect(router.replace).toHaveBeenCalledWith('/(child)');
     },
   );
@@ -141,7 +144,7 @@ describe('profile summary', () => {
     mockCreateProfile.mockResolvedValue({ id: 'profile-2', nickname: 'Ege' });
     mockClaimLegacyProfiles.mockRejectedValue(new Error('OFFLINE'));
     const view = await render(<SummaryScreen />);
-    await waitFor(() => expect(mockGetVoiceProfile).toHaveBeenCalledWith('parent-1'));
+    await waitFor(() => expect(view.getByTestId('create-profile-button')).toBeTruthy());
 
     await fireEvent.press(view.getByTestId('create-profile-button'));
 
@@ -152,7 +155,7 @@ describe('profile summary', () => {
     mockCreateProfile.mockResolvedValue({ id: 'profile-3', nickname: 'Ege' });
     mockClaimLegacyProfiles.mockReturnValue(new Promise(() => undefined));
     const view = await render(<SummaryScreen />);
-    await waitFor(() => expect(mockGetVoiceProfile).toHaveBeenCalledWith('parent-1'));
+    await waitFor(() => expect(view.getByTestId('create-profile-button')).toBeTruthy());
 
     await fireEvent.press(view.getByTestId('create-profile-button'));
 

@@ -10,6 +10,7 @@ import {
   effectiveBrushKey,
   effectiveEffectKey,
 } from '@/domain/rewards';
+import type { CloudChildPreferences } from '@/domain/sync';
 import { customizationStorageKey, decodeCustomizationState } from '@/features/customization';
 import { NodeSQLiteDatabase } from '@/test/NodeSQLiteDatabase';
 
@@ -117,36 +118,100 @@ describe('SQLiteChildPreferenceSyncRepository', () => {
     await expect(repo.dentistReminderEnabled('profile-1')).resolves.toBe(true);
   });
 
-  it('hydrates a recovered customization only shape-checked, never activating a locked item', async () => {
-    const { db, repo } = await build();
-    await seedChild(db, 'profile-1');
-    await expect(repo.hasLocalCustomization('profile-1')).resolves.toBe(false);
-
-    await repo.hydrateCustomization('profile-1', {
-      developerEquipped: { brush: 'star-brush', background: 'undersea-room', effect: 'magic-dust' },
+  const prefsFixture = (
+    overrides: Partial<CloudChildPreferences> = {},
+  ): CloudChildPreferences => ({
+    childId: 'profile-1',
+    selectedBrushId: null,
+    selectedBackgroundId: null,
+    selectedEffectId: null,
+    roomConfiguration: {
+      developerEquipped: {},
       placements: { 'pastel-toy-box': { scale: 1, x: 0.4, y: 0.7 } },
       selectedRoomMaterials: ['pastel-toy-box'],
       version: 1,
-    });
+    },
+    voiceGuide: 'gokce',
+    morningReminder: { enabled: false, time: null },
+    eveningReminder: { enabled: false, time: null },
+    dentistReminderEnabled: true,
+    dentistLastVisitDate: null,
+    ...overrides,
+  });
 
-    await expect(repo.hasLocalCustomization('profile-1')).resolves.toBe(true);
+  it('preserves the raw cloud selection and lets the render-time guard keep a locked item inactive', async () => {
+    const { db, repo } = await build();
+    await seedChild(db, 'profile-1');
+    // Score 230: star-brush (240) / undersea-room (2200) / magic-dust (1200) all locked.
+    await db.runAsync(
+      `INSERT INTO profile_progress (child_profile_id, status_date, total_xp) VALUES ('profile-1', '2026-08-29', 230)`,
+    );
+
+    await repo.hydrateCustomization(
+      'profile-1',
+      prefsFixture({
+        selectedBrushId: 'star-brush',
+        selectedBackgroundId: 'undersea-room',
+        selectedEffectId: 'magic-dust',
+      }),
+    );
+
     const stored = decodeCustomizationState(
       await AsyncStorage.getItem(customizationStorageKey('profile-1')),
     );
-    // The raw choice is preserved…
     expect(stored.developerEquipped.brush).toBe('star-brush');
     expect(stored.developerEquipped.background).toBe('undersea-room');
     expect(stored.developerEquipped.effect).toBe('magic-dust');
     expect(stored.selectedRoomMaterials).toEqual(['pastel-toy-box']);
 
-    // …but the existing current-Mine-Puan guards still resolve locked picks to
-    // the safe default (brush 240 / background 2200 / effect 1200 thresholds).
+    // Existing current-Mine-Puan guards resolve the locked picks to the safe default…
     expect(effectiveBrushKey(stored.developerEquipped.brush, 230)).toBe(DEFAULT_BRUSH_KEY);
     expect(effectiveBackgroundKey(stored.developerEquipped.background, 230)).toBe(
       DEFAULT_BACKGROUND_KEY,
     );
     expect(effectiveEffectKey(stored.developerEquipped.effect, 230)).toBe(DEFAULT_EFFECT_KEY);
+    // …and no locked item was written to the production inventory source of truth.
+    const equipped = await db.getAllAsync<{ item_key: string }>(
+      `SELECT item_key FROM inventory_items WHERE child_profile_id = 'profile-1' AND equipped = 1`,
+    );
+    expect(equipped).toEqual([]);
     // Once the balance is high enough the same stored choice activates again.
     expect(effectiveBrushKey(stored.developerEquipped.brush, 5000)).toBe('star-brush');
+  });
+
+  it('equips score-unlocked cloud selections into the production inventory source of truth', async () => {
+    const { db, repo } = await build();
+    await seedChild(db, 'profile-1');
+    // Score 1000: pink-brush (80) + rainbow-room (640) unlocked; magic-dust (1200) still locked.
+    await db.runAsync(
+      `INSERT INTO profile_progress (child_profile_id, status_date, total_xp) VALUES ('profile-1', '2026-08-29', 1000)`,
+    );
+    // A previously equipped brush that must be replaced by the recovered one.
+    await db.runAsync(
+      `INSERT INTO inventory_items (child_profile_id, item_key, unlocked_at, equipped, slot)
+       VALUES ('profile-1', 'classic-brush', '2026-08-01T00:00:00.000Z', 1, 'brush')`,
+    );
+
+    await repo.hydrateCustomization(
+      'profile-1',
+      prefsFixture({
+        selectedBrushId: 'pink-brush',
+        selectedBackgroundId: 'rainbow-room',
+        selectedEffectId: 'magic-dust',
+      }),
+    );
+
+    const equipped = await db.getAllAsync<{ item_key: string; slot: string }>(
+      `SELECT item_key, slot FROM inventory_items WHERE child_profile_id = 'profile-1' AND equipped = 1 ORDER BY slot`,
+    );
+    expect(equipped).toEqual([
+      { item_key: 'rainbow-room', slot: 'background' },
+      { item_key: 'pink-brush', slot: 'brush' },
+    ]);
+    // The locked effect never got equipped.
+    const effectRows = await db.getAllAsync(
+      `SELECT 1 FROM inventory_items WHERE child_profile_id = 'profile-1' AND slot = 'effect'`,
+    );
+    expect(effectRows).toEqual([]);
   });
 });

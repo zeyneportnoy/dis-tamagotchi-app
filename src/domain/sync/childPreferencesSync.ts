@@ -53,8 +53,14 @@ export interface LocalChildPreferenceSyncRepository {
   >;
   dentistReminderEnabled(profileId: string): Promise<boolean>;
   hasLocalCustomization(profileId: string): Promise<boolean>;
-  /** Writes the recovered CustomizationState verbatim; unlock guards run at render. */
-  hydrateCustomization(profileId: string, roomConfiguration: unknown): Promise<void>;
+  /**
+   * Hydrates the recovered selection into BOTH local stores: the customization
+   * AsyncStorage state (DEV) and the `inventory_items` equipped rows that
+   * production reads (only for selections the current Mine Puan already
+   * unlocks). Written verbatim — the render-time unlock guards still govern
+   * activation, so a locked cloud selection can never become active.
+   */
+  hydrateCustomization(profileId: string, preferences: CloudChildPreferences): Promise<void>;
   /** Local profile that maps to `remoteChildId`, or null when none is owned. */
   findProfileByRemoteChildId(remoteChildId: string): Promise<string | null>;
 }

@@ -16,7 +16,7 @@ import { reminderSettingsService } from '@/features/reminders';
 import { ChildDataSyncUseCases } from './ChildDataSyncUseCases';
 import {
   ChildPreferencesSyncUseCases,
-  type ParentPreferenceAccessors,
+  type ChildPreferenceAccessors,
 } from './ChildPreferencesSyncUseCases';
 import { ProfileSyncUseCases } from './ProfileSyncUseCases';
 
@@ -24,20 +24,24 @@ let useCasesPromise: Promise<ProfileSyncUseCases | null> | undefined;
 let childDataSyncPromise: Promise<ChildDataSyncUseCases | null> | undefined;
 let childPreferencesSyncPromise: Promise<ChildPreferencesSyncUseCases | null> | undefined;
 
-const parentPreferenceAccessors: ParentPreferenceAccessors = {
-  readVoice: (parentUserId) => getBrushingVoiceProfile(parentUserId),
-  hasStoredVoice: (parentUserId) => hasStoredVoiceProfile(parentUserId),
-  writeVoice: (parentUserId, voice) => setBrushingVoiceProfile(parentUserId, voice),
-  async readReminders(parentUserId) {
-    const settings = await reminderSettingsService.get(parentUserId);
+const childPreferenceAccessors: ChildPreferenceAccessors = {
+  readVoice: (parentUserId, childProfileId) =>
+    getBrushingVoiceProfile(parentUserId, childProfileId),
+  hasStoredVoice: (parentUserId, childProfileId) =>
+    hasStoredVoiceProfile(parentUserId, childProfileId),
+  writeVoice: (parentUserId, childProfileId, voice) =>
+    setBrushingVoiceProfile(parentUserId, childProfileId, voice),
+  async readReminders(parentUserId, childProfileId) {
+    const settings = await reminderSettingsService.get(parentUserId, childProfileId);
     return {
       morning: { enabled: settings.morning.enabled, time: settings.morning.time },
       evening: { enabled: settings.evening.enabled, time: settings.evening.time },
     };
   },
-  hasStoredReminders: (parentUserId) => reminderSettingsService.hasStoredSettings(parentUserId),
-  writeReminders: (parentUserId, values) =>
-    reminderSettingsService.hydratePreferences(parentUserId, values),
+  hasStoredReminders: (parentUserId, childProfileId) =>
+    reminderSettingsService.hasStoredSettings(parentUserId, childProfileId),
+  applyRecoveredReminders: (parentUserId, childProfileId, values) =>
+    reminderSettingsService.applyRecoveredPreferences(parentUserId, childProfileId, values),
 };
 
 export function getProfileSyncUseCases(): Promise<ProfileSyncUseCases | null> {
@@ -155,7 +159,7 @@ export function getChildPreferencesSyncUseCases(): Promise<ChildPreferencesSyncU
       ? new ChildPreferencesSyncUseCases(
           new SQLiteChildPreferenceSyncRepository(database),
           new SupabaseChildPreferencesRepository(client),
-          parentPreferenceAccessors,
+          childPreferenceAccessors,
         )
       : null;
   });

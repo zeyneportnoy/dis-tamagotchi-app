@@ -6,7 +6,7 @@ import type {
 
 import {
   ChildPreferencesSyncUseCases,
-  type ParentPreferenceAccessors,
+  type ChildPreferenceAccessors,
 } from '../ChildPreferencesSyncUseCases';
 
 const roomConfig = {
@@ -14,6 +14,19 @@ const roomConfig = {
   placements: { 'pastel-toy-box': { scale: 1, x: 0.4, y: 0.7 } },
   selectedRoomMaterials: ['pastel-toy-box'],
   version: 1,
+};
+
+const cloudRow: CloudChildPreferences = {
+  childId: 'child-remote-1',
+  selectedBrushId: 'star-brush',
+  selectedBackgroundId: 'cloud-room',
+  selectedEffectId: 'gold-sparkle',
+  roomConfiguration: roomConfig,
+  voiceGuide: 'samet',
+  morningReminder: { enabled: true, time: '07:15' },
+  eveningReminder: { enabled: true, time: '21:00' },
+  dentistReminderEnabled: true,
+  dentistLastVisitDate: null,
 };
 
 const local = (
@@ -42,9 +55,9 @@ const cloud = (
   listOwned: jest.fn().mockResolvedValue(rows),
 });
 
-const parents = (
-  overrides: Partial<jest.Mocked<ParentPreferenceAccessors>> = {},
-): jest.Mocked<ParentPreferenceAccessors> => ({
+const prefs = (
+  overrides: Partial<jest.Mocked<ChildPreferenceAccessors>> = {},
+): jest.Mocked<ChildPreferenceAccessors> => ({
   readVoice: jest.fn().mockResolvedValue('samet'),
   hasStoredVoice: jest.fn().mockResolvedValue(false),
   writeVoice: jest.fn().mockResolvedValue(undefined),
@@ -53,14 +66,14 @@ const parents = (
     evening: { enabled: false, time: '20:00' },
   }),
   hasStoredReminders: jest.fn().mockResolvedValue(false),
-  writeReminders: jest.fn().mockResolvedValue(undefined),
+  applyRecoveredReminders: jest.fn().mockResolvedValue(undefined),
   ...overrides,
 });
 
 describe('ChildPreferencesSyncUseCases', () => {
   it('pushes a full preference snapshot scoped to the remote child id', async () => {
     const cloudRepo = cloud();
-    await new ChildPreferencesSyncUseCases(local(), cloudRepo, parents()).pushForProfile('profile-1');
+    await new ChildPreferencesSyncUseCases(local(), cloudRepo, prefs()).pushForProfile('profile-1');
     expect(cloudRepo.upsert).toHaveBeenCalledWith({
       childId: 'child-remote-1',
       selectedBrushId: 'star-brush',
@@ -75,15 +88,22 @@ describe('ChildPreferencesSyncUseCases', () => {
     });
   });
 
+  it('reads voice + reminders scoped to the specific child', async () => {
+    const prefAccessors = prefs();
+    await new ChildPreferencesSyncUseCases(local(), cloud(), prefAccessors).pushForProfile('profile-1');
+    expect(prefAccessors.readVoice).toHaveBeenCalledWith('parent-1', 'profile-1');
+    expect(prefAccessors.readReminders).toHaveBeenCalledWith('parent-1', 'profile-1');
+  });
+
   it('does not push until the child profile itself is synced', async () => {
     const cloudRepo = cloud();
     const localRepo = local({ resolveRemoteChildId: jest.fn().mockResolvedValue(null) });
-    await new ChildPreferencesSyncUseCases(localRepo, cloudRepo, parents()).pushForProfile('profile-1');
+    await new ChildPreferencesSyncUseCases(localRepo, cloudRepo, prefs()).pushForProfile('profile-1');
     expect(cloudRepo.upsert).not.toHaveBeenCalled();
     expect(localRepo.readCustomizationForPush).not.toHaveBeenCalled();
   });
 
-  it('pushes once per synced child on a parent-level preference change', async () => {
+  it('pushes each synced child with its own values on a change', async () => {
     const cloudRepo = cloud();
     const localRepo = local({
       listSyncedProfileIds: jest.fn().mockResolvedValue(['profile-a', 'profile-b']),
@@ -92,33 +112,20 @@ describe('ChildPreferencesSyncUseCases', () => {
         .mockResolvedValueOnce('remote-a')
         .mockResolvedValueOnce('remote-b'),
     });
-    await new ChildPreferencesSyncUseCases(localRepo, cloudRepo, parents()).pushForAllSyncedChildren();
+    await new ChildPreferencesSyncUseCases(localRepo, cloudRepo, prefs()).pushForAllSyncedChildren();
     expect(cloudRepo.upsert).toHaveBeenCalledTimes(2);
     expect(cloudRepo.upsert.mock.calls[0]?.[0].childId).toBe('remote-a');
     expect(cloudRepo.upsert.mock.calls[1]?.[0].childId).toBe('remote-b');
   });
 
   describe('recover', () => {
-    const cloudRow: CloudChildPreferences = {
-      childId: 'child-remote-1',
-      selectedBrushId: 'star-brush',
-      selectedBackgroundId: 'cloud-room',
-      selectedEffectId: 'gold-sparkle',
-      roomConfiguration: roomConfig,
-      voiceGuide: 'samet',
-      morningReminder: { enabled: true, time: '07:15' },
-      eveningReminder: { enabled: true, time: '21:00' },
-      dentistReminderEnabled: true,
-      dentistLastVisitDate: null,
-    };
-
-    it('hydrates customization + parent preferences when nothing is stored locally', async () => {
+    it('hydrates customization + child voice + reschedules reminders when nothing is stored locally', async () => {
       const localRepo = local();
-      const parentAccessors = parents();
-      await new ChildPreferencesSyncUseCases(localRepo, cloud([cloudRow]), parentAccessors).recover();
-      expect(localRepo.hydrateCustomization).toHaveBeenCalledWith('profile-1', roomConfig);
-      expect(parentAccessors.writeVoice).toHaveBeenCalledWith('parent-1', 'samet');
-      expect(parentAccessors.writeReminders).toHaveBeenCalledWith('parent-1', {
+      const prefAccessors = prefs();
+      await new ChildPreferencesSyncUseCases(localRepo, cloud([cloudRow]), prefAccessors).recover();
+      expect(localRepo.hydrateCustomization).toHaveBeenCalledWith('profile-1', cloudRow);
+      expect(prefAccessors.writeVoice).toHaveBeenCalledWith('parent-1', 'profile-1', 'samet');
+      expect(prefAccessors.applyRecoveredReminders).toHaveBeenCalledWith('parent-1', 'profile-1', {
         morning: { enabled: true, time: '07:15' },
         evening: { enabled: true, time: '21:00' },
       });
@@ -126,23 +133,14 @@ describe('ChildPreferencesSyncUseCases', () => {
 
     it('never overwrites local customization / voice / reminders that already exist', async () => {
       const localRepo = local({ hasLocalCustomization: jest.fn().mockResolvedValue(true) });
-      const parentAccessors = parents({
+      const prefAccessors = prefs({
         hasStoredVoice: jest.fn().mockResolvedValue(true),
         hasStoredReminders: jest.fn().mockResolvedValue(true),
       });
-      await new ChildPreferencesSyncUseCases(localRepo, cloud([cloudRow]), parentAccessors).recover();
+      await new ChildPreferencesSyncUseCases(localRepo, cloud([cloudRow]), prefAccessors).recover();
       expect(localRepo.hydrateCustomization).not.toHaveBeenCalled();
-      expect(parentAccessors.writeVoice).not.toHaveBeenCalled();
-      expect(parentAccessors.writeReminders).not.toHaveBeenCalled();
-    });
-
-    it('hydrates the cloud selection verbatim — the render-time unlock guard still governs it', async () => {
-      // Recovery does not resolve locked/unlocked; it stores the raw choice and
-      // the existing effective*Key guards keep a locked item inactive.
-      const localRepo = local();
-      await new ChildPreferencesSyncUseCases(localRepo, cloud([cloudRow]), parents()).recover();
-      const [, storedConfig] = localRepo.hydrateCustomization.mock.calls[0] ?? [];
-      expect((storedConfig as typeof roomConfig).developerEquipped.brush).toBe('star-brush');
+      expect(prefAccessors.writeVoice).not.toHaveBeenCalled();
+      expect(prefAccessors.applyRecoveredReminders).not.toHaveBeenCalled();
     });
   });
 });

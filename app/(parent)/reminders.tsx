@@ -13,6 +13,7 @@ import {
   spacing,
   typography,
 } from '@/design-system';
+import { getFamilyUseCases } from '@/application/family';
 import { syncAllChildPreferences } from '@/application/sync';
 import { useAuth } from '@/features/auth';
 import {
@@ -36,24 +37,39 @@ export default function BrushingRemindersScreen() {
   const { t } = useTranslation();
   const { session } = useAuth();
   const [settings, setSettings] = useState<BrushingReminderSettings>(defaultReminderSettings);
+  const [childProfileId, setChildProfileId] = useState<string | null>(null);
   const [busy, setBusy] = useState<ReminderSlot | null>(null);
   const [testBusy, setTestBusy] = useState(false);
   const [testScheduled, setTestScheduled] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (session?.userId) void reminderSettingsService.get(session.userId).then(setSettings);
+    const userId = session?.userId;
+    if (!userId) return;
+    void getFamilyUseCases()
+      .then((useCases) => useCases.getActiveProfile())
+      .then(async (activeProfile) => {
+        if (!activeProfile) return;
+        setChildProfileId(activeProfile.id);
+        setSettings(await reminderSettingsService.get(userId, activeProfile.id));
+      })
+      .catch(() => undefined);
   }, [session?.userId]);
 
   const update = async (
     slot: ReminderSlot,
     change: Readonly<{ enabled?: boolean; time?: string }>,
   ): Promise<void> => {
-    if (!session?.userId || busy) return;
+    if (!session?.userId || !childProfileId || busy) return;
     setBusy(slot);
     setError(null);
     try {
-      const result = await reminderSettingsService.update(session.userId, slot, change);
+      const result = await reminderSettingsService.update(
+        session.userId,
+        childProfileId,
+        slot,
+        change,
+      );
       setSettings(result.settings);
       void syncAllChildPreferences();
       if (result.permissionDenied) setError(t('parent.reminders.permissionRequired'));

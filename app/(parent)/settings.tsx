@@ -31,11 +31,14 @@ export default function ParentSettingsScreen() {
   const sametPreview = useAudioPlayer(brushingVoiceCues.samet[0].source);
 
   useEffect(() => {
-    if (!session?.userId) return;
-    void getBrushingVoiceProfile(session.userId).then(setVoiceProfile);
+    const userId = session?.userId;
+    if (!userId) return;
     void getFamilyUseCases()
       .then((useCases) => useCases.getActiveProfile())
-      .then(setChildProfile)
+      .then(async (activeProfile) => {
+        setChildProfile(activeProfile);
+        if (activeProfile) setVoiceProfile(await getBrushingVoiceProfile(userId, activeProfile.id));
+      })
       .catch(() => setDateError(true));
   }, [session?.userId]);
 
@@ -62,10 +65,10 @@ export default function ParentSettingsScreen() {
   };
 
   const selectVoiceProfile = (nextProfile: BrushingVoiceProfile): void => {
-    if (!session?.userId || voiceProfile === null) return;
+    if (!session?.userId || !childProfile || voiceProfile === null) return;
     const previousProfile = voiceProfile;
     setVoiceProfile(nextProfile);
-    void setBrushingVoiceProfile(session.userId, nextProfile)
+    void setBrushingVoiceProfile(session.userId, childProfile.id, nextProfile)
       .then(() => syncAllChildPreferences())
       .catch(() => {
         setVoiceProfile(previousProfile);

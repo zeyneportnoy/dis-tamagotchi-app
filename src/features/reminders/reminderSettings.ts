@@ -26,8 +26,13 @@ type NotificationGateway = {
   scheduleTest(body: string): Promise<string>;
 };
 
-const storageKey = (parentId: string) => `parent:${parentId}:brushing-reminders:v1`;
+/** Pre-per-child key: still read as a seed value, never deleted. */
+const legacyParentStorageKey = (parentId: string) => `parent:${parentId}:brushing-reminders:v1`;
+const storageKey = (parentId: string, childProfileId: string) =>
+  `parent:${parentId}:child:${childProfileId}:brushing-reminders:v1`;
 const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+const sanitizeTime = (time: string, slot: ReminderSlot): string =>
+  timePattern.test(time) ? time : defaultReminderSettings[slot].time;
 
 function parseSettings(value: string | null): BrushingReminderSettings {
   if (!value) return defaultReminderSettings;
@@ -56,49 +61,81 @@ export class ReminderSettingsService {
     private readonly notifications: NotificationGateway = expoNotificationGateway,
   ) {}
 
-  async get(parentId: string): Promise<BrushingReminderSettings> {
-    return parseSettings(await this.storage.getItem(storageKey(parentId)));
+  /**
+   * Reminder settings are now per child. When no child-specific record exists
+   * yet it is seeded from the legacy parent-level record (kept intact) so an
+   * existing family keeps its times.
+   */
+  async get(parentId: string, childProfileId: string): Promise<BrushingReminderSettings> {
+    const child = await this.storage.getItem(storageKey(parentId, childProfileId));
+    if (child !== null) return parseSettings(child);
+
+    const legacy = await this.storage.getItem(legacyParentStorageKey(parentId));
+    if (legacy === null) return defaultReminderSettings;
+    const seeded = parseSettings(legacy);
+    await this.storage.setItem(storageKey(parentId, childProfileId), JSON.stringify(seeded));
+    return seeded;
   }
 
-  /** True once reminder settings have been explicitly stored (gates cloud recovery). */
-  async hasStoredSettings(parentId: string): Promise<boolean> {
-    return (await this.storage.getItem(storageKey(parentId))) !== null;
+  /** True once a child-specific record has been stored (gates cloud recovery). */
+  async hasStoredSettings(parentId: string, childProfileId: string): Promise<boolean> {
+    return (await this.storage.getItem(storageKey(parentId, childProfileId))) !== null;
   }
 
   /**
-   * Writes reminder preference values (enabled + time) without touching local
-   * notification scheduling. Used only by cloud recovery when nothing is stored
-   * locally yet; a later `update()` reschedules on device.
+   * Cloud-recovery entry point: persist the recovered enabled/time values for a
+   * child AND actually (re)schedule any enabled slot using the existing
+   * notification gateway. Idempotent — recovery only calls this when nothing is
+   * stored locally, so it runs once per child and never duplicates a schedule.
+   * Permission is only used if already granted; a denied/undetermined state
+   * keeps `enabled` as recovered (no prompt, no crash) for a later UI `update()`.
    */
-  async hydratePreferences(
+  async applyRecoveredPreferences(
     parentId: string,
+    childProfileId: string,
     values: Readonly<Record<ReminderSlot, Readonly<{ enabled: boolean; time: string }>>>,
   ): Promise<void> {
-    const settings: BrushingReminderSettings = {
+    const settings: Record<ReminderSlot, ReminderSlotSettings> = {
       morning: {
         enabled: values.morning.enabled,
         notificationId: null,
-        time: timePattern.test(values.morning.time)
-          ? values.morning.time
-          : defaultReminderSettings.morning.time,
+        time: sanitizeTime(values.morning.time, 'morning'),
       },
       evening: {
         enabled: values.evening.enabled,
         notificationId: null,
-        time: timePattern.test(values.evening.time)
-          ? values.evening.time
-          : defaultReminderSettings.evening.time,
+        time: sanitizeTime(values.evening.time, 'evening'),
       },
     };
-    await this.storage.setItem(storageKey(parentId), JSON.stringify(settings));
+    const key = storageKey(parentId, childProfileId);
+    await this.storage.setItem(key, JSON.stringify(settings));
+
+    const enabledSlots = (['morning', 'evening'] as const).filter((slot) => settings[slot].enabled);
+    if (enabledSlots.length === 0) return;
+    if ((await this.notifications.getPermission()) !== 'granted') return;
+
+    for (const slot of enabledSlots) {
+      try {
+        const notificationId = await this.notifications.schedule(
+          slot,
+          settings[slot].time,
+          i18n.t(`parent.reminders.messages.${slot}.0`),
+        );
+        settings[slot] = { ...settings[slot], notificationId };
+        await this.storage.setItem(key, JSON.stringify(settings));
+      } catch {
+        // Keep the recovered preference; a UI update() reschedules later.
+      }
+    }
   }
 
   async update(
     parentId: string,
+    childProfileId: string,
     slot: ReminderSlot,
     update: Readonly<{ enabled?: boolean; time?: string }>,
   ): Promise<{ permissionDenied: boolean; settings: BrushingReminderSettings }> {
-    const current = await this.get(parentId);
+    const current = await this.get(parentId, childProfileId);
     const previous = current[slot];
     const desired = { ...previous, ...update };
     if (!timePattern.test(desired.time)) throw new Error('INVALID_REMINDER_TIME');
@@ -118,7 +155,7 @@ export class ReminderSettingsService {
         )
       : null;
     const settings = { ...current, [slot]: { ...desired, notificationId } };
-    await this.storage.setItem(storageKey(parentId), JSON.stringify(settings));
+    await this.storage.setItem(storageKey(parentId, childProfileId), JSON.stringify(settings));
     return { permissionDenied: false, settings };
   }
 

@@ -7,21 +7,23 @@ import type {
 } from '@/domain/sync';
 
 /**
- * Voice + morning/evening reminder preferences are stored per parent locally,
- * while `child_preferences` is per child — so the parent's current values are
- * mirrored onto every synced child. These accessors keep this use case free of
- * feature-module imports.
+ * Voice + morning/evening reminder preferences are now stored per child. These
+ * accessors keep this use case free of feature-module imports; every call is
+ * scoped to a specific `(parentUserId, childProfileId)`.
  */
-export type ParentPreferenceAccessors = Readonly<{
-  readVoice(parentUserId: string): Promise<CloudVoiceGuide>;
-  hasStoredVoice(parentUserId: string): Promise<boolean>;
-  writeVoice(parentUserId: string, voice: CloudVoiceGuide): Promise<void>;
+export type ChildPreferenceAccessors = Readonly<{
+  readVoice(parentUserId: string, childProfileId: string): Promise<CloudVoiceGuide>;
+  hasStoredVoice(parentUserId: string, childProfileId: string): Promise<boolean>;
+  writeVoice(parentUserId: string, childProfileId: string, voice: CloudVoiceGuide): Promise<void>;
   readReminders(
     parentUserId: string,
+    childProfileId: string,
   ): Promise<Readonly<{ morning: CloudReminderPreference; evening: CloudReminderPreference }>>;
-  hasStoredReminders(parentUserId: string): Promise<boolean>;
-  writeReminders(
+  hasStoredReminders(parentUserId: string, childProfileId: string): Promise<boolean>;
+  /** Persists recovered reminder values AND reschedules any enabled slot on device. */
+  applyRecoveredReminders(
     parentUserId: string,
+    childProfileId: string,
     values: Readonly<{
       morning: Readonly<{ enabled: boolean; time: string }>;
       evening: Readonly<{ enabled: boolean; time: string }>;
@@ -33,7 +35,7 @@ export class ChildPreferencesSyncUseCases {
   constructor(
     private readonly local: LocalChildPreferenceSyncRepository,
     private readonly cloud: CloudChildPreferencesRepository,
-    private readonly parents: ParentPreferenceAccessors,
+    private readonly prefs: ChildPreferenceAccessors,
   ) {}
 
   private async buildSnapshot(
@@ -45,13 +47,12 @@ export class ChildPreferencesSyncUseCases {
       this.local.resolveParentUserId(profileId),
       this.local.dentistReminderEnabled(profileId),
     ]);
-    const voiceGuide = parentUserId ? await this.parents.readVoice(parentUserId) : null;
+    const voiceGuide = parentUserId
+      ? await this.prefs.readVoice(parentUserId, profileId)
+      : null;
     const reminders = parentUserId
-      ? await this.parents.readReminders(parentUserId)
-      : {
-          morning: { enabled: false, time: null },
-          evening: { enabled: false, time: null },
-        };
+      ? await this.prefs.readReminders(parentUserId, profileId)
+      : { morning: { enabled: false, time: null }, evening: { enabled: false, time: null } };
     return {
       childId,
       selectedBrushId: customization.selectedBrushId,
@@ -81,33 +82,31 @@ export class ChildPreferencesSyncUseCases {
   }
 
   /**
-   * Fresh-install recovery: hydrate customization for children with no local
-   * customization row, and per-parent voice / reminder preferences when nothing
-   * is stored locally. Existing local values are never overwritten. The
-   * customization is written verbatim — the current-Mine-Puan unlock guards at
-   * render time still decide what activates, so a locked cloud selection can
-   * never become active.
+   * Fresh-install recovery. For every owned cloud row: hydrate customization
+   * into the production source of truth when nothing is stored locally, and
+   * hydrate that child's voice / reminder preferences when nothing is stored
+   * locally — rescheduling enabled reminders on device. Existing local values
+   * are never overwritten. Customization is written verbatim; the current-Mine-
+   * Puan unlock guards still decide what activates, so a locked cloud selection
+   * can never become active.
    */
   async recover(): Promise<void> {
-    const rows = await this.cloud.listOwned();
-    const seenParents = new Set<string>();
-    for (const row of rows) {
+    for (const row of await this.cloud.listOwned()) {
       const profileId = await this.local.findProfileByRemoteChildId(row.childId);
       if (!profileId) continue;
 
       if (!(await this.local.hasLocalCustomization(profileId))) {
-        await this.local.hydrateCustomization(profileId, row.roomConfiguration);
+        await this.local.hydrateCustomization(profileId, row);
       }
 
       const parentUserId = await this.local.resolveParentUserId(profileId);
-      if (!parentUserId || seenParents.has(parentUserId)) continue;
-      seenParents.add(parentUserId);
+      if (!parentUserId) continue;
 
-      if (row.voiceGuide && !(await this.parents.hasStoredVoice(parentUserId))) {
-        await this.parents.writeVoice(parentUserId, row.voiceGuide);
+      if (row.voiceGuide && !(await this.prefs.hasStoredVoice(parentUserId, profileId))) {
+        await this.prefs.writeVoice(parentUserId, profileId, row.voiceGuide);
       }
-      if (!(await this.parents.hasStoredReminders(parentUserId))) {
-        await this.parents.writeReminders(parentUserId, {
+      if (!(await this.prefs.hasStoredReminders(parentUserId, profileId))) {
+        await this.prefs.applyRecoveredReminders(parentUserId, profileId, {
           morning: reminderValues(row.morningReminder, '08:00'),
           evening: reminderValues(row.eveningReminder, '20:30'),
         });

@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
@@ -13,14 +13,8 @@ import {
   spacing,
   typography,
 } from '@/design-system';
-import { syncAllChildPreferences } from '@/application/sync';
-import { useAuth } from '@/features/auth';
-import {
-  defaultReminderSettings,
-  reminderSettingsService,
-  type BrushingReminderSettings,
-  type ReminderSlot,
-} from '@/features/reminders';
+import { defaultReminderSettings, type ReminderSlot } from '@/features/reminders';
+import { useOnboardingDraft } from '@/features/onboarding/OnboardingDraftContext';
 
 const minutesFromTime = (time: string): number => {
   const [hours = '0', minutes = '0'] = time.split(':');
@@ -34,51 +28,29 @@ const timeFromMinutes = (minutes: number): string => {
 
 export default function OnboardingRemindersScreen() {
   const { t } = useTranslation();
-  const { session } = useAuth();
+  const draft = useOnboardingDraft();
   const [choice, setChoice] = useState<'enable' | 'skip' | null>(null);
-  const [settings, setSettings] = useState<BrushingReminderSettings>(defaultReminderSettings);
-  const [loaded, setLoaded] = useState(!session?.userId);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    if (!session?.userId) return;
-    void reminderSettingsService
-      .get(session.userId)
-      .then(setSettings)
-      .catch(() => undefined)
-      .finally(() => setLoaded(true));
-  }, [session?.userId]);
+  const [times, setTimes] = useState({
+    morning: draft.morningReminderTime || defaultReminderSettings.morning.time,
+    evening: draft.eveningReminderTime || defaultReminderSettings.evening.time,
+  });
 
   const shiftTime = (slot: ReminderSlot, delta: number): void => {
-    setSettings((current) => ({
+    setTimes((current) => ({
       ...current,
-      [slot]: {
-        ...current[slot],
-        time: timeFromMinutes(minutesFromTime(current[slot].time) + delta),
-      },
+      [slot]: timeFromMinutes(minutesFromTime(current[slot]) + delta),
     }));
   };
 
-  const saveAndContinue = async (): Promise<void> => {
-    if (!session?.userId || saving) return;
-    setSaving(true);
-    setError(false);
-    try {
-      await reminderSettingsService.update(session.userId, 'morning', {
-        enabled: true,
-        time: settings.morning.time,
-      });
-      await reminderSettingsService.update(session.userId, 'evening', {
-        enabled: true,
-        time: settings.evening.time,
-      });
-      void syncAllChildPreferences();
-      router.push('/onboarding/summary');
-    } catch {
-      setError(true);
-      setSaving(false);
-    }
+  // The child profile is created on the summary screen; store the choice on the
+  // onboarding draft and apply it per-child there.
+  const saveAndContinue = (): void => {
+    draft.setReminderChoice({
+      enabled: true,
+      morningTime: times.morning,
+      eveningTime: times.evening,
+    });
+    router.push('/onboarding/summary');
   };
 
   return (
@@ -90,27 +62,24 @@ export default function OnboardingRemindersScreen() {
           </Text>
           <Text style={styles.center}>{t('onboarding.reminders.body')}</Text>
         </View>
-        {loaded ? (
-          <View accessibilityRole="radiogroup" style={styles.choices}>
-            <SelectionCard
-              label={t('onboarding.reminders.enable')}
-              onPress={() => setChoice('enable')}
-              selected={choice === 'enable'}
-              testID="enable-onboarding-reminders"
-            />
-            <SelectionCard
-              label={t('onboarding.reminders.skip')}
-              onPress={() => {
-                setChoice('skip');
-                router.push('/onboarding/summary');
-              }}
-              selected={choice === 'skip'}
-              testID="skip-onboarding-reminders"
-            />
-          </View>
-        ) : (
-          <Text style={styles.center}>{t('common.loading')}</Text>
-        )}
+        <View accessibilityRole="radiogroup" style={styles.choices}>
+          <SelectionCard
+            label={t('onboarding.reminders.enable')}
+            onPress={() => setChoice('enable')}
+            selected={choice === 'enable'}
+            testID="enable-onboarding-reminders"
+          />
+          <SelectionCard
+            label={t('onboarding.reminders.skip')}
+            onPress={() => {
+              setChoice('skip');
+              draft.setReminderChoice({ enabled: false });
+              router.push('/onboarding/summary');
+            }}
+            selected={choice === 'skip'}
+            testID="skip-onboarding-reminders"
+          />
+        </View>
         {choice === 'enable' ? (
           <View style={styles.times}>
             {(['morning', 'evening'] as const).map((slot) => (
@@ -127,7 +96,7 @@ export default function OnboardingRemindersScreen() {
                   >
                     <Text style={styles.timeButtonLabel}>−</Text>
                   </Pressable>
-                  <Text style={styles.time}>{settings[slot].time}</Text>
+                  <Text style={styles.time}>{times[slot]}</Text>
                   <Pressable
                     accessibilityLabel={t('parent.reminders.later', {
                       slot: t(`parent.reminders.${slot}`),
@@ -141,11 +110,9 @@ export default function OnboardingRemindersScreen() {
                 </View>
               </View>
             ))}
-            {error ? <Text style={styles.error}>{t('onboarding.reminders.error')}</Text> : null}
             <Button
-              disabled={saving}
-              label={saving ? t('common.saving') : t('onboarding.reminders.save')}
-              onPress={() => void saveAndContinue()}
+              label={t('onboarding.reminders.save')}
+              onPress={saveAndContinue}
               testID="save-onboarding-reminders"
             />
           </View>
@@ -160,7 +127,6 @@ const styles = StyleSheet.create({
   choices: { gap: spacing.sm },
   content: { flexGrow: 1, gap: spacing.lg, justifyContent: 'center', paddingBottom: spacing.lg },
   copy: { gap: spacing.sm },
-  error: { color: colors.danger, fontWeight: '800' },
   screen: { justifyContent: 'flex-start' },
   time: {
     color: colors.brandPrimary,

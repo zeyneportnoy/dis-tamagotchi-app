@@ -731,7 +731,7 @@ export default function BrushingScreen() {
       profile: 'gokce' as const,
     });
     void Promise.all([
-      getBrushingVoiceProfile(session.userId),
+      getBrushingVoiceProfile(session.userId, profile.id),
       getNicknamePersonalizationEnabled(session.userId, profile.id),
       ...personalizedVoiceCueIndexes.map((cueIndex) =>
         getCachedPersonalizedVoiceCue(cueInput(cueIndex)),
