@@ -38,6 +38,7 @@ describe('bootstrap route', () => {
     mockGetActiveProfile.mockResolvedValue({
       id: 'profile-1',
       nickname: 'Ege',
+      dateOfBirth: '2020-01-15',
       ageBand: '4_6',
     });
   });
@@ -53,6 +54,7 @@ describe('bootstrap route', () => {
     mockGetActiveProfile.mockResolvedValue({
       id: 'profile-legacy',
       nickname: 'Ege',
+      dateOfBirth: null,
       ageBand: '6_8',
     });
     const view = await render(<Index />);

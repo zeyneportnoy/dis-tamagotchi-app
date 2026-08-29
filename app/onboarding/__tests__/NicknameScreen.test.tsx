@@ -11,6 +11,7 @@ jest.mock('@/features/onboarding/OnboardingDraftContext', () => ({
   useOnboardingDraft: () => ({
     ageBand: null,
     avatarId: null,
+    dateOfBirth: null,
     nickname: '',
     profileId: null,
     setNickname: mockSetNickname,

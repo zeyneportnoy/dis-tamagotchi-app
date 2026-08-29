@@ -3,6 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
   addCalendarMonths,
+  ageBandFromDateOfBirth,
   createChildProfileSchema,
   type ChildProfile,
   type ChildProfileRepository,
@@ -18,6 +19,7 @@ type ProfileRow = {
   id: string;
   family_id: string;
   nickname: string;
+  date_of_birth: string | null;
   age_band: StoredAgeBand;
   avatar_id: string;
   created_at: string;
@@ -46,6 +48,7 @@ const mapProfile = (row: ProfileRow): ChildProfile => ({
   id: row.id,
   familyId: row.family_id,
   nickname: row.nickname,
+  dateOfBirth: row.date_of_birth,
   ageBand: row.age_band,
   avatarId: normalizeAvatarKey(row.avatar_id),
   createdAt: row.created_at,
@@ -70,31 +73,52 @@ export class SQLiteChildProfileRepository implements ChildProfileRepository {
     return parentId;
   }
 
+  private async refreshDerivedAgeBand(row: ProfileRow): Promise<ProfileRow> {
+    if (!row.date_of_birth) return row;
+    const ageBand = ageBandFromDateOfBirth(row.date_of_birth, new Date(this.now()));
+    if (!ageBand || ageBand === row.age_band) return row;
+    const updatedAt = this.now();
+    await this.database.runAsync(
+      `UPDATE child_profiles SET age_band = ?, sync_status = 'pending', updated_at = ?
+       WHERE id = ? AND parent_auth_user_id = ?`,
+      ageBand,
+      updatedAt,
+      row.id,
+      row.parent_auth_user_id,
+    );
+    return { ...row, age_band: ageBand, sync_status: 'pending', updated_at: updatedAt };
+  }
+
   async create(rawInput: CreateChildProfileInput): Promise<ChildProfile> {
     const input = createChildProfileSchema.parse(rawInput);
     const parentId = await this.requireActiveParentId();
+    const createdAt = this.now();
+    const ageBand = ageBandFromDateOfBirth(input.dateOfBirth, new Date(createdAt));
+    if (!ageBand) throw new Error('DATE_OF_BIRTH_OUT_OF_RANGE');
     const profile: ChildProfile = {
       id: this.createId(),
       familyId: input.familyId,
       nickname: input.nickname,
-      ageBand: input.ageBand,
+      dateOfBirth: input.dateOfBirth,
+      ageBand,
       avatarId: input.avatarId,
-      createdAt: this.now(),
+      createdAt,
       archivedAt: null,
       remoteId: null,
       parentAuthUserId: parentId,
       syncStatus: 'pending',
-      updatedAt: this.now(),
+      updatedAt: createdAt,
     };
     await this.database.withTransactionAsync(async () => {
       await this.database.runAsync(
         `INSERT INTO child_profiles
-          (id, family_id, nickname, age_band, avatar_id, created_at, archived_at,
+          (id, family_id, nickname, date_of_birth, age_band, avatar_id, created_at, archived_at,
            remote_id, parent_auth_user_id, sync_status, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)`,
         profile.id,
         profile.familyId,
         profile.nickname,
+        profile.dateOfBirth,
         profile.ageBand,
         profile.avatarId,
         profile.createdAt,
@@ -152,7 +176,7 @@ export class SQLiteChildProfileRepository implements ChildProfileRepository {
       familyId,
       parentId,
     );
-    return rows.map(mapProfile);
+    return Promise.all(rows.map(async (row) => mapProfile(await this.refreshDerivedAgeBand(row))));
   }
 
   async getActive(): Promise<ChildProfile | null> {
@@ -167,7 +191,7 @@ export class SQLiteChildProfileRepository implements ChildProfileRepository {
       parentId,
       parentId,
     );
-    return row ? mapProfile(row) : null;
+    return row ? mapProfile(await this.refreshDerivedAgeBand(row)) : null;
   }
 
   async selectActive(profileId: string): Promise<void> {
@@ -200,20 +224,29 @@ export class SQLiteChildProfileRepository implements ChildProfileRepository {
       parentId,
     );
     if (!current) throw new Error('PROFILE_NOT_FOUND');
+    const updatedAt = this.now();
+    const dateOfBirth = input.dateOfBirth ?? current.date_of_birth;
+    const derivedAgeBand = dateOfBirth
+      ? ageBandFromDateOfBirth(dateOfBirth, new Date(updatedAt))
+      : null;
+    if (input.dateOfBirth && !derivedAgeBand) throw new Error('DATE_OF_BIRTH_OUT_OF_RANGE');
     const updated = {
       nickname: input.nickname ?? current.nickname,
-      ageBand: input.ageBand ?? current.age_band,
+      dateOfBirth,
+      ageBand: derivedAgeBand ?? input.ageBand ?? current.age_band,
       avatarId: input.avatarId ?? normalizeAvatarKey(current.avatar_id),
+      updatedAt,
     };
     await this.database.withTransactionAsync(async () => {
       await this.database.runAsync(
-        `UPDATE child_profiles SET nickname = ?, age_band = ?, avatar_id = ?,
+        `UPDATE child_profiles SET nickname = ?, date_of_birth = ?, age_band = ?, avatar_id = ?,
           sync_status = 'pending', updated_at = ?
           WHERE id = ? AND parent_auth_user_id = ?`,
         updated.nickname,
+        updated.dateOfBirth,
         updated.ageBand,
         updated.avatarId,
-        this.now(),
+        updated.updatedAt,
         profileId,
         parentId,
       );

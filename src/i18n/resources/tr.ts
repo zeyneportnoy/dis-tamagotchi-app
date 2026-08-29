@@ -3,6 +3,8 @@ export const tr = {
     common: {
       loading: 'Hazırlanıyor…',
       continue: 'Devam et',
+      cancel: 'Vazgeç',
+      done: 'Bitti',
       saving: 'Kaydediliyor…',
       errorTitle: 'Bir şeyler ters gitti',
       errorBody: 'Birlikte yeniden deneyebiliriz.',
@@ -116,6 +118,13 @@ export const tr = {
         fourSixHint: 'Birlikte fırçalayalım',
         sevenEleven: '7–11 yaş',
         sevenElevenHint: 'Ben hazırım!',
+      },
+      dateOfBirth: {
+        title: 'Doğum tarihi',
+        body: 'Sana yaşına uygun bir deneyim hazırlayabilmemiz için doğum tarihini seçelim.',
+        label: 'Doğum tarihi',
+        placeholder: 'Tarih seç',
+        error: '4–11 yaş aralığında geçerli bir doğum tarihi seçin.',
       },
       character: {
         title: 'Arkadaşını seç!',
@@ -442,6 +451,12 @@ export const tr = {
         open: 'Ayarlar',
         title: 'Ayarlar',
         developerTools: 'Geliştirici Araçları',
+        childProfile: {
+          title: 'Çocuk profili',
+          body: '{{name}} profilinin doğum tarihini buradan güncelleyebilirsiniz.',
+          dateOfBirth: 'Doğum tarihi',
+          error: 'Doğum tarihi güncellenemedi. Geçerli bir tarih seçip yeniden deneyin.',
+        },
         voiceGuide: {
           title: 'Sesli Rehber',
           body: 'Fırçalama sırasında duyulacak rehber sesini seçin.',

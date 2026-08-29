@@ -74,7 +74,7 @@ async function readHomeData(): Promise<HomeData | 'onboarding' | 'age-band-updat
     familyUseCases.listProfiles(),
   ]);
   if (!active) return 'onboarding';
-  if (isLegacyAgeBand(active.ageBand)) return 'age-band-update';
+  if (!active.dateOfBirth || isLegacyAgeBand(active.ageBand)) return 'age-band-update';
   const childUseCases = await getChildExperienceUseCases();
   const [progress, inventory, customization] = await Promise.all([
     childUseCases.getProgress(active.id),

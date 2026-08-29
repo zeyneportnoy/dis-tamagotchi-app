@@ -1,10 +1,12 @@
 import { router } from 'expo-router';
 import { useAudioPlayer } from 'expo-audio';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
+import { getFamilyUseCases, type ChildProfileViewModel } from '@/application/family';
 import { Button, Screen, ScreenHeader, Text, colors, radii, spacing } from '@/design-system';
+import { ageBandFromDateOfBirth } from '@/domain/family';
 import { useAuth } from '@/features/auth';
 import {
   brushingVoiceCues,
@@ -12,6 +14,7 @@ import {
   setBrushingVoiceProfile,
   type BrushingVoiceProfile,
 } from '@/features/brushing';
+import { DateOfBirthField } from '@/features/child-profile';
 import { isMoodLabAvailable } from '@/features/mood-lab/availability';
 
 const voiceProfiles: BrushingVoiceProfile[] = ['gokce', 'samet', 'off'];
@@ -20,13 +23,42 @@ export default function ParentSettingsScreen() {
   const { t } = useTranslation();
   const { session } = useAuth();
   const [voiceProfile, setVoiceProfile] = useState<BrushingVoiceProfile | null>(null);
+  const [childProfile, setChildProfile] = useState<ChildProfileViewModel | null>(null);
+  const [dateError, setDateError] = useState(false);
+  const [savingDate, setSavingDate] = useState(false);
   const gokcePreview = useAudioPlayer(brushingVoiceCues.gokce[0].source);
   const sametPreview = useAudioPlayer(brushingVoiceCues.samet[0].source);
 
   useEffect(() => {
     if (!session?.userId) return;
     void getBrushingVoiceProfile(session.userId).then(setVoiceProfile);
+    void getFamilyUseCases()
+      .then((useCases) => useCases.getActiveProfile())
+      .then(setChildProfile)
+      .catch(() => setDateError(true));
   }, [session?.userId]);
+
+  const updateDateOfBirth = async (dateOfBirth: string): Promise<void> => {
+    if (!childProfile || savingDate) return;
+    const ageBand = ageBandFromDateOfBirth(dateOfBirth);
+    if (!ageBand) {
+      setDateError(true);
+      return;
+    }
+    const previous = childProfile;
+    setDateError(false);
+    setSavingDate(true);
+    setChildProfile({ ...childProfile, dateOfBirth, ageBand });
+    try {
+      const useCases = await getFamilyUseCases();
+      setChildProfile(await useCases.updateProfile(childProfile.id, { dateOfBirth }));
+    } catch {
+      setChildProfile(previous);
+      setDateError(true);
+    } finally {
+      setSavingDate(false);
+    }
+  };
 
   const selectVoiceProfile = (nextProfile: BrushingVoiceProfile): void => {
     if (!session?.userId || voiceProfile === null) return;
@@ -52,82 +84,107 @@ export default function ParentSettingsScreen() {
         onBackPress={() => router.replace('/(parent)')}
         title={t('parent.settings.title')}
       />
-      <View style={styles.section}>
-        <Button
-          label={t('parent.reminders.title')}
-          onPress={() => router.push('/(parent)/reminders')}
-          variant="secondary"
-        />
-      </View>
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('parent.settings.voiceGuide.title')}</Text>
-        <Text style={styles.sectionBody}>{t('parent.settings.voiceGuide.body')}</Text>
-        <View accessibilityRole="radiogroup" style={styles.voiceOptions}>
-          {voiceProfiles.map((profile) => {
-            const selected = voiceProfile === profile;
-            return (
-              <View
-                key={profile}
-                style={[styles.voiceOption, selected && styles.voiceOptionSelected]}
-              >
-                <Pressable
-                  accessibilityLabel={t(`parent.settings.voiceGuide.options.${profile}.title`)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: selected, disabled: voiceProfile === null }}
-                  disabled={voiceProfile === null}
-                  onPress={() => selectVoiceProfile(profile)}
-                  style={({ pressed }) => [
-                    styles.voiceSelection,
-                    pressed && styles.voiceOptionPressed,
-                  ]}
-                  testID={`voice-profile-${profile}`}
-                >
-                  <View style={[styles.radio, selected && styles.radioSelected]}>
-                    {selected ? <View style={styles.radioDot} /> : null}
-                  </View>
-                  <Text style={[styles.voiceTitle, selected && styles.voiceTitleSelected]}>
-                    {t(`parent.settings.voiceGuide.options.${profile}.title`)}
-                  </Text>
-                </Pressable>
-                {profile !== 'off' ? (
-                  <Pressable
-                    accessibilityLabel={t('parent.settings.voiceGuide.listenTo', {
-                      name: t(`parent.settings.voiceGuide.options.${profile}.title`),
-                    })}
-                    accessibilityRole="button"
-                    onPress={() => playPreview(profile)}
-                    style={({ pressed }) => [
-                      styles.previewButton,
-                      pressed && styles.previewButtonPressed,
-                    ]}
-                  >
-                    <View style={styles.previewIcon} />
-                    <Text style={styles.previewLabel}>
-                      {t('parent.settings.voiceGuide.listen')}
-                    </Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            );
-          })}
-        </View>
-      </View>
-      {isMoodLabAvailable(__DEV__) ? (
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {childProfile ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t('parent.settings.childProfile.title')}</Text>
+            <Text style={styles.sectionBody}>
+              {t('parent.settings.childProfile.body', { name: childProfile.nickname })}
+            </Text>
+            <DateOfBirthField
+              cancelLabel={t('common.cancel')}
+              confirmLabel={t('common.done')}
+              dateOfBirth={childProfile.dateOfBirth}
+              label={t('parent.settings.childProfile.dateOfBirth')}
+              onChange={(dateOfBirth) => void updateDateOfBirth(dateOfBirth)}
+              placeholder={t('onboarding.dateOfBirth.placeholder')}
+              testID="parent-date-of-birth"
+            />
+            {savingDate ? <Text>{t('common.saving')}</Text> : null}
+            {dateError ? (
+              <Text style={styles.error}>{t('parent.settings.childProfile.error')}</Text>
+            ) : null}
+          </View>
+        ) : null}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('parent.settings.developerTools')}</Text>
           <Button
-            label={t('parent.moodLab.open')}
-            onPress={() => router.push('/(parent)/mood-lab')}
+            label={t('parent.reminders.title')}
+            onPress={() => router.push('/(parent)/reminders')}
             variant="secondary"
           />
         </View>
-      ) : null}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('parent.settings.voiceGuide.title')}</Text>
+          <Text style={styles.sectionBody}>{t('parent.settings.voiceGuide.body')}</Text>
+          <View accessibilityRole="radiogroup" style={styles.voiceOptions}>
+            {voiceProfiles.map((profile) => {
+              const selected = voiceProfile === profile;
+              return (
+                <View
+                  key={profile}
+                  style={[styles.voiceOption, selected && styles.voiceOptionSelected]}
+                >
+                  <Pressable
+                    accessibilityLabel={t(`parent.settings.voiceGuide.options.${profile}.title`)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: selected, disabled: voiceProfile === null }}
+                    disabled={voiceProfile === null}
+                    onPress={() => selectVoiceProfile(profile)}
+                    style={({ pressed }) => [
+                      styles.voiceSelection,
+                      pressed && styles.voiceOptionPressed,
+                    ]}
+                    testID={`voice-profile-${profile}`}
+                  >
+                    <View style={[styles.radio, selected && styles.radioSelected]}>
+                      {selected ? <View style={styles.radioDot} /> : null}
+                    </View>
+                    <Text style={[styles.voiceTitle, selected && styles.voiceTitleSelected]}>
+                      {t(`parent.settings.voiceGuide.options.${profile}.title`)}
+                    </Text>
+                  </Pressable>
+                  {profile !== 'off' ? (
+                    <Pressable
+                      accessibilityLabel={t('parent.settings.voiceGuide.listenTo', {
+                        name: t(`parent.settings.voiceGuide.options.${profile}.title`),
+                      })}
+                      accessibilityRole="button"
+                      onPress={() => playPreview(profile)}
+                      style={({ pressed }) => [
+                        styles.previewButton,
+                        pressed && styles.previewButtonPressed,
+                      ]}
+                    >
+                      <View style={styles.previewIcon} />
+                      <Text style={styles.previewLabel}>
+                        {t('parent.settings.voiceGuide.listen')}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              );
+            })}
+          </View>
+        </View>
+        {isMoodLabAvailable(__DEV__) ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t('parent.settings.developerTools')}</Text>
+            <Button
+              label={t('parent.moodLab.open')}
+              onPress={() => router.push('/(parent)/mood-lab')}
+              variant="secondary"
+            />
+          </View>
+        ) : null}
+      </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { gap: spacing.lg, justifyContent: 'flex-start' },
+  content: { gap: spacing.lg, paddingBottom: spacing.xl },
+  error: { color: colors.brandSecondary },
+  screen: { justifyContent: 'flex-start' },
   section: {
     backgroundColor: colors.white,
     borderRadius: radii.lg,

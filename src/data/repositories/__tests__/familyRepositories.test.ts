@@ -48,17 +48,17 @@ describe('family repositories', () => {
 
     await useCases.createProfile({
       nickname: 'Ege',
-      ageBand: '4_6',
+      dateOfBirth: '2020-01-15',
       avatarId: 'inci',
     });
     await useCases.createProfile({
       nickname: 'Ada',
-      ageBand: '7_11',
+      dateOfBirth: '2017-01-15',
       avatarId: 'akil',
     });
     await useCases.createProfile({
       nickname: 'Can',
-      ageBand: '4_6',
+      dateOfBirth: '2020-01-15',
       avatarId: 'kaan',
     });
 
@@ -112,12 +112,12 @@ describe('family repositories', () => {
     );
     await firstUseCases.createProfile({
       nickname: 'Ege',
-      ageBand: '4_6',
+      dateOfBirth: '2020-01-15',
       avatarId: 'inci',
     });
     await firstUseCases.createProfile({
       nickname: 'Ada',
-      ageBand: '7_11',
+      dateOfBirth: '2017-01-15',
       avatarId: 'akil',
     });
     await firstUseCases.selectActiveProfile(profileIds[0]);
@@ -147,13 +147,13 @@ describe('family repositories', () => {
     const first = await profiles.create({
       familyId: family.id,
       nickname: 'Ege',
-      ageBand: '4_6',
+      dateOfBirth: '2020-01-15',
       avatarId: 'inci',
     });
     const second = await profiles.create({
       familyId: family.id,
       nickname: 'Ada',
-      ageBand: '7_11',
+      dateOfBirth: '2017-01-15',
       avatarId: 'kaan',
     });
 
@@ -174,7 +174,7 @@ describe('family repositories', () => {
     const profile = await firstRepositories.profiles.create({
       familyId: family.id,
       nickname: 'Ege',
-      ageBand: '4_6',
+      dateOfBirth: '2020-01-15',
       avatarId: 'inci',
     });
     const now = () => new Date('2026-08-08T07:30:00.000Z');
@@ -207,7 +207,7 @@ describe('family repositories', () => {
     const profile = await profiles.create({
       familyId: family.id,
       nickname: 'Ege',
-      ageBand: '4_6',
+      dateOfBirth: '2020-01-15',
       avatarId: 'inci',
     });
     let current = new Date(2026, 7, 8, 8, 30);
@@ -286,6 +286,42 @@ describe('family repositories', () => {
     rmSync(directory, { recursive: true, force: true });
   });
 
+  it('re-derives and persists the age band when the seventh birthday is reached', async () => {
+    const database = new NodeSQLiteDatabase();
+    await migrateDatabase(database as unknown as SQLiteDatabase);
+    const sqlite = database as unknown as SQLiteDatabase;
+    let current = '2026-08-28T12:00:00.000Z';
+    const currentTime = () => current;
+    const families = new SQLiteFamilyRepository(sqlite, () => familyId, currentTime);
+    const profiles = new SQLiteChildProfileRepository(
+      sqlite,
+      () => profileIds[0],
+      currentTime,
+      async () => parentId,
+    );
+    const family = await families.createLocal();
+    const created = await profiles.create({
+      familyId: family.id,
+      nickname: 'Ege',
+      dateOfBirth: '2019-08-29',
+      avatarId: 'inci',
+    });
+    expect(created.ageBand).toBe('4_6');
+
+    current = '2026-08-29T00:01:00.000Z';
+    await expect(profiles.getActive()).resolves.toMatchObject({
+      dateOfBirth: '2019-08-29',
+      ageBand: '7_11',
+      avatarId: 'inci',
+    });
+    await expect(
+      database.getFirstAsync<{ age_band: string }>(
+        `SELECT age_band FROM child_profiles WHERE id = '${profileIds[0]}'`,
+      ),
+    ).resolves.toEqual({ age_band: '7_11' });
+    database.close();
+  });
+
   it('allows duplicate nicknames in one family and keeps profile identity distinct', async () => {
     const database = new NodeSQLiteDatabase();
     await migrateDatabase(database as unknown as SQLiteDatabase);
@@ -295,13 +331,13 @@ describe('family repositories', () => {
     const first = await profiles.create({
       familyId: family.id,
       nickname: 'Ege',
-      ageBand: '4_6',
+      dateOfBirth: '2020-01-15',
       avatarId: 'inci',
     });
     const second = await profiles.create({
       familyId: family.id,
       nickname: 'Ege',
-      ageBand: '7_11',
+      dateOfBirth: '2017-01-15',
       avatarId: 'akil',
     });
 
@@ -322,7 +358,7 @@ describe('family repositories', () => {
       profiles.create({
         familyId: '00000000-0000-4000-8000-000000000099',
         nickname: 'Ege',
-        ageBand: '4_6',
+        dateOfBirth: '2020-01-15',
         avatarId: 'inci',
       }),
     ).rejects.toThrow();
@@ -337,7 +373,7 @@ describe('family repositories', () => {
     const profile = await profiles.create({
       familyId: family.id,
       nickname: 'Ege',
-      ageBand: '4_6',
+      dateOfBirth: '2020-01-15',
       avatarId: 'inci',
     });
     await expect(profiles.update(profile.id, { nickname: 'Ege 2' })).resolves.toMatchObject({
@@ -351,6 +387,63 @@ describe('family repositories', () => {
       'SELECT count(*) AS count FROM child_profiles',
     );
     expect(count?.count).toBe(0);
+    database.close();
+  });
+
+  it('changes date of birth and derived age band without resetting child data', async () => {
+    const database = new NodeSQLiteDatabase();
+    await migrateDatabase(database as unknown as SQLiteDatabase);
+    const { families, profiles } = repositories(database);
+    const family = await families.createLocal();
+    const profile = await profiles.create({
+      familyId: family.id,
+      nickname: 'Ege',
+      dateOfBirth: '2020-01-15',
+      avatarId: 'inci',
+    });
+    await database.runAsync(
+      `INSERT INTO profile_progress
+        (child_profile_id, status_date, morning_completed, evening_completed, current_streak,
+         total_xp, level, mood)
+       VALUES (?, '2026-08-02', 1, 0, 5, 90, 2, 75)`,
+      profile.id,
+    );
+    const inventoryBefore = await database.getAllAsync<{
+      equipped: number;
+      item_key: string;
+      slot: string;
+    }>(
+      `SELECT item_key, equipped, slot FROM inventory_items
+       WHERE child_profile_id = ? ORDER BY item_key`,
+      profile.id,
+    );
+
+    await expect(profiles.update(profile.id, { dateOfBirth: '2019-01-15' })).resolves.toMatchObject(
+      {
+        nickname: 'Ege',
+        dateOfBirth: '2019-01-15',
+        ageBand: '7_11',
+        avatarId: 'inci',
+      },
+    );
+    await expect(
+      database.getFirstAsync<{
+        current_streak: number;
+        mood: number;
+        total_xp: number;
+      }>(
+        `SELECT current_streak, total_xp, mood FROM profile_progress
+         WHERE child_profile_id = ?`,
+        profile.id,
+      ),
+    ).resolves.toEqual({ current_streak: 5, mood: 75, total_xp: 90 });
+    await expect(
+      database.getAllAsync<{ equipped: number; item_key: string; slot: string }>(
+        `SELECT item_key, equipped, slot FROM inventory_items
+         WHERE child_profile_id = ? ORDER BY item_key`,
+        profile.id,
+      ),
+    ).resolves.toEqual(inventoryBefore);
     database.close();
   });
 
@@ -372,7 +465,7 @@ describe('family repositories', () => {
     const profileA = await profiles.create({
       familyId: family.id,
       nickname: 'A child',
-      ageBand: '4_6',
+      dateOfBirth: '2020-01-15',
       avatarId: 'inci',
     });
     activeParentId = 'parent-b';
@@ -388,7 +481,7 @@ describe('family repositories', () => {
     const profileB = await profiles.create({
       familyId: family.id,
       nickname: 'B child',
-      ageBand: '7_11',
+      dateOfBirth: '2017-01-15',
       avatarId: 'kaan',
     });
     await expect(profiles.list(family.id)).resolves.toEqual([profileB]);

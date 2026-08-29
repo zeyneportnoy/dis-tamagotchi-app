@@ -1,9 +1,9 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { render, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
 
-import AgeBandUpdateScreen from '../age-band-update';
+import DateOfBirthUpdateRedirect from '../age-band-update';
 
-const mockUpdateProfile = jest.fn();
+const mockBeginExistingProfile = jest.fn();
 
 jest.mock('@/application/family', () => ({
   getFamilyUseCases: () =>
@@ -12,28 +12,32 @@ jest.mock('@/application/family', () => ({
         Promise.resolve({
           id: 'profile-legacy',
           nickname: 'Ege',
+          dateOfBirth: null,
           ageBand: '6_8',
           avatarId: 'inci',
         }),
-      updateProfile: mockUpdateProfile,
     }),
+}));
+jest.mock('@/features/onboarding/OnboardingDraftContext', () => ({
+  useOnboardingDraft: () => ({ beginExistingProfile: mockBeginExistingProfile }),
 }));
 jest.mock('expo-router', () => ({ router: { replace: jest.fn() } }));
 
-describe('age-band update route', () => {
-  beforeEach(() => {
-    mockUpdateProfile.mockResolvedValue({});
-  });
+describe('date of birth update route', () => {
+  beforeEach(() => jest.clearAllMocks());
 
-  it('updates a legacy profile only after an explicit new selection', async () => {
-    const view = await render(<AgeBandUpdateScreen />);
-    await waitFor(() => expect(view.getByTestId('age-band-update-screen')).toBeTruthy());
-
-    await fireEvent.press(view.getByRole('radio', { name: '4–6 yaş' }));
+  it('sends a legacy profile to the required date picker without asking for an age band', async () => {
+    await render(<DateOfBirthUpdateRedirect />);
 
     await waitFor(() => {
-      expect(mockUpdateProfile).toHaveBeenCalledWith('profile-legacy', { ageBand: '4_6' });
-      expect(router.replace).toHaveBeenCalledWith('/(child)');
+      expect(mockBeginExistingProfile).toHaveBeenCalledWith({
+        id: 'profile-legacy',
+        nickname: 'Ege',
+        dateOfBirth: null,
+        ageBand: null,
+        avatarId: 'inci',
+      });
+      expect(router.replace).toHaveBeenCalledWith('/onboarding/age-band');
     });
   });
 });

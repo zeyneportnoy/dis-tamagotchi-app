@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { ageBandFromDateOfBirth, isFutureDateOnly, parseDateOnly } from './dateOfBirth';
 import { starterAvatarKeys } from './models';
 
 export const NICKNAME_MAX_LENGTH = 20;
@@ -16,18 +17,29 @@ export const nicknameSchema = z
   .min(1)
   .max(NICKNAME_MAX_LENGTH)
   .refine((value) => !/[\r\n\t]/.test(value));
+export const dateOfBirthSchema = z
+  .string()
+  .refine((value) => parseDateOnly(value) !== null)
+  .refine((value) => !isFutureDateOnly(value));
 
-export const createChildProfileSchema = z.object({
-  familyId: z.string().uuid(),
-  nickname: nicknameSchema,
-  ageBand: ageBandSchema,
-  avatarId: starterAvatarSchema,
-});
+export const createChildProfileSchema = z
+  .object({
+    familyId: z.string().uuid(),
+    nickname: nicknameSchema,
+    dateOfBirth: dateOfBirthSchema,
+    avatarId: starterAvatarSchema,
+  })
+  .refine((value) => ageBandFromDateOfBirth(value.dateOfBirth) !== null);
 
 export const updateChildProfileSchema = z
   .object({
     nickname: nicknameSchema.optional(),
     ageBand: ageBandSchema.optional(),
+    dateOfBirth: dateOfBirthSchema.optional(),
     avatarId: starterAvatarSchema.optional(),
   })
-  .refine((value) => Object.keys(value).length > 0);
+  .refine((value) => Object.keys(value).length > 0)
+  .refine(
+    (value) =>
+      value.dateOfBirth === undefined || ageBandFromDateOfBirth(value.dateOfBirth) !== null,
+  );

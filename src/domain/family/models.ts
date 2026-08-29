@@ -26,6 +26,7 @@ export type ChildProfile = Readonly<{
   id: string;
   familyId: string;
   nickname: string;
+  dateOfBirth: string | null;
   ageBand: StoredAgeBand;
   avatarId: StarterAvatarKey;
   createdAt: string;
@@ -39,13 +40,14 @@ export type ChildProfile = Readonly<{
 export type CreateChildProfileInput = Readonly<{
   familyId: string;
   nickname: string;
-  ageBand: AgeBand;
+  dateOfBirth: string;
   avatarId: StarterAvatarKey;
 }>;
 
 export type UpdateChildProfileInput = Readonly<{
   nickname?: string;
   ageBand?: AgeBand;
+  dateOfBirth?: string;
   avatarId?: StarterAvatarKey;
 }>;
 

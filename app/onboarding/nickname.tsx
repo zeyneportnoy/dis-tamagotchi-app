@@ -20,7 +20,7 @@ export default function NicknameScreen() {
     draft.setNickname(result.data);
     if (draft.profileId) {
       await (await getFamilyUseCases()).updateProfile(draft.profileId, { nickname: result.data });
-      if (!draft.ageBand) return router.replace('/onboarding/age-band');
+      if (!draft.dateOfBirth) return router.replace('/onboarding/age-band');
       if (!draft.avatarId) return router.replace('/onboarding/character');
       draft.reset();
       return router.replace('/(child)');

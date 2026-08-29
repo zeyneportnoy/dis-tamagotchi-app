@@ -306,4 +306,14 @@ export const migrations: readonly Migration[] = [
       `CREATE INDEX dentist_reminders_first_due_idx ON dentist_reminders(first_due_at);`,
     ],
   },
+  {
+    version: 16,
+    name: 'add_child_date_of_birth',
+    statements: [
+      `ALTER TABLE child_profiles ADD COLUMN date_of_birth TEXT
+        CHECK(date_of_birth IS NULL OR
+          (date(date_of_birth) IS NOT NULL AND date_of_birth = date(date_of_birth)));`,
+      `CREATE INDEX child_profiles_date_of_birth_idx ON child_profiles(date_of_birth);`,
+    ],
+  },
 ];

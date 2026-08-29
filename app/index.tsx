@@ -34,7 +34,7 @@ export default function Index() {
         const profile = result;
         setDestination(
           profile
-            ? isLegacyAgeBand(profile.ageBand)
+            ? !profile.dateOfBirth || isLegacyAgeBand(profile.ageBand)
               ? 'age-band-update'
               : 'child'
             : 'profile-onboarding',

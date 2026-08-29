@@ -1,5 +1,12 @@
 # Teknik Kararlar
 
+## 2026-08-29 — Yerel doğum tarihi ve dinamik yaş bandı
+
+- Ürün kararı gereği çocuk doğum tarihi, veli tarafından native tarih seçiciyle alınan `YYYY-MM-DD` tarih-only değeri olarak yalnız yerel `child_profiles` kaydında saklanır; Supabase şeması ve senkronizasyon sözleşmesi genişletilmez.
+- `age_band` kullanıcı seçimi değildir. Tam yaş ay ve gün dahil doğum tarihinden türetilir: 4–6 için `4_6`, 7–11 için `7_11`. Bu karar ADR-013 ve ADR-020 içindeki manuel yaş bandı / doğum tarihi alınmaması kararlarının ilgili kısmının yerine geçer.
+- Repository profil yüklerken yaş bandını günün tarihiyle yeniden türetir ve yalnız değer değişmişse yerel profile yazar. Böylece yedinci doğum gününde mevcut karakter, XP, streak, inventory, kişiselleştirme, fırçalama geçmişi, ses ve hatırlatıcı verileri değiştirilmeden deneyim otomatik `7_11` olur.
+- Migration 16 mevcut profillere nullable `date_of_birth` ekler. Exact tarihi bilinmeyen eski profiller veri kaybı olmadan onboarding tarih adımına yönlendirilir.
+
 ## 2026-08-09 — Yerel fırçalama hatırlatıcıları ve development Mood Lab
 
 - Sabah ve akşam hatırlatıcıları, veli hesabı kimliğiyle ayrılmış AsyncStorage ayarları ve `expo-notifications` günlük local notification kayıtları olarak tutulur; bir backend alarm servisi kurulmaz.

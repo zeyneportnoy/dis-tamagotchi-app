@@ -10,6 +10,43 @@ const mockSetBrushingVoiceProfile = jest.fn((_parentUserId: string, _profile: st
   Promise.resolve(),
 );
 const mockPreviewPlay = jest.fn();
+const mockUpdateProfile = jest.fn();
+
+jest.mock('@/application/family', () => ({
+  getFamilyUseCases: () =>
+    Promise.resolve({
+      getActiveProfile: () =>
+        Promise.resolve({
+          id: 'child-a',
+          nickname: 'Ege',
+          dateOfBirth: '2020-01-15',
+          ageBand: '4_6',
+          avatarId: 'inci',
+          createdAt: '2026-08-01T00:00:00.000Z',
+        }),
+      updateProfile: mockUpdateProfile,
+    }),
+}));
+jest.mock('@/features/child-profile', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  const { Pressable, Text } = jest.requireActual<typeof import('react-native')>('react-native');
+  return {
+    DateOfBirthField: ({
+      label,
+      onChange,
+      testID,
+    }: {
+      label: string;
+      onChange: (value: string) => void;
+      testID: string;
+    }) =>
+      React.createElement(
+        Pressable,
+        { accessibilityRole: 'button', onPress: () => onChange('2019-08-29'), testID },
+        React.createElement(Text, null, label),
+      ),
+  };
+});
 
 jest.mock('expo-audio', () => ({
   useAudioPlayer: () => ({
@@ -37,7 +74,17 @@ jest.mock('expo-router', () => ({
 }));
 
 describe('Parent Settings navigation header', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUpdateProfile.mockResolvedValue({
+      id: 'child-a',
+      nickname: 'Ege',
+      dateOfBirth: '2019-08-29',
+      ageBand: '7_11',
+      avatarId: 'inci',
+      createdAt: '2026-08-01T00:00:00.000Z',
+    });
+  });
 
   it('keeps a full-size back target and returns to Parent Account', async () => {
     const view = await render(<ParentSettingsScreen />);
@@ -72,5 +119,18 @@ describe('Parent Settings navigation header', () => {
     expect(view.queryByText('Dostça erkek sesi')).toBeNull();
     await fireEvent.press(view.getByRole('button', { name: 'Gökçe sesini dinle' }));
     await waitFor(() => expect(mockPreviewPlay).toHaveBeenCalledTimes(1));
+  });
+
+  it('updates only the active child date of birth from Parent Settings', async () => {
+    const view = await render(<ParentSettingsScreen />);
+    await waitFor(() => expect(view.getByTestId('parent-date-of-birth')).toBeTruthy());
+
+    await fireEvent.press(view.getByTestId('parent-date-of-birth'));
+
+    await waitFor(() =>
+      expect(mockUpdateProfile).toHaveBeenCalledWith('child-a', {
+        dateOfBirth: '2019-08-29',
+      }),
+    );
   });
 });

@@ -100,6 +100,7 @@ jest.mock('@/application/family', () => ({
         Promise.resolve({
           id: 'profile-1',
           nickname: 'Ege',
+          dateOfBirth: '2020-01-15',
           ageBand: '4_6',
           avatarId: 'inci',
           createdAt: '2026-08-09T00:00:00.000Z',

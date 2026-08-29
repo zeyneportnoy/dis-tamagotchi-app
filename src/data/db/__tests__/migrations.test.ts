@@ -29,6 +29,11 @@ describe('database migrations', () => {
     await expect(
       database.getAllAsync<{ name: string }>('PRAGMA table_info(inventory_items)'),
     ).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ name: 'slot' })]));
+    await expect(
+      database.getAllAsync<{ name: string }>('PRAGMA table_info(child_profiles)'),
+    ).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'date_of_birth' })]),
+    );
     database.close();
   });
 
@@ -55,6 +60,7 @@ describe('database migrations', () => {
       { version: 13 },
       { version: 14 },
       { version: 15 },
+      { version: 16 },
     ]);
     database.close();
   });
@@ -132,6 +138,7 @@ describe('database migrations', () => {
       { version: 13 },
       { version: 14 },
       { version: 15 },
+      { version: 16 },
     ]);
     await expect(
       database.getFirstAsync<{
@@ -237,6 +244,86 @@ describe('database migrations', () => {
     await expect(
       database.getFirstAsync<{ version: number }>(
         'SELECT version FROM schema_migrations WHERE version = 15',
+      ),
+    ).resolves.toBeNull();
+    spy.mockRestore();
+    database.close();
+  });
+
+  it('adds a nullable date of birth without changing an existing child profile', async () => {
+    const database = new NodeSQLiteDatabase();
+    await database.execAsync('PRAGMA foreign_keys = ON;');
+    await database.execAsync(
+      'CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY NOT NULL, name TEXT NOT NULL, applied_at TEXT NOT NULL);',
+    );
+    for (const migration of migrations.slice(0, 15)) {
+      for (const statement of migration.statements) await database.execAsync(statement);
+      await database.runAsync(
+        'INSERT INTO schema_migrations(version, name, applied_at) VALUES (?, ?, ?)',
+        migration.version,
+        migration.name,
+        '2026-08-29T00:00:00.000Z',
+      );
+    }
+    await database.runAsync(
+      `INSERT INTO families(id, created_at, locale, timezone)
+       VALUES ('family-1', '2026-08-29T00:00:00.000Z', 'tr', 'Europe/Istanbul')`,
+    );
+    await database.runAsync(
+      `INSERT INTO child_profiles
+        (id, family_id, nickname, age_band, avatar_id, created_at, parent_auth_user_id,
+         sync_status, updated_at)
+       VALUES ('profile-1', 'family-1', 'Ege', '4_6', 'inci',
+         '2026-08-29T00:00:00.000Z', 'parent-1', 'synced', '2026-08-29T00:00:00.000Z')`,
+    );
+
+    await migrateDatabase(database as unknown as SQLiteDatabase);
+
+    await expect(
+      database.getFirstAsync<{
+        age_band: string;
+        date_of_birth: string | null;
+        nickname: string;
+      }>(`SELECT nickname, age_band, date_of_birth FROM child_profiles WHERE id = 'profile-1'`),
+    ).resolves.toEqual({ age_band: '4_6', date_of_birth: null, nickname: 'Ege' });
+    database.close();
+  });
+
+  it('rolls back the date of birth migration when its index creation fails', async () => {
+    const database = new NodeSQLiteDatabase();
+    await database.execAsync('PRAGMA foreign_keys = ON;');
+    await database.execAsync(
+      'CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY NOT NULL, name TEXT NOT NULL, applied_at TEXT NOT NULL);',
+    );
+    for (const migration of migrations.slice(0, 15)) {
+      for (const statement of migration.statements) await database.execAsync(statement);
+      await database.runAsync(
+        'INSERT INTO schema_migrations(version, name, applied_at) VALUES (?, ?, ?)',
+        migration.version,
+        migration.name,
+        '2026-08-29T00:00:00.000Z',
+      );
+    }
+
+    const execute = database.execAsync.bind(database);
+    const spy = jest.spyOn(database, 'execAsync').mockImplementation((statement) => {
+      if (statement.includes('child_profiles_date_of_birth_idx')) {
+        return Promise.reject(new Error('INDEX_FAILURE'));
+      }
+      return execute(statement);
+    });
+
+    await expect(migrateDatabase(database as unknown as SQLiteDatabase)).rejects.toThrow(
+      'INDEX_FAILURE',
+    );
+    await expect(
+      database.getAllAsync<{ name: string }>('PRAGMA table_info(child_profiles)'),
+    ).resolves.not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'date_of_birth' })]),
+    );
+    await expect(
+      database.getFirstAsync<{ version: number }>(
+        'SELECT version FROM schema_migrations WHERE version = 16',
       ),
     ).resolves.toBeNull();
     spy.mockRestore();

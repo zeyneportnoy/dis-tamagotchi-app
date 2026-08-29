@@ -32,7 +32,7 @@ async function createHarness(permission: 'granted' | 'denied') {
   );
   const family = await families.createLocal();
   const profile = await profiles.create({
-    ageBand: '4_6',
+    dateOfBirth: '2020-01-15',
     avatarId: 'inci',
     familyId: family.id,
     nickname: 'Ege',

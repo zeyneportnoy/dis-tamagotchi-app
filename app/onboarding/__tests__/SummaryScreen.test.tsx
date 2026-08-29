@@ -48,6 +48,7 @@ jest.mock('@/features/onboarding/OnboardingDraftContext', () => ({
   useOnboardingDraft: () => ({
     ageBand: '4_6',
     avatarId: 'inci',
+    dateOfBirth: '2020-01-15',
     nickname: 'Ege',
     reset: mockReset,
   }),
@@ -78,8 +79,8 @@ describe('profile summary', () => {
 
     await waitFor(() =>
       expect(mockCreateProfile).toHaveBeenCalledWith({
-        ageBand: '4_6',
         avatarId: 'inci',
+        dateOfBirth: '2020-01-15',
         nickname: 'Ege',
       }),
     );

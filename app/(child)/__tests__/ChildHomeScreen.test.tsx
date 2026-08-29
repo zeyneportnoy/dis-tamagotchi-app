@@ -24,8 +24,20 @@ const defaultProgress = {
 const mockGetProgress = jest.fn((_profileId: string) => Promise.resolve(defaultProgress));
 const mockListInventory = jest.fn<Promise<readonly InventoryItem[]>, []>(() => Promise.resolve([]));
 const mockHomeProfiles = [
-  { id: 'profile-1', nickname: 'Ege', ageBand: '4_6', avatarId: 'inci' },
-  { id: 'profile-2', nickname: 'Ada', ageBand: '7_11', avatarId: 'kaan' },
+  {
+    id: 'profile-1',
+    nickname: 'Ege',
+    dateOfBirth: '2020-01-15',
+    ageBand: '4_6',
+    avatarId: 'inci',
+  },
+  {
+    id: 'profile-2',
+    nickname: 'Ada',
+    dateOfBirth: '2017-01-15',
+    ageBand: '7_11',
+    avatarId: 'kaan',
+  },
 ] as const;
 let mockActiveHomeProfileId = 'profile-1';
 const mockSelectActiveProfile = jest.fn(async (profileId: string) => {

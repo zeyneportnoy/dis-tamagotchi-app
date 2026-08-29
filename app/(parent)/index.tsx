@@ -45,10 +45,11 @@ export default function ParentAccountScreen() {
     setActiveProfileId(profile.id);
 
     const nickname = profile.nickname?.trim();
+    const dateOfBirth = profile.dateOfBirth;
     const ageBand =
       profile.ageBand === '4_6' || profile.ageBand === '7_11' ? profile.ageBand : null;
     const avatarId = starterAvatarKeys.includes(profile.avatarId) ? profile.avatarId : null;
-    if (nickname && ageBand && avatarId) {
+    if (nickname && dateOfBirth && ageBand && avatarId) {
       draft.reset();
       router.replace('/(child)');
       return;
@@ -57,11 +58,12 @@ export default function ParentAccountScreen() {
     draft.beginExistingProfile({
       id: profile.id,
       nickname,
+      dateOfBirth,
       ageBand,
       avatarId,
     });
     if (!nickname) return router.replace('/onboarding/nickname');
-    if (!ageBand) return router.replace('/onboarding/age-band');
+    if (!dateOfBirth || !ageBand) return router.replace('/onboarding/age-band');
     router.replace('/onboarding/character');
   };
 

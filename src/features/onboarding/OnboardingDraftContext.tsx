@@ -5,24 +5,33 @@ import type { AgeBand, StarterAvatarKey } from '@/domain/family';
 type Draft = {
   profileId: string | null;
   nickname: string;
+  dateOfBirth: string | null;
   ageBand: AgeBand | null;
   avatarId: StarterAvatarKey | null;
 };
 
 type DraftContextValue = Draft & {
   setNickname: (nickname: string) => void;
-  setAgeBand: (ageBand: AgeBand) => void;
+  setDateOfBirth: (dateOfBirth: string) => void;
+  setAgeBand: (ageBand: AgeBand | null) => void;
   setAvatarId: (avatarId: StarterAvatarKey) => void;
   beginExistingProfile: (profile: {
     id: string;
     nickname?: string | null;
+    dateOfBirth?: string | null;
     ageBand?: AgeBand | null;
     avatarId?: StarterAvatarKey | null;
   }) => void;
   reset: () => void;
 };
 
-const initialDraft: Draft = { profileId: null, nickname: '', ageBand: null, avatarId: null };
+const initialDraft: Draft = {
+  profileId: null,
+  nickname: '',
+  dateOfBirth: null,
+  ageBand: null,
+  avatarId: null,
+};
 const DraftContext = createContext<DraftContextValue | null>(null);
 
 export function OnboardingDraftProvider({ children }: PropsWithChildren) {
@@ -31,12 +40,14 @@ export function OnboardingDraftProvider({ children }: PropsWithChildren) {
     () => ({
       ...draft,
       setNickname: (nickname) => setDraft((current) => ({ ...current, nickname })),
+      setDateOfBirth: (dateOfBirth) => setDraft((current) => ({ ...current, dateOfBirth })),
       setAgeBand: (ageBand) => setDraft((current) => ({ ...current, ageBand })),
       setAvatarId: (avatarId) => setDraft((current) => ({ ...current, avatarId })),
       beginExistingProfile: (profile) =>
         setDraft({
           profileId: profile.id,
           nickname: profile.nickname ?? '',
+          dateOfBirth: profile.dateOfBirth ?? null,
           ageBand: profile.ageBand ?? null,
           avatarId: profile.avatarId ?? null,
         }),

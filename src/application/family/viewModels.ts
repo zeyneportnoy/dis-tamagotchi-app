@@ -3,6 +3,7 @@ import type { ChildProfile, StarterAvatarKey, StoredAgeBand } from '@/domain/fam
 export type ChildProfileViewModel = Readonly<{
   id: string;
   nickname: string;
+  dateOfBirth: string | null;
   ageBand: StoredAgeBand;
   avatarId: StarterAvatarKey;
   createdAt: string;
@@ -11,6 +12,7 @@ export type ChildProfileViewModel = Readonly<{
 export const toChildProfileViewModel = (profile: ChildProfile): ChildProfileViewModel => ({
   id: profile.id,
   nickname: profile.nickname,
+  dateOfBirth: profile.dateOfBirth,
   ageBand: profile.ageBand,
   avatarId: profile.avatarId,
   createdAt: profile.createdAt,

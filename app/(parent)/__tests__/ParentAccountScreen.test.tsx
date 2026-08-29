@@ -4,8 +4,20 @@ import { router } from 'expo-router';
 import ParentAccountScreen from '../index';
 
 const mockProfiles = [
-  { id: 'child-a', nickname: 'Ege', ageBand: '4_6', avatarId: 'inci' },
-  { id: 'child-b', nickname: 'Ada', ageBand: '7_11', avatarId: null },
+  {
+    id: 'child-a',
+    nickname: 'Ege',
+    dateOfBirth: '2020-01-15',
+    ageBand: '4_6',
+    avatarId: 'inci',
+  },
+  {
+    id: 'child-b',
+    nickname: 'Ada',
+    dateOfBirth: '2017-01-15',
+    ageBand: '7_11',
+    avatarId: null,
+  },
 ] as const;
 let mockActiveProfileId = 'child-a';
 const mockSelectActiveProfile = jest.fn(async (profileId: string) => {
@@ -67,6 +79,7 @@ describe('Parent Account child selection', () => {
     expect(mockBeginExistingProfile).toHaveBeenCalledWith({
       id: 'child-b',
       nickname: 'Ada',
+      dateOfBirth: '2017-01-15',
       ageBand: '7_11',
       avatarId: null,
     });
