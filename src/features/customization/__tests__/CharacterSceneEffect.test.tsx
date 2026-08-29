@@ -11,14 +11,14 @@ import {
 } from '../CharacterSceneEffect';
 
 describe('CharacterSceneEffect', () => {
-  it('exposes exactly the six product effects with the existing unlock thresholds', () => {
+  it('exposes exactly the six product effects with their current Mine Puan thresholds', () => {
     expect(rewardCatalog.filter((item) => item.slot === 'effect')).toEqual([
-      expect.objectContaining({ key: 'rainbow-light', unlockXp: 300 }),
-      expect.objectContaining({ key: 'gold-sparkle', unlockXp: 480 }),
-      expect.objectContaining({ key: 'star-sparkle', unlockXp: 600 }),
-      expect.objectContaining({ key: 'confetti-glow', unlockXp: 720 }),
-      expect.objectContaining({ key: 'magic-dust', unlockXp: 920 }),
-      expect.objectContaining({ key: 'cloud-effect', unlockXp: 1080 }),
+      expect.objectContaining({ key: 'rainbow-light', unlockXp: 0 }),
+      expect.objectContaining({ key: 'gold-sparkle', unlockXp: 80 }),
+      expect.objectContaining({ key: 'star-sparkle', unlockXp: 240 }),
+      expect.objectContaining({ key: 'confetti-glow', unlockXp: 600 }),
+      expect.objectContaining({ key: 'magic-dust', unlockXp: 1200 }),
+      expect.objectContaining({ key: 'cloud-effect', unlockXp: 2000 }),
     ]);
     expect(rewardCatalog).toEqual(
       expect.not.arrayContaining([

@@ -78,6 +78,28 @@ function formatTime(iso: string): string {
   );
 }
 
+export type SlotDisplayStatus = 'done' | 'missed' | 'waiting';
+
+/**
+ * Derives a slot's display status from the real slot hours (morning 04:00–11:59,
+ * evening 18:00–23:59) plus the current time and completion state. It never
+ * changes reward/penalty logic — it only decides which label to show.
+ */
+export function slotDisplayStatus(
+  period: 'evening' | 'morning',
+  input: Readonly<{ done: boolean; statusDate?: string | null }>,
+  now: Date,
+): SlotDisplayStatus {
+  if (input.done) return 'done';
+  const todayKey = toLocalDateKey(now);
+  // The day this status belongs to is already over → the slot was missed.
+  if (input.statusDate && input.statusDate < todayKey) return 'missed';
+  // Morning slot closes at 12:00; after that an unfinished morning is missed.
+  if (period === 'morning') return now.getHours() >= 12 ? 'missed' : 'waiting';
+  // Evening slot runs until the day ends, so within its own day it is still coming.
+  return 'waiting';
+}
+
 const weekdayLabels = ['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pz'];
 
 export default function TasksScreen() {
@@ -128,6 +150,7 @@ export default function TasksScreen() {
   if (failed) return <ErrorState />;
   if (!progress) return <LoadingState />;
 
+  const now = new Date();
   const growthStage = growthProgressForXp(progress.totalXp).currentStage;
   const mood = deriveHomeCharacterMood(progress);
   const todayLabel = new Intl.DateTimeFormat('tr-TR', {
@@ -150,7 +173,11 @@ export default function TasksScreen() {
     if (time) return t('tasksScreen.doneAt', { time: formatTime(time) });
     if (selectedStatus === 'before-join') return t('tasksScreen.beforeJoin');
     if (selectedDayKey > todayKey) return t('tasksScreen.futureDay');
-    if (selectedDayKey === todayKey) return t('tasksScreen.notDoneYet');
+    if (selectedDayKey === todayKey) {
+      return slotDisplayStatus(period, { done: false }, now) === 'missed'
+        ? t('tasksScreen.slotMissed')
+        : t('tasksScreen.notDoneYet');
+    }
     return t('tasksScreen.missed');
   }
 
@@ -190,7 +217,7 @@ export default function TasksScreen() {
             testID="tasks-morning-row"
           >
             <Text style={styles.todayIcon}>☀️</Text>
-            <Text style={styles.todayCopy}>{slotLineForToday(progress, 'morning', t)}</Text>
+            <Text style={styles.todayCopy}>{slotLineForToday(progress, 'morning', now, t)}</Text>
           </Pressable>
           <Pressable
             accessibilityLabel={t('childHome.eveningShort')}
@@ -202,7 +229,7 @@ export default function TasksScreen() {
             testID="tasks-evening-row"
           >
             <Text style={styles.todayIcon}>🌙</Text>
-            <Text style={styles.todayCopy}>{slotLineForToday(progress, 'evening', t)}</Text>
+            <Text style={styles.todayCopy}>{slotLineForToday(progress, 'evening', now, t)}</Text>
           </Pressable>
           <Text style={styles.streak}>
             {t('childHome.streak', { count: progress.currentStreak })}
@@ -297,12 +324,17 @@ export default function TasksScreen() {
 function slotLineForToday(
   progress: ProfileProgress,
   period: 'evening' | 'morning',
+  now: Date,
   t: (key: string, options?: Record<string, unknown>) => string,
 ): string {
   const done = period === 'morning' ? progress.morningCompleted : progress.eveningCompleted;
-  if (done && progress.lastBrushingAt)
-    return t('tasksScreen.doneAt', { time: formatTime(progress.lastBrushingAt) });
-  if (done) return t('childHome.completed');
+  const status = slotDisplayStatus(period, { done, statusDate: progress.statusDate }, now);
+  if (status === 'done') {
+    return progress.lastBrushingAt
+      ? t('tasksScreen.doneAt', { time: formatTime(progress.lastBrushingAt) })
+      : t('childHome.completed');
+  }
+  if (status === 'missed') return t('tasksScreen.slotMissed');
   return t('childHome.waiting');
 }
 

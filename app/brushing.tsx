@@ -68,6 +68,7 @@ import {
 } from '@/features/brushing';
 import {
   characterGrowthStageNames,
+  effectiveBrushKey,
   growthProgressForXp,
   growthStageForXp,
   type BrushingRewardResult,
@@ -986,7 +987,9 @@ export default function BrushingScreen() {
         // In DEV, Collection writes the chosen brush to the developer-equipped override
         // (AsyncStorage) rather than the inventory table, so honor it here too.
         const devBrush = customization?.developerEquipped.brush ?? undefined;
-        setEquippedBrushKey(devBrush ?? equippedBrush);
+        // If a Mine Puan drop has re-locked the selected brush, use the always-open
+        // classic brush instead of an invalid selection.
+        setEquippedBrushKey(effectiveBrushKey(devBrush ?? equippedBrush, progress.totalXp));
       })
       .catch(() => setFailed(true));
   }, []);

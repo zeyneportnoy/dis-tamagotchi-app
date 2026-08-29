@@ -26,7 +26,16 @@ import {
   spacing,
 } from '@/design-system';
 import {
+  DEFAULT_BACKGROUND_KEY,
+  DEFAULT_BRUSH_KEY,
+  DEFAULT_EFFECT_KEY,
+  backgroundUnlockScore,
+  brushUnlockScore,
+  effectUnlockScore,
   growthStageForXp,
+  isBackgroundUnlockedForScore,
+  isBrushUnlockedForScore,
+  isEffectUnlockedForScore,
   type AccessorySlot,
   type CharacterGrowthStage,
   type InventoryItem,
@@ -69,6 +78,43 @@ import {
 } from '@/features/customization';
 
 const categories: readonly AccessorySlot[] = ['brush', 'background', 'decor', 'effect'];
+
+/**
+ * Slots whose Collection cards are gated on the CURRENT Mine Puan balance
+ * (fırça / arka plan / efekt). `unlockScore` and `isUnlocked` read the same
+ * `rewardCatalog` threshold, and `defaultKey` is the always-open fallback a
+ * re-locked selection reverts to.
+ */
+const scoreGatedSlots = {
+  brush: {
+    defaultKey: DEFAULT_BRUSH_KEY,
+    unlockScore: brushUnlockScore,
+    isUnlocked: isBrushUnlockedForScore,
+  },
+  background: {
+    defaultKey: DEFAULT_BACKGROUND_KEY,
+    unlockScore: backgroundUnlockScore,
+    isUnlocked: isBackgroundUnlockedForScore,
+  },
+  effect: {
+    defaultKey: DEFAULT_EFFECT_KEY,
+    unlockScore: effectUnlockScore,
+    isUnlocked: isEffectUnlockedForScore,
+  },
+} as const satisfies Partial<
+  Record<
+    AccessorySlot,
+    {
+      defaultKey: RewardItemKey;
+      unlockScore: (key: string) => number | null;
+      isUnlocked: (key: string, currentMineScore: number) => boolean;
+    }
+  >
+>;
+
+type ScoreGatedSlot = keyof typeof scoreGatedSlots;
+
+const isScoreGatedSlot = (slot: AccessorySlot): slot is ScoreGatedSlot => slot in scoreGatedSlots;
 
 type DragPoint = Readonly<{ pageX: number; pageY: number }>;
 type DragItem = Readonly<{
@@ -186,6 +232,7 @@ export default function CollectionScreen() {
   const { t } = useTranslation();
   const [profile, setProfile] = useState<ChildProfileViewModel | null>(null);
   const [growthStage, setGrowthStage] = useState<CharacterGrowthStage>(0);
+  const [currentMineScore, setCurrentMineScore] = useState(0);
   const [items, setItems] = useState<readonly InventoryItem[] | null>(null);
   const [activeSlot, setActiveSlot] = useState<AccessorySlot>('brush');
   const [customization, setCustomization] = useState<CustomizationState>(emptyCustomizationState);
@@ -213,9 +260,43 @@ export default function CollectionScreen() {
             loadCustomizationState(activeProfile.id),
           ]);
           if (!mounted) return;
+          const mineScore = Math.max(0, progress.totalXp ?? 0);
+          let presented = presentCustomizationInventory(inventory, savedCustomization, __DEV__);
+          let nextCustomization = savedCustomization;
+          // A Mine Puan drop can re-lock the equipped brush / background / effect;
+          // fall back to the always-open default so the selection never stays
+          // invalid.
+          for (const slot of Object.keys(scoreGatedSlots) as ScoreGatedSlot[]) {
+            const { defaultKey, isUnlocked } = scoreGatedSlots[slot];
+            const equipped = presented.find((item) => item.slot === slot && item.equipped);
+            if (!equipped || equipped.key === defaultKey || isUnlocked(equipped.key, mineScore)) {
+              continue;
+            }
+            try {
+              if (__DEV__) {
+                nextCustomization = await saveDeveloperEquippedItem(
+                  activeProfile.id,
+                  slot,
+                  defaultKey,
+                );
+              } else {
+                await child.equipItem(activeProfile.id, defaultKey);
+              }
+              presented = presentCustomizationInventory(
+                await child.listInventory(activeProfile.id),
+                nextCustomization,
+                __DEV__,
+              );
+            } catch {
+              // Leave the stored selection as-is; the card still renders locked
+              // and the consuming screens guard the active item independently.
+            }
+          }
+          if (!mounted) return;
           setProfile(activeProfile);
-          setCustomization(savedCustomization);
-          setItems(presentCustomizationInventory(inventory, savedCustomization, __DEV__));
+          setCustomization(nextCustomization);
+          setItems(presented);
+          setCurrentMineScore(mineScore);
           setGrowthStage(growthStageForXp(progress.totalXp));
         })
         .catch(() => {
@@ -616,64 +697,77 @@ export default function CollectionScreen() {
                 );
               })
             : null}
-          {visibleItems.map((item) => (
-            <Pressable
-              accessibilityLabel={`${t(`rewards.items.${item.key}`)}. ${t(
-                item.equipped
-                  ? 'collection.equipped'
-                  : item.unlocked
-                    ? 'collection.unlocked'
-                    : 'collection.locked',
-              )}`}
-              accessibilityRole="button"
-              key={item.key}
-              onPress={() => void select(item.key, item.unlocked)}
-              style={({ pressed }) => [
-                styles.itemCard,
-                { backgroundColor: visualPalette.card },
-                item.equipped && styles.itemEquipped,
-                item.equipped && {
-                  backgroundColor: visualPalette.selectedCard,
-                  borderColor: visualPalette.accent,
-                },
-                !item.unlocked && styles.itemLocked,
-                pressed && styles.pressed,
-              ]}
-            >
-              <View
-                style={[
-                  styles.itemIcon,
-                  activeSlot === 'brush' && styles.itemIconBrush,
-                  { backgroundColor: visualPalette.soft },
-                  item.equipped && styles.itemIconSelected,
+          {visibleItems.map((item) => {
+            // Brushes, backgrounds and effects are gated on the CURRENT Mine Puan
+            // balance, not on a persisted "unlocked forever" flag, so they
+            // re-lock if it drops back below the threshold.
+            const gate = isScoreGatedSlot(activeSlot) ? scoreGatedSlots[activeSlot] : null;
+            const scoreTarget = gate ? gate.unlockScore(item.key) : null;
+            const unlocked = gate
+              ? gate.isUnlocked(item.key, currentMineScore)
+              : item.unlocked;
+            // A stored selection that has re-locked (score dropped) must never
+            // still read as "equipped", even if the revert write has not landed.
+            const equipped = item.equipped && unlocked;
+            const statusKey = equipped
+              ? 'collection.equipped'
+              : unlocked
+                ? 'collection.tapToEquip'
+                : scoreTarget !== null
+                  ? 'collection.unlockAt'
+                  : 'collection.lockedHint';
+            return (
+              <Pressable
+                accessibilityLabel={`${t(`rewards.items.${item.key}`)}. ${t(
+                  equipped
+                    ? 'collection.equipped'
+                    : unlocked
+                      ? 'collection.unlocked'
+                      : 'collection.locked',
+                )}`}
+                accessibilityRole="button"
+                key={item.key}
+                onPress={() => void select(item.key, unlocked)}
+                style={({ pressed }) => [
+                  styles.itemCard,
+                  { backgroundColor: visualPalette.card },
+                  equipped && styles.itemEquipped,
+                  equipped && {
+                    backgroundColor: visualPalette.selectedCard,
+                    borderColor: visualPalette.accent,
+                  },
+                  !unlocked && styles.itemLocked,
+                  pressed && styles.pressed,
                 ]}
               >
-                {activeSlot === 'effect' && isCharacterSceneEffectKey(item.key) ? (
-                  <View testID={`collection-item-visual-${item.key}`}>
-                    <EffectCardPreview effectKey={item.key} />
-                  </View>
-                ) : (
-                  <Image
-                    resizeMode="contain"
-                    source={premiumRewardSource(item.key)}
-                    style={activeSlot === 'brush' ? styles.brushRewardIcon : styles.rewardIcon}
-                    testID={`collection-item-visual-${item.key}`}
-                  />
-                )}
-              </View>
-              <Text style={styles.itemName}>{t(`rewards.items.${item.key}`)}</Text>
-              <Text style={styles.itemStatus}>
-                {t(
-                  item.equipped
-                    ? 'collection.equipped'
-                    : item.unlocked
-                      ? 'collection.tapToEquip'
-                      : 'collection.lockedHint',
-                  { xp: item.unlockXp },
-                )}
-              </Text>
-            </Pressable>
-          ))}
+                <View
+                  style={[
+                    styles.itemIcon,
+                    activeSlot === 'brush' && styles.itemIconBrush,
+                    { backgroundColor: visualPalette.soft },
+                    equipped && styles.itemIconSelected,
+                  ]}
+                >
+                  {activeSlot === 'effect' && isCharacterSceneEffectKey(item.key) ? (
+                    <View testID={`collection-item-visual-${item.key}`}>
+                      <EffectCardPreview effectKey={item.key} />
+                    </View>
+                  ) : (
+                    <Image
+                      resizeMode="contain"
+                      source={premiumRewardSource(item.key)}
+                      style={activeSlot === 'brush' ? styles.brushRewardIcon : styles.rewardIcon}
+                      testID={`collection-item-visual-${item.key}`}
+                    />
+                  )}
+                </View>
+                <Text style={styles.itemName}>{t(`rewards.items.${item.key}`)}</Text>
+                <Text style={styles.itemStatus} testID={`collection-item-status-${item.key}`}>
+                  {t(statusKey, { xp: scoreTarget ?? item.unlockXp })}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       </ScrollView>
       {draggedItem ? (

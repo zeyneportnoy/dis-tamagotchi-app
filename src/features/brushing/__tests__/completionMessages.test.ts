@@ -23,15 +23,16 @@ describe('brushing completion messages', () => {
   });
 
   it('uses the centralized user-facing reward currency name', () => {
-    expect(i18n.t('common.rewardCurrencyName')).toBe('Mine');
-    expect(i18n.t('childHome.xp', { current: 20, target: 60 })).toBe('20 / 60 Mine');
-    expect(i18n.t('brushing.rewardAmount', { amount: 20 })).toBe('+20 Mine');
+    expect(i18n.t('common.rewardCurrencyName')).toBe('Mine Puan');
+    expect(i18n.t('childHome.xp', { current: 20, target: 60 })).toBe('20 / 60 Mine Puan');
+    expect(i18n.t('brushing.rewardAmount', { amount: 20 })).toBe('+20 Mine Puan');
     expect(i18n.exists('brushing.moodGain')).toBe(false);
-    expect(i18n.t('brushing.rewardProgress', { current: 20, target: 60 })).toBe('20 / 60 Mine');
+    expect(i18n.t('brushing.rewardProgress', { current: 20, target: 60 })).toBe('20 / 60 Mine Puan');
     expect(i18n.t('growth.remainingXp', { count: 30, stage: 'Bebek diş' })).toBe(
-      'Bebek diş evresine 30 Mine kaldı',
+      'Bebek diş evresine 30 Mine Puan kaldı',
     );
-    expect(i18n.t('collection.unlockAt', { xp: 400 })).toBe('400 Mine’de açılır');
+    expect(i18n.t('growth.currentScore', { count: 40 })).toBe('Mine Puanın: 40');
+    expect(i18n.t('collection.unlockAt', { xp: 240 })).toBe("240 Mine Puan'da açılır");
   });
 
   it('shows the off-slot explanation instead of a reward badge for a 13:00 completion', () => {
@@ -40,7 +41,7 @@ describe('brushing completion messages', () => {
     if (presentation.kind !== 'notEarned') throw new Error('EXPECTED_NO_REWARD_COPY');
     expect(i18n.t(presentation.titleKey)).toBe('Bu fırçalama puan kazandırmadı.');
     expect(i18n.t(presentation.detailKey)).toBe(
-      'Mine yalnızca 04:00–11:59 ve 18:00–23:59 arasında kazanılır.',
+      'Mine Puan yalnızca 04:00–11:59 ve 18:00–23:59 arasında kazanılır.',
     );
   });
 
@@ -50,10 +51,12 @@ describe('brushing completion messages', () => {
     if (morning.kind !== 'notEarned' || evening.kind !== 'notEarned') {
       throw new Error('EXPECTED_NO_REWARD_COPY');
     }
-    expect(i18n.t(morning.titleKey)).toBe('Bu zaman dilimindeki Mine ödülünü zaten kazandın.');
+    expect(i18n.t(morning.titleKey)).toBe('Bu zaman dilimindeki Mine Puan ödülünü zaten kazandın.');
     expect(i18n.t(morning.detailKey)).toBe('Bir sonraki puanlı dönem 18:00–23:59.');
-    expect(i18n.t(evening.titleKey)).toBe('Bu zaman dilimindeki Mine ödülünü zaten kazandın.');
-    expect(i18n.t(evening.detailKey)).toBe('Bugünün sabah ve akşam Mine ödüllerini tamamladın.');
+    expect(i18n.t(evening.titleKey)).toBe('Bu zaman dilimindeki Mine Puan ödülünü zaten kazandın.');
+    expect(i18n.t(evening.detailKey)).toBe(
+      'Bugünün sabah ve akşam Mine Puan ödüllerini tamamladın.',
+    );
   });
 
   it('keeps the reward badge presentation for a +20 main-slot completion', () => {

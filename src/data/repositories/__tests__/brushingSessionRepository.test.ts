@@ -188,7 +188,8 @@ describe('SQLiteBrushingSessionRepository', () => {
     expect(firstEvening).toMatchObject({
       firstSlotCompletion: true,
       streakAdvanced: true,
-      unlockedItemKey: 'cloud-room',
+      // 90 → 110 no longer crosses a reward threshold (cloud-room moved to 160).
+      unlockedItemKey: null,
       xpGranted: 20,
     });
     const inventoryAfterFirstEvening = await database.getFirstAsync<{ count: number }>(

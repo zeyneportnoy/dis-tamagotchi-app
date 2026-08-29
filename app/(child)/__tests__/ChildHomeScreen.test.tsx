@@ -43,6 +43,12 @@ let mockActiveHomeProfileId = 'profile-1';
 const mockSelectActiveProfile = jest.fn(async (profileId: string) => {
   mockActiveHomeProfileId = profileId;
 });
+const mockClassifyBrushingSlot = jest.fn<'morning' | 'evening' | null, [Date]>(() => 'morning');
+
+jest.mock('@/domain/brushing', () => ({
+  ...jest.requireActual('@/domain/brushing'),
+  classifyBrushingSlot: (date: Date) => mockClassifyBrushingSlot(date),
+}));
 
 jest.mock('@/application/child', () => ({
   getChildExperienceUseCases: () =>
@@ -79,6 +85,7 @@ describe('Child Home route', () => {
     mockActiveHomeProfileId = 'profile-1';
     mockGetProgress.mockResolvedValue(defaultProgress);
     mockListInventory.mockResolvedValue([]);
+    mockClassifyBrushingSlot.mockReturnValue('morning');
   });
 
   it('reloads child-specific Home data after selecting another profile', async () => {
@@ -105,7 +112,7 @@ describe('Child Home route', () => {
     await waitFor(() => expect(view.getByText('Merhaba, Ada! 👋')).toBeTruthy());
     expect(mockGetProgress).toHaveBeenLastCalledWith('profile-2');
     expect(view.getAllByTestId('character-kaan', { includeHiddenElements: true })).toHaveLength(2);
-    expect(view.getByText('Çatlıyor evresine 70 Mine kaldı')).toBeTruthy();
+    expect(view.getByText('Çatlıyor evresine 70 Mine Puan kaldı')).toBeTruthy();
   });
 
   it('shows the active profile character, brushing cards and primary action', async () => {
@@ -118,7 +125,7 @@ describe('Child Home route', () => {
       view.getAllByTestId('character-phase-resting', { includeHiddenElements: true }),
     ).toHaveLength(2);
     expect(view.getByText('Diş yumurtası')).toBeTruthy();
-    expect(view.getByText('Çatlıyor evresine 160 Mine kaldı')).toBeTruthy();
+    expect(view.getByText('Çatlıyor evresine 160 Mine Puan kaldı')).toBeTruthy();
     expect(view.getByText('Yaklaşık 8 fırçalama')).toBeTruthy();
     expect(view.getByText('Sabah')).toBeTruthy();
     expect(view.getByText('Akşam')).toBeTruthy();
@@ -156,6 +163,8 @@ describe('Child Home route', () => {
   });
 
   it('renders the selected background as the full character scene backdrop', async () => {
+    // Undersea room unlocks at 2200 Mine Puan; keep the balance above it.
+    mockGetProgress.mockResolvedValue({ ...defaultProgress, totalXp: 2400 });
     mockListInventory.mockResolvedValue([
       {
         equipped: true,
@@ -164,7 +173,7 @@ describe('Child Home route', () => {
         slot: 'background',
         unlocked: true,
         unlockedAt: '2026-08-21T00:00:00.000Z',
-        unlockXp: 560,
+        unlockXp: 2200,
       },
     ]);
     const view = await render(<ChildHomeScreen />);
@@ -181,6 +190,7 @@ describe('Child Home route', () => {
   });
 
   it('renders the child-specific room material at the same persisted placement', async () => {
+    mockGetProgress.mockResolvedValue({ ...defaultProgress, totalXp: 2400 });
     mockListInventory.mockResolvedValue([
       {
         equipped: true,
@@ -189,7 +199,7 @@ describe('Child Home route', () => {
         slot: 'background',
         unlocked: true,
         unlockedAt: '2026-08-21T00:00:00.000Z',
-        unlockXp: 560,
+        unlockXp: 2200,
       },
     ]);
     await AsyncStorage.setItem(
@@ -216,19 +226,47 @@ describe('Child Home route', () => {
     expect(view.getAllByTestId('character-inci', { includeHiddenElements: true })).toHaveLength(2);
   });
 
-  it('opens morning and evening brushing from the full accessible task cards', async () => {
+  it('opens morning brushing from its task card while inside the morning slot', async () => {
+    mockClassifyBrushingSlot.mockReturnValue('morning');
     const view = await render(<ChildHomeScreen />);
     const morning = await view.findByRole('button', { name: 'Sabah. Seni bekliyor' });
-    const evening = view.getByRole('button', { name: 'Akşam. Seni bekliyor' });
     expect(StyleSheet.flatten(morning.props.style).minHeight).toBeGreaterThanOrEqual(48);
-    expect(StyleSheet.flatten(evening.props.style).minHeight).toBeGreaterThanOrEqual(48);
     await fireEvent.press(morning);
     expect(router.push).toHaveBeenCalledWith({
       pathname: '/brushing',
       params: { slot: 'morning' },
     });
+  });
+
+  it('opens evening brushing from its task card while inside the evening slot', async () => {
+    mockClassifyBrushingSlot.mockReturnValue('evening');
+    const view = await render(<ChildHomeScreen />);
+    const evening = await view.findByRole('button', { name: 'Akşam. Seni bekliyor' });
+    expect(StyleSheet.flatten(evening.props.style).minHeight).toBeGreaterThanOrEqual(48);
     await fireEvent.press(evening);
     expect(router.push).toHaveBeenCalledWith({
+      pathname: '/brushing',
+      params: { slot: 'evening' },
+    });
+  });
+
+  it('keeps both slot cards inert outside their reward windows', async () => {
+    mockClassifyBrushingSlot.mockReturnValue(null);
+    const view = await render(<ChildHomeScreen />);
+    const morning = await view.findByRole('button', { name: 'Sabah. Seni bekliyor' });
+    const evening = view.getByRole('button', { name: 'Akşam. Seni bekliyor' });
+    await fireEvent.press(morning);
+    await fireEvent.press(evening);
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it('disables the evening card while the morning slot is open', async () => {
+    mockClassifyBrushingSlot.mockReturnValue('morning');
+    const view = await render(<ChildHomeScreen />);
+    const evening = await view.findByRole('button', { name: 'Akşam. Seni bekliyor' });
+    expect(evening.props.accessibilityState?.disabled).toBe(true);
+    await fireEvent.press(evening);
+    expect(router.push).not.toHaveBeenCalledWith({
       pathname: '/brushing',
       params: { slot: 'evening' },
     });
@@ -245,7 +283,7 @@ describe('Child Home route', () => {
     expect(await view.findByRole('button', { name: 'Sabah. Tamamlandı' })).toBeTruthy();
     expect(view.getByRole('button', { name: 'Akşam. Tamamlandı' })).toBeTruthy();
     expect(view.getAllByText('✓')).toHaveLength(2);
-    expect(view.getByText('Çatlıyor evresine 160 Mine kaldı')).toBeTruthy();
+    expect(view.getByText('Çatlıyor evresine 160 Mine Puan kaldı')).toBeTruthy();
     expect(view.getByText('Yaklaşık 8 fırçalama')).toBeTruthy();
     expect(view.queryByText('Seri: 3 gün')).toBeNull();
   });

@@ -17,6 +17,7 @@ import {
   radii,
   spacing,
 } from '@/design-system';
+import { classifyBrushingSlot } from '@/domain/brushing';
 import type { ProfileProgress } from '@/domain/family';
 import { isLegacyAgeBand } from '@/domain/family';
 import { deriveHomeCharacterMood } from '@/domain/character';
@@ -24,6 +25,8 @@ import {
   characterGrowthStageNames,
   estimatedBrushingsToNextStage,
   growthProgressForXp,
+  isBackgroundUnlockedForScore,
+  isEffectUnlockedForScore,
   type InventoryItem,
 } from '@/domain/rewards';
 import {
@@ -52,6 +55,7 @@ import {
 
 type TaskCardProps = {
   completed: boolean;
+  disabled: boolean;
   icon: string;
   label: string;
   tone: 'morning' | 'evening';
@@ -91,6 +95,7 @@ async function readHomeData(): Promise<HomeData | 'onboarding' | 'age-band-updat
 
 function TaskCard({
   completed,
+  disabled,
   icon,
   label,
   onPress,
@@ -105,11 +110,14 @@ function TaskCard({
       <Pressable
         accessibilityLabel={`${label}. ${status}`}
         accessibilityRole="button"
+        accessibilityState={{ disabled }}
+        disabled={disabled}
         onPress={onPress}
         style={({ pressed }) => [
           styles.taskCard,
           tone === 'morning' ? styles.morningCard : styles.eveningCard,
           completed && styles.taskCardCompleted,
+          disabled && styles.taskCardDisabled,
           pressed && styles.pressed,
         ]}
         testID={testID}
@@ -188,10 +196,25 @@ export default function ChildHomeScreen() {
   if (!active || !progress) return <LoadingState />;
   const growth = growthProgressForXp(progress.totalXp);
   const growthStage = growth.currentStage;
+  // Slot cards only accept taps inside their real reward window
+  // (morning 04:00–11:59, evening 18:00–23:59); outside it they are inert.
+  const activeSlot = classifyBrushingSlot(new Date());
   const isYoungerExperience = active.ageBand === '4_6';
-  const roomBackground = equipped.find((item) => item.slot === 'background');
+  const equippedBackground = equipped.find((item) => item.slot === 'background');
+  // A Mine Puan drop can re-lock the equipped background; until Collection
+  // reverts it, fall back to the always-open default room here too.
+  const roomBackground =
+    equippedBackground && isBackgroundUnlockedForScore(equippedBackground.key, progress.totalXp)
+      ? equippedBackground
+      : undefined;
   const roomEffect = equipped.find((item) => item.slot === 'effect');
-  const roomEffectKey = isCharacterSceneEffectKey(roomEffect?.key) ? roomEffect.key : null;
+  // Same as the background: a re-locked effect stops showing until Collection
+  // reverts the selection to the always-open default.
+  const roomEffectKey =
+    isCharacterSceneEffectKey(roomEffect?.key) &&
+    isEffectUnlockedForScore(roomEffect.key, progress.totalXp)
+      ? roomEffect.key
+      : null;
   const selectedRoomMaterials = roomMaterialsForTheme(roomBackground?.key).filter((item) =>
     customization.selectedRoomMaterials.includes(item.key),
   );
@@ -323,6 +346,14 @@ export default function ChildHomeScreen() {
             <Text style={styles.levelLabel}>
               {t(`growth.stages.${characterGrowthStageNames[growthStage]}`)}
             </Text>
+            <Text style={styles.currentScoreLabel}>
+              {t('growth.currentScore', { count: progress.totalXp })}
+            </Text>
+            {!growth.isFinalStage ? (
+              <Text style={styles.xpFractionLabel}>
+                {t('childHome.xp', { current: progress.totalXp, target: growth.targetXp })}
+              </Text>
+            ) : null}
             <Text style={styles.xpLabel}>
               {growth.isFinalStage
                 ? t('growth.finalStageShort')
@@ -355,6 +386,7 @@ export default function ChildHomeScreen() {
         <View style={styles.taskRow}>
           <TaskCard
             completed={progress.morningCompleted}
+            disabled={activeSlot !== 'morning'}
             icon="☀️"
             label={t('childHome.morningShort')}
             onPress={() =>
@@ -370,6 +402,7 @@ export default function ChildHomeScreen() {
           />
           <TaskCard
             completed={progress.eveningCompleted}
+            disabled={activeSlot !== 'evening'}
             icon="🌙"
             label={t('childHome.eveningShort')}
             onPress={() =>
@@ -668,6 +701,7 @@ const styles = StyleSheet.create({
   },
   taskCardShell: { flex: 1, position: 'relative' },
   taskCardCompleted: { borderColor: colors.brandAccent, borderWidth: 3 },
+  taskCardDisabled: { opacity: 0.55 },
   reminderBell: {
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.88)',
@@ -713,6 +747,8 @@ const styles = StyleSheet.create({
     width: 5,
   },
   xpFill: { backgroundColor: colors.brandAccent, borderRadius: radii.pill, height: '100%' },
+  currentScoreLabel: { color: colors.navy, fontSize: 18, fontWeight: '900', lineHeight: 24 },
+  xpFractionLabel: { color: '#667078', fontSize: 13, fontWeight: '700', lineHeight: 18 },
   xpLabel: { color: colors.navy, fontSize: 14, fontWeight: '800', lineHeight: 19 },
   xpTrack: {
     backgroundColor: '#E9E2F7',
