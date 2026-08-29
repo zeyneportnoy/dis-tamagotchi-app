@@ -44,6 +44,18 @@ export class SupabaseParentAuthService implements ParentAuthService {
     if (error) throw new Error('AUTH_SIGN_OUT_FAILED');
   }
 
+  /**
+   * Deletes the account server-side via the `delete-account` Edge Function,
+   * which holds the privileged key in its own environment — the client never
+   * sees it. The caller's JWT authorises the call and the function derives the
+   * user id from that token, not from any argument.
+   */
+  async deleteAccount(): Promise<void> {
+    const { error } = await this.client.functions.invoke('delete-account', { method: 'POST' });
+    if (error) throw new Error('AUTH_ACCOUNT_DELETE_FAILED');
+    await this.client.auth.signOut().catch(() => undefined);
+  }
+
   async resendVerification(email: string): Promise<void> {
     const { error } = await this.client.auth.resend({
       type: 'signup',

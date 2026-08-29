@@ -118,6 +118,34 @@ describe('per-child brushing reminders', () => {
     expect(stored.evening.enabled).toBe(true);
   });
 
+  it('applyRecoveredPreferences cancels the previous schedule before rescheduling (no duplicate)', async () => {
+    const { notifications, service } = createHarness();
+    // First recovery / a prior UI update scheduled notification-1 for morning.
+    await service.update('parent-a', 'child-a', 'morning', { enabled: true, time: '07:00' });
+    expect(notifications.schedule).toHaveBeenCalledTimes(1);
+
+    // A cloud-newer refresh comes in with a different time.
+    await service.applyRecoveredPreferences('parent-a', 'child-a', {
+      morning: { enabled: true, time: '08:30' },
+      evening: { enabled: false, time: '20:30' },
+    });
+    expect(notifications.cancel).toHaveBeenCalledWith('notification-1');
+    const stored = await service.get('parent-a', 'child-a');
+    expect(stored.morning).toMatchObject({ time: '08:30', notificationId: 'notification-2' });
+  });
+
+  it('tracks the reminder sync marker: clean after markSynced, dirty after a change', async () => {
+    const { service } = createHarness();
+    await service.update('parent-a', 'child-a', 'morning', { enabled: true, time: '08:00' });
+    await service.markSynced('parent-a', 'child-a');
+    const clean = await service.readSyncMeta('parent-a', 'child-a');
+    expect(clean.dirty).toBe(false);
+    expect(typeof clean.syncedAt).toBe('string');
+
+    await service.update('parent-a', 'child-a', 'evening', { enabled: true, time: '21:00' });
+    await expect(service.readSyncMeta('parent-a', 'child-a')).resolves.toMatchObject({ dirty: true });
+  });
+
   it('schedules the development test notification without changing reminder settings', async () => {
     const { notifications, service } = createHarness();
     const before = await service.get('parent-a', 'child-a');

@@ -46,4 +46,21 @@ export class ProfileSyncUseCases {
     }
     return synced;
   }
+
+  /**
+   * Propagate locally-queued child archive/delete operations to Supabase. RLS
+   * ensures a parent can only remove its own child rows; dependent cloud rows
+   * fall away by cascade. Idempotent — a removal that already succeeded (or whose
+   * row is already gone) just clears from the outbox.
+   */
+  async flushPendingRemovals(parentId: string): Promise<void> {
+    for (const removal of await this.local.listPendingRemovals(parentId)) {
+      try {
+        await this.cloud.remove(removal);
+        await this.local.clearPendingRemoval(removal.remoteId);
+      } catch {
+        // Keep it in the outbox for the next retry.
+      }
+    }
+  }
 }

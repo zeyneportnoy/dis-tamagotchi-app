@@ -13,6 +13,7 @@ const createService = (): jest.Mocked<ParentAuthService> => ({
   signUp: jest.fn().mockResolvedValue(session),
   signIn: jest.fn().mockResolvedValue(session),
   signOut: jest.fn().mockResolvedValue(undefined),
+  deleteAccount: jest.fn().mockResolvedValue(undefined),
   resendVerification: jest.fn().mockResolvedValue(undefined),
   sendPasswordReset: jest.fn().mockResolvedValue(undefined),
   updatePassword: jest.fn().mockResolvedValue(undefined),
@@ -73,6 +74,20 @@ describe('ParentAuthUseCases', () => {
     expect(() =>
       useCases.updatePassword({ password: 'guvenli8', passwordConfirmation: 'different8' }),
     ).toThrow();
+  });
+
+  it('delegates account deletion to the auth service without extra arguments', async () => {
+    const service = createService();
+    const useCases = new ParentAuthUseCases(service);
+    await expect(useCases.deleteAccount()).resolves.toBeUndefined();
+    expect(service.deleteAccount).toHaveBeenCalledWith();
+  });
+
+  it('surfaces a failed account deletion so the UI can keep the session', async () => {
+    const service = createService();
+    service.deleteAccount.mockRejectedValueOnce(new Error('AUTH_ACCOUNT_DELETE_FAILED'));
+    const useCases = new ParentAuthUseCases(service);
+    await expect(useCases.deleteAccount()).rejects.toThrow('AUTH_ACCOUNT_DELETE_FAILED');
   });
 
   it('preserves the PKCE flow id at the callback boundary', async () => {

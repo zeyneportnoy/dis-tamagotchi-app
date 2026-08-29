@@ -38,6 +38,22 @@ export class ChildDataSyncUseCases {
     if (!childId) return;
     const snapshot = await this.local.readProgressSnapshot(profileId);
     if (!snapshot) return;
+
+    // Concurrent-write guard: if the cloud row advanced past this device's last
+    // sync (another device wrote), do NOT blind-overwrite it with our possibly
+    // stale value. recoverProgress() (bootstrap / foreground) merges instead.
+    const cloudRow = await this.cloud.getProgress(childId);
+    if (
+      cloudRow &&
+      cloudRow.updatedAt &&
+      snapshot.syncedAt &&
+      cloudRow.updatedAt > snapshot.syncedAt &&
+      (cloudRow.currentMineScore !== snapshot.syncedScore ||
+        cloudRow.streak !== snapshot.syncedStreak)
+    ) {
+      return;
+    }
+
     const updatedAt = await this.cloud.upsertProgress({
       childId,
       currentMineScore: snapshot.currentMineScore,

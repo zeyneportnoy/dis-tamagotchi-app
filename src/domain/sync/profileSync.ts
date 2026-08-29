@@ -13,9 +13,17 @@ export type CloudChildProfile = Readonly<{
   archivedAt: string | null;
 }>;
 
+export type PendingProfileRemoval = Readonly<{
+  remoteId: string;
+  mode: 'archive' | 'delete';
+  archivedAt: string | null;
+}>;
+
 export interface CloudChildProfileRepository {
   listOwned(): Promise<readonly CloudChildProfile[]>;
   upsert(profile: CloudChildProfile): Promise<CloudChildProfile>;
+  /** Propagate a local child removal: hard-delete, or set `archived_at`. */
+  remove(removal: PendingProfileRemoval): Promise<void>;
 }
 
 export interface LocalProfileSyncRepository {
@@ -24,4 +32,6 @@ export interface LocalProfileSyncRepository {
   upsertCloud(profile: CloudChildProfile): Promise<void>;
   markSynced(localId: string, parentId: string, remoteId: string): Promise<void>;
   markFailed(localId: string): Promise<void>;
+  listPendingRemovals(parentId: string): Promise<readonly PendingProfileRemoval[]>;
+  clearPendingRemoval(remoteId: string): Promise<void>;
 }

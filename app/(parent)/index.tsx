@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 
 import { getFamilyUseCases, type ChildProfileViewModel } from '@/application/family';
+import { resetSessionSyncState, wipeLocalAccountData } from '@/application/sync';
 import { Button, Screen, ScreenHeader, Text, colors, radii, spacing } from '@/design-system';
 import { useAuth } from '@/features/auth';
 import { deleteCustomizationState } from '@/features/customization';
@@ -26,7 +27,9 @@ export default function ParentAccountScreen() {
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ChildProfileViewModel | null>(null);
   const [deletingProfile, setDeletingProfile] = useState(false);
-  const [deleteInfo, setDeleteInfo] = useState(false);
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState(false);
 
   useEffect(() => {
     void getFamilyUseCases().then(async (family) => {
@@ -69,7 +72,27 @@ export default function ParentAccountScreen() {
 
   const signOut = async (): Promise<void> => {
     await useCases?.signOut();
+    resetSessionSyncState();
     router.replace('/auth/login');
+  };
+
+  const confirmDeleteAccount = async (): Promise<void> => {
+    if (deletingAccount) return;
+    const parentUserId = session?.userId;
+    setDeletingAccount(true);
+    setDeleteAccountError(false);
+    try {
+      await useCases?.deleteAccount();
+      if (parentUserId) await wipeLocalAccountData(parentUserId);
+      resetSessionSyncState();
+      draft.reset();
+      setDeleteAccountOpen(false);
+      router.replace('/onboarding');
+    } catch {
+      setDeleteAccountError(true);
+    } finally {
+      setDeletingAccount(false);
+    }
   };
 
   const deleteSelectedProfile = async (): Promise<void> => {
@@ -184,15 +207,47 @@ export default function ParentAccountScreen() {
         <Button label={t('parent.signOut')} onPress={() => void signOut()} variant="secondary" />
         <Button
           label={t('parent.deleteAccount')}
-          onPress={() => setDeleteInfo(true)}
+          onPress={() => setDeleteAccountOpen(true)}
+          testID="delete-account-button"
           variant="secondary"
         />
-        {deleteInfo ? (
-          <View style={styles.warning}>
-            <Text>{t('parent.deleteUnavailable')}</Text>
-          </View>
-        ) : null}
       </ScrollView>
+      <Modal
+        animationType="fade"
+        onRequestClose={() => {
+          if (!deletingAccount) setDeleteAccountOpen(false);
+        }}
+        transparent
+        visible={deleteAccountOpen}
+      >
+        <View style={styles.modalBackdrop}>
+          <View accessibilityViewIsModal style={styles.modalCard} testID="delete-account-modal">
+            <Text style={styles.modalTitle}>{t('parent.deleteAccountModal.title')}</Text>
+            <Text>{t('parent.deleteAccountModal.message')}</Text>
+            {deleteAccountError ? (
+              <Text style={styles.deleteError}>{t('parent.deleteAccountModal.error')}</Text>
+            ) : null}
+            <View style={styles.modalActions}>
+              <View style={styles.modalAction}>
+                <Button
+                  disabled={deletingAccount}
+                  label={t('parent.deleteAccountModal.cancel')}
+                  onPress={() => setDeleteAccountOpen(false)}
+                  variant="secondary"
+                />
+              </View>
+              <View style={styles.modalAction}>
+                <Button
+                  disabled={deletingAccount}
+                  label={t('parent.deleteAccountModal.confirm')}
+                  onPress={() => void confirmDeleteAccount()}
+                  testID="delete-account-confirm"
+                />
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
       <Modal
         animationType="fade"
         onRequestClose={() => {
@@ -237,6 +292,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   content: { gap: spacing.md, paddingBottom: spacing.xl },
+  deleteError: { color: colors.brandSecondary, fontWeight: '800' },
   modalAction: { flex: 1 },
   modalActions: { flexDirection: 'row', gap: spacing.sm },
   modalBackdrop: {
@@ -333,5 +389,4 @@ const styles = StyleSheet.create({
   },
   trashLineSelected: { backgroundColor: colors.teal },
   trashLines: { flexDirection: 'row', gap: 3 },
-  warning: { backgroundColor: '#FFF0C9', borderRadius: radii.md, padding: spacing.md },
 });

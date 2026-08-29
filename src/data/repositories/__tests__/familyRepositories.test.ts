@@ -12,6 +12,7 @@ import { NodeSQLiteDatabase } from '@/test/NodeSQLiteDatabase';
 import { SQLiteChildProfileRepository } from '../SQLiteChildProfileRepository';
 import { SQLiteFamilyRepository } from '../SQLiteFamilyRepository';
 import { SQLiteProfileProgressRepository } from '../SQLiteProfileProgressRepository';
+import { SQLiteProfileSyncRepository } from '../SQLiteProfileSyncRepository';
 
 jest.mock('expo-crypto', () => ({ randomUUID: jest.fn() }));
 jest.mock('expo-sqlite', () => ({}));
@@ -387,6 +388,44 @@ describe('family repositories', () => {
       'SELECT count(*) AS count FROM child_profiles',
     );
     expect(count?.count).toBe(0);
+    database.close();
+  });
+
+  it('queues a cloud removal only for a child that was already cloud-synced', async () => {
+    const database = new NodeSQLiteDatabase();
+    await migrateDatabase(database as unknown as SQLiteDatabase);
+    const { families, profiles } = repositories(database);
+    const family = await families.createLocal();
+
+    const localOnly = await profiles.create({
+      familyId: family.id,
+      nickname: 'Local only',
+      dateOfBirth: '2020-01-15',
+      avatarId: 'inci',
+    });
+    const synced = await profiles.create({
+      familyId: family.id,
+      nickname: 'Cloud synced',
+      dateOfBirth: '2019-01-15',
+      avatarId: 'kaan',
+    });
+    await database.runAsync(
+      "UPDATE child_profiles SET remote_id = 'remote-42', sync_status = 'synced' WHERE id = ?",
+      synced.id,
+    );
+
+    // Never-synced child: nothing to remove in the cloud.
+    await profiles.delete(localOnly.id);
+    // Cloud-synced child: archive then delete, last write wins in the outbox.
+    await profiles.archive(synced.id);
+    await profiles.delete(synced.id);
+
+    const syncRepo = new SQLiteProfileSyncRepository(database as unknown as SQLiteDatabase);
+    const pending = await syncRepo.listPendingRemovals(parentId);
+    expect(pending).toEqual([{ remoteId: 'remote-42', mode: 'delete', archivedAt: null }]);
+
+    await syncRepo.clearPendingRemoval('remote-42');
+    await expect(syncRepo.listPendingRemovals(parentId)).resolves.toEqual([]);
     database.close();
   });
 

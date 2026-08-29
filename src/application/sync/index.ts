@@ -14,4 +14,6 @@ export {
   syncChildPreferences,
   syncAllChildPreferences,
   recoverChildPreferences,
+  resetSessionSyncState,
+  wipeLocalAccountData,
 } from './services';

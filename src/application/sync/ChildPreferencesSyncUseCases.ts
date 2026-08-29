@@ -11,10 +11,18 @@ import type {
  * accessors keep this use case free of feature-module imports; every call is
  * scoped to a specific `(parentUserId, childProfileId)`.
  */
+export type PreferenceSyncMeta = Readonly<{ syncedAt: string | null; dirty: boolean }>;
+
 export type ChildPreferenceAccessors = Readonly<{
   readVoice(parentUserId: string, childProfileId: string): Promise<CloudVoiceGuide>;
   hasStoredVoice(parentUserId: string, childProfileId: string): Promise<boolean>;
   writeVoice(parentUserId: string, childProfileId: string, voice: CloudVoiceGuide): Promise<void>;
+  markVoiceSynced(
+    parentUserId: string,
+    childProfileId: string,
+    voice: CloudVoiceGuide,
+  ): Promise<void>;
+  readVoiceSyncMeta(parentUserId: string, childProfileId: string): Promise<PreferenceSyncMeta>;
   readReminders(
     parentUserId: string,
     childProfileId: string,
@@ -29,6 +37,8 @@ export type ChildPreferenceAccessors = Readonly<{
       evening: Readonly<{ enabled: boolean; time: string }>;
     }>,
   ): Promise<void>;
+  markRemindersSynced(parentUserId: string, childProfileId: string): Promise<void>;
+  readRemindersSyncMeta(parentUserId: string, childProfileId: string): Promise<PreferenceSyncMeta>;
 }>;
 
 export class ChildPreferencesSyncUseCases {
@@ -68,9 +78,16 @@ export class ChildPreferencesSyncUseCases {
   }
 
   private async pushSnapshot(profileId: string, childId: string): Promise<void> {
+    const parentUserId = await this.local.resolveParentUserId(profileId);
     const snapshot = await this.buildSnapshot(profileId, childId);
     await this.cloud.upsert(snapshot);
     await this.local.markCustomizationSynced(profileId, snapshot.roomConfiguration);
+    if (parentUserId) {
+      if (snapshot.voiceGuide) {
+        await this.prefs.markVoiceSynced(parentUserId, profileId, snapshot.voiceGuide);
+      }
+      await this.prefs.markRemindersSynced(parentUserId, profileId);
+    }
   }
 
   async pushForProfile(profileId: string): Promise<void> {
@@ -114,14 +131,32 @@ export class ChildPreferencesSyncUseCases {
       const parentUserId = await this.local.resolveParentUserId(profileId);
       if (!parentUserId) continue;
 
-      if (row.voiceGuide && !(await this.prefs.hasStoredVoice(parentUserId, profileId))) {
-        await this.prefs.writeVoice(parentUserId, profileId, row.voiceGuide);
+      if (row.voiceGuide) {
+        if (!(await this.prefs.hasStoredVoice(parentUserId, profileId))) {
+          await this.prefs.writeVoice(parentUserId, profileId, row.voiceGuide);
+          await this.prefs.markVoiceSynced(parentUserId, profileId, row.voiceGuide);
+        } else {
+          const meta = await this.prefs.readVoiceSyncMeta(parentUserId, profileId);
+          if (!meta.dirty && cloudRowNewerThan(row.updatedAt, meta.syncedAt)) {
+            await this.prefs.writeVoice(parentUserId, profileId, row.voiceGuide);
+            await this.prefs.markVoiceSynced(parentUserId, profileId, row.voiceGuide);
+          }
+        }
       }
+
+      const recoveredReminders = {
+        morning: reminderValues(row.morningReminder, '08:00'),
+        evening: reminderValues(row.eveningReminder, '20:30'),
+      };
       if (!(await this.prefs.hasStoredReminders(parentUserId, profileId))) {
-        await this.prefs.applyRecoveredReminders(parentUserId, profileId, {
-          morning: reminderValues(row.morningReminder, '08:00'),
-          evening: reminderValues(row.eveningReminder, '20:30'),
-        });
+        await this.prefs.applyRecoveredReminders(parentUserId, profileId, recoveredReminders);
+        await this.prefs.markRemindersSynced(parentUserId, profileId);
+      } else {
+        const meta = await this.prefs.readRemindersSyncMeta(parentUserId, profileId);
+        if (!meta.dirty && cloudRowNewerThan(row.updatedAt, meta.syncedAt)) {
+          await this.prefs.applyRecoveredReminders(parentUserId, profileId, recoveredReminders);
+          await this.prefs.markRemindersSynced(parentUserId, profileId);
+        }
       }
     }
   }
@@ -134,3 +169,8 @@ const reminderValues = (
   enabled: preference.enabled,
   time: preference.time ?? fallbackTime,
 });
+
+const cloudRowNewerThan = (
+  cloudUpdatedAt: string | undefined,
+  localSyncedAt: string | null,
+): boolean => Boolean(cloudUpdatedAt && localSyncedAt && cloudUpdatedAt > localSyncedAt);

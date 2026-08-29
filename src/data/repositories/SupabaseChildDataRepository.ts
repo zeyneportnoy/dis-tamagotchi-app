@@ -132,6 +132,16 @@ export class SupabaseChildDataRepository implements CloudChildDataRepository {
     return updatedAt;
   }
 
+  async getProgress(childId: string): Promise<CloudChildProgress | null> {
+    const { data, error } = await this.client
+      .from('child_progress')
+      .select('child_id, current_mine_score, streak, updated_at')
+      .eq('child_id', childId)
+      .maybeSingle();
+    if (error) throw new Error('CLOUD_PROGRESS_GET_FAILED');
+    return data ? mapProgress(data as ProgressRow) : null;
+  }
+
   async listOwnedProgress(): Promise<readonly CloudChildProgress[]> {
     const { data, error } = await this.client
       .from('child_progress')

@@ -20,11 +20,14 @@ const local = (): jest.Mocked<LocalProfileSyncRepository> => ({
   upsertCloud: jest.fn().mockResolvedValue(undefined),
   markSynced: jest.fn().mockResolvedValue(undefined),
   markFailed: jest.fn().mockResolvedValue(undefined),
+  listPendingRemovals: jest.fn().mockResolvedValue([]),
+  clearPendingRemoval: jest.fn().mockResolvedValue(undefined),
 });
 
 const cloud = (): jest.Mocked<CloudChildProfileRepository> => ({
   listOwned: jest.fn().mockResolvedValue([{ ...profile, parentId: 'parent-1' }]),
   upsert: jest.fn().mockImplementation((value) => Promise.resolve(value)),
+  remove: jest.fn().mockResolvedValue(undefined),
 });
 
 describe('ProfileSyncUseCases', () => {
@@ -48,5 +51,32 @@ describe('ProfileSyncUseCases', () => {
     cloudRepository.upsert.mockRejectedValueOnce(new Error('offline'));
     await expect(useCases.claimLegacyProfiles('parent-1')).resolves.toBe(0);
     expect(localRepository.markFailed).toHaveBeenCalledWith(profile.id);
+  });
+
+  it('flushes a queued child removal to the cloud and clears it from the outbox', async () => {
+    const localRepository = local();
+    const cloudRepository = cloud();
+    const removal = { remoteId: 'remote-9', mode: 'archive' as const, archivedAt: '2026-08-29T10:00:00.000Z' };
+    localRepository.listPendingRemovals.mockResolvedValueOnce([removal]);
+    const useCases = new ProfileSyncUseCases(localRepository, cloudRepository);
+
+    await useCases.flushPendingRemovals('parent-1');
+
+    expect(localRepository.listPendingRemovals).toHaveBeenCalledWith('parent-1');
+    expect(cloudRepository.remove).toHaveBeenCalledWith(removal);
+    expect(localRepository.clearPendingRemoval).toHaveBeenCalledWith('remote-9');
+  });
+
+  it('keeps a removal in the outbox when the cloud call fails', async () => {
+    const localRepository = local();
+    const cloudRepository = cloud();
+    localRepository.listPendingRemovals.mockResolvedValueOnce([
+      { remoteId: 'remote-9', mode: 'delete', archivedAt: null },
+    ]);
+    cloudRepository.remove.mockRejectedValueOnce(new Error('offline'));
+    const useCases = new ProfileSyncUseCases(localRepository, cloudRepository);
+
+    await expect(useCases.flushPendingRemovals('parent-1')).resolves.toBeUndefined();
+    expect(localRepository.clearPendingRemoval).not.toHaveBeenCalled();
   });
 });

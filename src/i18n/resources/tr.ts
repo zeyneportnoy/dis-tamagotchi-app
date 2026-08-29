@@ -447,8 +447,14 @@ export const tr = {
       changePassword: 'Şifremi değiştir',
       signOut: 'Oturumu Kapat',
       deleteAccount: 'Hesabımı Sil',
-      deleteUnavailable:
-        'Hesap silme isteği yayın öncesinde güvenli sunucu işlemiyle tamamlanacaktır. Bu ekran sahte bir silme başarısı göstermez.',
+      deleteAccountModal: {
+        title: 'Hesabını kalıcı olarak sil?',
+        message:
+          'Hesabın, tüm çocuk profilleri, Mine Puan ilerlemesi, fırçalama geçmişi ve ayarlar kalıcı olarak silinir. Bu işlem geri alınamaz.',
+        cancel: 'Vazgeç',
+        confirm: 'Hesabı kalıcı sil',
+        error: 'Hesap silinemedi. Bağlantını kontrol edip tekrar dene.',
+      },
       deleteChild: {
         action: '{{name}} profilini sil',
         cancel: 'Vazgeç',

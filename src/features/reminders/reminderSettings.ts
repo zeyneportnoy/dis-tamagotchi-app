@@ -30,9 +30,20 @@ type NotificationGateway = {
 const legacyParentStorageKey = (parentId: string) => `parent:${parentId}:brushing-reminders:v1`;
 const storageKey = (parentId: string, childProfileId: string) =>
   `parent:${parentId}:child:${childProfileId}:brushing-reminders:v1`;
+const syncMetaKey = (parentId: string, childProfileId: string) =>
+  `${storageKey(parentId, childProfileId)}.sync-meta`;
 const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const sanitizeTime = (time: string, slot: ReminderSlot): string =>
   timePattern.test(time) ? time : defaultReminderSettings[slot].time;
+
+export type ReminderSyncMeta = Readonly<{ syncedAt: string | null; dirty: boolean }>;
+
+/** Preference fingerprint (enabled + time only — notificationId is device-local). */
+const remindersFingerprint = (settings: BrushingReminderSettings): string =>
+  JSON.stringify({
+    morning: { enabled: settings.morning.enabled, time: settings.morning.time },
+    evening: { enabled: settings.evening.enabled, time: settings.evening.time },
+  });
 
 function parseSettings(value: string | null): BrushingReminderSettings {
   if (!value) return defaultReminderSettings;
@@ -82,6 +93,31 @@ export class ReminderSettingsService {
     return (await this.storage.getItem(storageKey(parentId, childProfileId))) !== null;
   }
 
+  /** Records the preference fingerprint that was just pushed to the cloud. */
+  async markSynced(parentId: string, childProfileId: string): Promise<void> {
+    const fingerprint = remindersFingerprint(await this.get(parentId, childProfileId));
+    await this.storage.setItem(
+      syncMetaKey(parentId, childProfileId),
+      JSON.stringify({ fingerprint, syncedAt: new Date().toISOString() }),
+    );
+  }
+
+  /** Whether the local child reminder preference differs from the last push. */
+  async readSyncMeta(parentId: string, childProfileId: string): Promise<ReminderSyncMeta> {
+    const stored = await this.storage.getItem(syncMetaKey(parentId, childProfileId));
+    if (!stored) return { syncedAt: null, dirty: true };
+    try {
+      const parsed = JSON.parse(stored) as { fingerprint?: string; syncedAt?: string };
+      const current = remindersFingerprint(await this.get(parentId, childProfileId));
+      return {
+        syncedAt: typeof parsed.syncedAt === 'string' ? parsed.syncedAt : null,
+        dirty: parsed.fingerprint !== current,
+      };
+    } catch {
+      return { syncedAt: null, dirty: true };
+    }
+  }
+
   /**
    * Cloud-recovery entry point: persist the recovered enabled/time values for a
    * child AND actually (re)schedule any enabled slot using the existing
@@ -95,6 +131,19 @@ export class ReminderSettingsService {
     childProfileId: string,
     values: Readonly<Record<ReminderSlot, Readonly<{ enabled: boolean; time: string }>>>,
   ): Promise<void> {
+    const key = storageKey(parentId, childProfileId);
+    // Cancel any schedule from a previous record so a cloud-newer refresh never
+    // leaves a duplicate notification behind.
+    const existing = await this.storage.getItem(key);
+    if (existing !== null) {
+      const previous = parseSettings(existing);
+      for (const slot of ['morning', 'evening'] as const) {
+        if (previous[slot].notificationId) {
+          await this.notifications.cancel(previous[slot].notificationId).catch(() => undefined);
+        }
+      }
+    }
+
     const settings: Record<ReminderSlot, ReminderSlotSettings> = {
       morning: {
         enabled: values.morning.enabled,
@@ -107,7 +156,6 @@ export class ReminderSettingsService {
         time: sanitizeTime(values.evening.time, 'evening'),
       },
     };
-    const key = storageKey(parentId, childProfileId);
     await this.storage.setItem(key, JSON.stringify(settings));
 
     const enabledSlots = (['morning', 'evening'] as const).filter((slot) => settings[slot].enabled);

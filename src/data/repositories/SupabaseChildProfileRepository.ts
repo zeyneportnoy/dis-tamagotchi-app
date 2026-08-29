@@ -1,7 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { AgeBand, StarterAvatarKey } from '@/domain/family';
-import type { CloudChildProfile, CloudChildProfileRepository } from '@/domain/sync';
+import type {
+  CloudChildProfile,
+  CloudChildProfileRepository,
+  PendingProfileRemoval,
+} from '@/domain/sync';
 
 type CloudRow = {
   id: string;
@@ -61,5 +65,24 @@ export class SupabaseChildProfileRepository implements CloudChildProfileReposito
       .single();
     if (error) throw new Error('CLOUD_PROFILE_UPSERT_FAILED');
     return mapRow(data as CloudRow);
+  }
+
+  async remove(removal: PendingProfileRemoval): Promise<void> {
+    if (removal.mode === 'delete') {
+      const { error } = await this.client
+        .from('child_profiles')
+        .delete()
+        .eq('id', removal.remoteId);
+      if (error) throw new Error('CLOUD_PROFILE_DELETE_FAILED');
+      return;
+    }
+    const { error } = await this.client
+      .from('child_profiles')
+      .update({
+        archived_at: removal.archivedAt ?? new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', removal.remoteId);
+    if (error) throw new Error('CLOUD_PROFILE_ARCHIVE_FAILED');
   }
 }

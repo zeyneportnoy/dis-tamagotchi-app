@@ -65,12 +65,20 @@ const prefs = (
   readVoice: jest.fn().mockResolvedValue('samet'),
   hasStoredVoice: jest.fn().mockResolvedValue(false),
   writeVoice: jest.fn().mockResolvedValue(undefined),
+  markVoiceSynced: jest.fn().mockResolvedValue(undefined),
+  readVoiceSyncMeta: jest
+    .fn()
+    .mockResolvedValue({ syncedAt: '2026-08-20T00:00:00.000Z', dirty: false }),
   readReminders: jest.fn().mockResolvedValue({
     morning: { enabled: true, time: '07:30' },
     evening: { enabled: false, time: '20:00' },
   }),
   hasStoredReminders: jest.fn().mockResolvedValue(false),
   applyRecoveredReminders: jest.fn().mockResolvedValue(undefined),
+  markRemindersSynced: jest.fn().mockResolvedValue(undefined),
+  readRemindersSyncMeta: jest
+    .fn()
+    .mockResolvedValue({ syncedAt: '2026-08-20T00:00:00.000Z', dirty: false }),
   ...overrides,
 });
 
@@ -176,11 +184,71 @@ describe('ChildPreferencesSyncUseCases', () => {
       await new ChildPreferencesSyncUseCases(localRepo, cloud([newerRow]), prefs()).recover();
       expect(localRepo.hydrateCustomization).not.toHaveBeenCalled();
     });
+
+    it('refreshes a clean-but-stale child voice when the cloud row is newer, keeps a dirty one', async () => {
+      const localRepo = local({ hasLocalCustomization: jest.fn().mockResolvedValue(true) });
+      const newerRow = { ...cloudRow, updatedAt: '2026-08-25T00:00:00.000Z', voiceGuide: 'off' as const };
+
+      const clean = prefs({
+        hasStoredVoice: jest.fn().mockResolvedValue(true),
+        hasStoredReminders: jest.fn().mockResolvedValue(true),
+        readVoiceSyncMeta: jest
+          .fn()
+          .mockResolvedValue({ syncedAt: '2026-08-20T00:00:00.000Z', dirty: false }),
+      });
+      await new ChildPreferencesSyncUseCases(localRepo, cloud([newerRow]), clean).recover();
+      expect(clean.writeVoice).toHaveBeenCalledWith('parent-1', 'profile-1', 'off');
+      expect(clean.markVoiceSynced).toHaveBeenCalledWith('parent-1', 'profile-1', 'off');
+
+      const dirty = prefs({
+        hasStoredVoice: jest.fn().mockResolvedValue(true),
+        hasStoredReminders: jest.fn().mockResolvedValue(true),
+        readVoiceSyncMeta: jest
+          .fn()
+          .mockResolvedValue({ syncedAt: '2026-08-20T00:00:00.000Z', dirty: true }),
+      });
+      await new ChildPreferencesSyncUseCases(localRepo, cloud([newerRow]), dirty).recover();
+      expect(dirty.writeVoice).not.toHaveBeenCalled();
+    });
+
+    it('refreshes clean-but-stale child reminders when the cloud row is newer, keeps a dirty one', async () => {
+      const localRepo = local({ hasLocalCustomization: jest.fn().mockResolvedValue(true) });
+      const newerRow = { ...cloudRow, updatedAt: '2026-08-25T00:00:00.000Z' };
+
+      const clean = prefs({
+        hasStoredVoice: jest.fn().mockResolvedValue(true),
+        hasStoredReminders: jest.fn().mockResolvedValue(true),
+        readRemindersSyncMeta: jest
+          .fn()
+          .mockResolvedValue({ syncedAt: '2026-08-20T00:00:00.000Z', dirty: false }),
+      });
+      await new ChildPreferencesSyncUseCases(localRepo, cloud([newerRow]), clean).recover();
+      expect(clean.applyRecoveredReminders).toHaveBeenCalledWith('parent-1', 'profile-1', {
+        morning: { enabled: true, time: '07:15' },
+        evening: { enabled: true, time: '21:00' },
+      });
+      expect(clean.markRemindersSynced).toHaveBeenCalledWith('parent-1', 'profile-1');
+
+      const dirty = prefs({
+        hasStoredVoice: jest.fn().mockResolvedValue(true),
+        hasStoredReminders: jest.fn().mockResolvedValue(true),
+        readRemindersSyncMeta: jest
+          .fn()
+          .mockResolvedValue({ syncedAt: '2026-08-20T00:00:00.000Z', dirty: true }),
+      });
+      await new ChildPreferencesSyncUseCases(localRepo, cloud([newerRow]), dirty).recover();
+      expect(dirty.applyRecoveredReminders).not.toHaveBeenCalled();
+    });
   });
 
-  it('stamps the customization sync marker after a successful push', async () => {
+  it('stamps every sync marker after a successful push', async () => {
     const localRepo = local();
-    await new ChildPreferencesSyncUseCases(localRepo, cloud(), prefs()).pushForProfile('profile-1');
+    const prefAccessors = prefs();
+    await new ChildPreferencesSyncUseCases(localRepo, cloud(), prefAccessors).pushForProfile(
+      'profile-1',
+    );
     expect(localRepo.markCustomizationSynced).toHaveBeenCalledWith('profile-1', roomConfig);
+    expect(prefAccessors.markVoiceSynced).toHaveBeenCalledWith('parent-1', 'profile-1', 'samet');
+    expect(prefAccessors.markRemindersSynced).toHaveBeenCalledWith('parent-1', 'profile-1');
   });
 });

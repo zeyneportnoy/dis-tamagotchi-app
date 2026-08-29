@@ -2,8 +2,11 @@ export {
   getBrushingVoiceProfile,
   getNicknamePersonalizationEnabled,
   hasStoredVoiceProfile,
+  markVoiceProfileSynced,
+  readVoiceProfileSyncMeta,
   setBrushingVoiceProfile,
   setNicknamePersonalizationEnabled,
+  type VoiceProfileSyncMeta,
 } from './preferences';
 export * from './personalizedVoice';
 export { nextAlignedTickBoundary, shouldEmitAlignedTick } from './timerTick';

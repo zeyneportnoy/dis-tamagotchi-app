@@ -2,7 +2,11 @@ import { randomUUID } from 'expo-crypto';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { AgeBand, StarterAvatarKey } from '@/domain/family';
-import type { CloudChildProfile, LocalProfileSyncRepository } from '@/domain/sync';
+import type {
+  CloudChildProfile,
+  LocalProfileSyncRepository,
+  PendingProfileRemoval,
+} from '@/domain/sync';
 
 type LegacyRow = {
   id: string;
@@ -141,6 +145,30 @@ export class SQLiteProfileSyncRepository implements LocalProfileSyncRepository {
     await this.database.runAsync(
       "UPDATE child_profiles SET sync_status = 'failed' WHERE id = ?",
       localId,
+    );
+  }
+
+  async listPendingRemovals(parentId: string): Promise<readonly PendingProfileRemoval[]> {
+    const rows = await this.database.getAllAsync<{
+      remote_id: string;
+      mode: 'archive' | 'delete';
+      archived_at: string | null;
+    }>(
+      `SELECT remote_id, mode, archived_at FROM pending_cloud_profile_removals
+       WHERE parent_auth_user_id = ? ORDER BY requested_at`,
+      parentId,
+    );
+    return rows.map((row) => ({
+      remoteId: row.remote_id,
+      mode: row.mode,
+      archivedAt: row.archived_at,
+    }));
+  }
+
+  async clearPendingRemoval(remoteId: string): Promise<void> {
+    await this.database.runAsync(
+      `DELETE FROM pending_cloud_profile_removals WHERE remote_id = ?`,
+      remoteId,
     );
   }
 }

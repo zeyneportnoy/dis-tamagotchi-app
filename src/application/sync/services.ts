@@ -1,3 +1,5 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { getParentAuthUseCases } from '@/application/auth';
 import { getSupabaseClient } from '@/data/auth';
 import { getDatabase } from '@/data/db';
@@ -9,7 +11,13 @@ import {
   SupabaseChildPreferencesRepository,
   SupabaseChildProfileRepository,
 } from '@/data/repositories';
-import { getBrushingVoiceProfile, hasStoredVoiceProfile, setBrushingVoiceProfile } from '@/features/brushing';
+import {
+  getBrushingVoiceProfile,
+  hasStoredVoiceProfile,
+  markVoiceProfileSynced,
+  readVoiceProfileSyncMeta,
+  setBrushingVoiceProfile,
+} from '@/features/brushing';
 import { reminderSettingsService } from '@/features/reminders';
 
 import { ChildDataSyncUseCases } from './ChildDataSyncUseCases';
@@ -30,6 +38,10 @@ const childPreferenceAccessors: ChildPreferenceAccessors = {
     hasStoredVoiceProfile(parentUserId, childProfileId),
   writeVoice: (parentUserId, childProfileId, voice) =>
     setBrushingVoiceProfile(parentUserId, childProfileId, voice),
+  markVoiceSynced: (parentUserId, childProfileId, voice) =>
+    markVoiceProfileSynced(parentUserId, childProfileId, voice),
+  readVoiceSyncMeta: (parentUserId, childProfileId) =>
+    readVoiceProfileSyncMeta(parentUserId, childProfileId),
   async readReminders(parentUserId, childProfileId) {
     const settings = await reminderSettingsService.get(parentUserId, childProfileId);
     return {
@@ -41,6 +53,10 @@ const childPreferenceAccessors: ChildPreferenceAccessors = {
     reminderSettingsService.hasStoredSettings(parentUserId, childProfileId),
   applyRecoveredReminders: (parentUserId, childProfileId, values) =>
     reminderSettingsService.applyRecoveredPreferences(parentUserId, childProfileId, values),
+  markRemindersSynced: (parentUserId, childProfileId) =>
+    reminderSettingsService.markSynced(parentUserId, childProfileId),
+  readRemindersSyncMeta: (parentUserId, childProfileId) =>
+    reminderSettingsService.readSyncMeta(parentUserId, childProfileId),
 };
 
 export function getProfileSyncUseCases(): Promise<ProfileSyncUseCases | null> {
@@ -69,6 +85,8 @@ export async function pushPendingChildProfiles(): Promise<void> {
     if (!session) return;
     const sync = await getProfileSyncUseCases();
     await sync?.claimLegacyProfiles(session.userId);
+    // Propagate any queued child archive/delete to the owner's own cloud rows.
+    await sync?.flushPendingRemovals(session.userId);
   } catch {
     // Swallowed: cloud sync is best-effort in this phase.
   }
@@ -90,6 +108,49 @@ export function getChildDataSyncUseCases(): Promise<ChildDataSyncUseCases | null
 // Skip a redundant push when a screen-focus getProgress() reports an unchanged
 // value; the durable "is dirty?" check lives in the SQLite sync markers.
 const lastPushedProgress = new Map<string, string>();
+
+/**
+ * Called on logout: drops in-memory, session-scoped sync bookkeeping so nothing
+ * from the previous account leaks into the next one. Persistent offline data
+ * (local SQLite rows, AsyncStorage keyed by parent id) is left untouched so the
+ * original parent's data returns on re-login.
+ */
+export function resetSessionSyncState(): void {
+  lastPushedProgress.clear();
+}
+
+/**
+ * Called after a confirmed account deletion: removes this parent's local data so
+ * nothing survives on the device. DB rows cascade from `child_profiles`;
+ * AsyncStorage keys scoped to the parent (voice / reminders / nickname prefs)
+ * and to each of its children (customization) are swept too.
+ */
+export async function wipeLocalAccountData(parentUserId: string): Promise<void> {
+  try {
+    lastPushedProgress.clear();
+    const database = await getDatabase();
+    const childRows = await database.getAllAsync<{ id: string }>(
+      `SELECT id FROM child_profiles WHERE parent_auth_user_id = ?`,
+      parentUserId,
+    );
+    await database.runAsync(
+      `DELETE FROM child_profiles WHERE parent_auth_user_id = ?`,
+      parentUserId,
+    );
+
+    const allKeys = await AsyncStorage.getAllKeys();
+    const childIds = new Set(childRows.map((row) => row.id));
+    const doomed = allKeys.filter(
+      (key) =>
+        key.includes(`.parent.${parentUserId}.`) ||
+        key.startsWith(`parent:${parentUserId}:`) ||
+        [...childIds].some((id) => key.startsWith(`customization.profile.${id}`)),
+    );
+    if (doomed.length > 0) await AsyncStorage.multiRemove(doomed);
+  } catch {
+    // Best-effort local cleanup; the cloud account is already gone.
+  }
+}
 
 /**
  * Fire-and-forget flush of a child's pending cloud writes (Mine Puan + streak,

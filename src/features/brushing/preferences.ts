@@ -55,6 +55,42 @@ export async function hasStoredVoiceProfile(
   return (await AsyncStorage.getItem(childVoiceKey(parentUserId, childProfileId))) !== null;
 }
 
+const voiceSyncMetaKey = (parentUserId: string, childProfileId: string): string =>
+  `${childVoiceKey(parentUserId, childProfileId)}.sync-meta.v1`;
+
+export type VoiceProfileSyncMeta = Readonly<{ syncedAt: string | null; dirty: boolean }>;
+
+/** Records the value that was just pushed to the cloud, so a later recovery can compare. */
+export async function markVoiceProfileSynced(
+  parentUserId: string,
+  childProfileId: string,
+  value: BrushingVoiceProfile,
+): Promise<void> {
+  await AsyncStorage.setItem(
+    voiceSyncMetaKey(parentUserId, childProfileId),
+    JSON.stringify({ value, syncedAt: new Date().toISOString() }),
+  );
+}
+
+/** Whether the local child voice differs from the last pushed value, and when that was. */
+export async function readVoiceProfileSyncMeta(
+  parentUserId: string,
+  childProfileId: string,
+): Promise<VoiceProfileSyncMeta> {
+  const stored = await AsyncStorage.getItem(voiceSyncMetaKey(parentUserId, childProfileId));
+  const current = await AsyncStorage.getItem(childVoiceKey(parentUserId, childProfileId));
+  if (!stored) return { syncedAt: null, dirty: true };
+  try {
+    const parsed = JSON.parse(stored) as { value?: string; syncedAt?: string };
+    return {
+      syncedAt: typeof parsed.syncedAt === 'string' ? parsed.syncedAt : null,
+      dirty: parsed.value !== current,
+    };
+  } catch {
+    return { syncedAt: null, dirty: true };
+  }
+}
+
 export async function getNicknamePersonalizationEnabled(
   parentUserId: string,
   childProfileId: string,

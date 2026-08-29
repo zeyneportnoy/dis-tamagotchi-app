@@ -51,6 +51,8 @@ export interface CloudChildDataRepository {
   upsertProgress(progress: CloudChildProgress): Promise<string>;
   upsertSession(session: CloudBrushingSession): Promise<string>;
   upsertSlotEvaluation(evaluation: CloudSlotEvaluation): Promise<string>;
+  /** Current cloud row for one child (used to detect a concurrent write before pushing). */
+  getProgress(childId: string): Promise<CloudChildProgress | null>;
   listOwnedProgress(): Promise<readonly CloudChildProgress[]>;
   listOwnedSessions(): Promise<readonly CloudBrushingSession[]>;
   listOwnedSlotEvaluations(): Promise<readonly CloudSlotEvaluation[]>;

@@ -4,6 +4,8 @@ import {
   getBrushingVoiceProfile,
   getNicknamePersonalizationEnabled,
   hasStoredVoiceProfile,
+  markVoiceProfileSynced,
+  readVoiceProfileSyncMeta,
   setBrushingVoiceProfile,
   setNicknamePersonalizationEnabled,
 } from '../preferences';
@@ -55,5 +57,23 @@ describe('per-child brushing voice profile', () => {
     await expect(getNicknamePersonalizationEnabled('parent-a', 'child-a')).resolves.toBe(true);
     await expect(getNicknamePersonalizationEnabled('parent-a', 'child-b')).resolves.toBe(false);
     await expect(getNicknamePersonalizationEnabled('parent-b', 'child-a')).resolves.toBe(false);
+  });
+
+  it('tracks the sync marker: dirty before a push, clean after, dirty again after a local change', async () => {
+    await setBrushingVoiceProfile('parent-a', 'child-a', 'samet');
+    await expect(readVoiceProfileSyncMeta('parent-a', 'child-a')).resolves.toEqual({
+      syncedAt: null,
+      dirty: true,
+    });
+
+    await markVoiceProfileSynced('parent-a', 'child-a', 'samet');
+    const clean = await readVoiceProfileSyncMeta('parent-a', 'child-a');
+    expect(clean.dirty).toBe(false);
+    expect(typeof clean.syncedAt).toBe('string');
+
+    await setBrushingVoiceProfile('parent-a', 'child-a', 'off');
+    await expect(readVoiceProfileSyncMeta('parent-a', 'child-a')).resolves.toMatchObject({
+      dirty: true,
+    });
   });
 });

@@ -25,6 +25,7 @@ describe('database migrations', () => {
       'dentist_reminders',
       'families',
       'inventory_items',
+      'pending_cloud_profile_removals',
       'profile_progress',
       'schema_migrations',
     ]);
@@ -65,6 +66,7 @@ describe('database migrations', () => {
       { version: 16 },
       { version: 17 },
       { version: 18 },
+      { version: 19 },
     ]);
     database.close();
   });
@@ -145,6 +147,7 @@ describe('database migrations', () => {
       { version: 16 },
       { version: 17 },
       { version: 18 },
+      { version: 19 },
     ]);
     await expect(
       database.getFirstAsync<{

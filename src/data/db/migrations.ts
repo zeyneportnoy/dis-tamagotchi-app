@@ -402,4 +402,19 @@ export const migrations: readonly Migration[] = [
         ON brushing_slot_evaluations(child_profile_id) WHERE synced_at IS NULL;`,
     ],
   },
+  {
+    version: 19,
+    name: 'add_pending_cloud_profile_removals',
+    statements: [
+      // Outbox: a local child archive/delete that still has to reach Supabase.
+      // Survives offline; flushed idempotently by the sync layer.
+      `CREATE TABLE pending_cloud_profile_removals (
+        remote_id TEXT PRIMARY KEY NOT NULL,
+        parent_auth_user_id TEXT NOT NULL,
+        mode TEXT NOT NULL CHECK(mode IN ('archive', 'delete')),
+        archived_at TEXT,
+        requested_at TEXT NOT NULL
+      );`,
+    ],
+  },
 ];

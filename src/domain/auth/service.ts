@@ -4,6 +4,8 @@ export interface ParentAuthService {
   signUp(input: SignUpInput): Promise<ParentSession | null>;
   signIn(input: SignInInput): Promise<ParentSession>;
   signOut(): Promise<void>;
+  /** Permanently deletes the authenticated account and all of its cloud data. */
+  deleteAccount(): Promise<void>;
   resendVerification(email: string): Promise<void>;
   sendPasswordReset(email: string): Promise<void>;
   updatePassword(password: string): Promise<void>;

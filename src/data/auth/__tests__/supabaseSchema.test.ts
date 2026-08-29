@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 import { starterAvatarKeys } from '@/domain/family';
 
@@ -12,6 +12,7 @@ const readMigration = (file: string): string =>
 const parentAuthProfiles = readMigration('202608080001_m35_parent_auth_profiles.sql');
 const characterIdentityKeys = readMigration('202608090001_m4_character_identity_keys.sql');
 const childDateOfBirth = readMigration('202608100001_m5_child_date_of_birth.sql');
+const childDataRls = readMigration('202608110001_m6_child_data_rls.sql');
 
 // Remote temporarily still accepts these for two old test rows, but they are NOT
 // part of the app's canonical schema and must never be persisted by new records.
@@ -68,5 +69,86 @@ describe('Supabase repo schema contract — child_profiles', () => {
 
   it('does not duplicate the auth email or phone on either profile table', () => {
     expect(parentAuthProfiles).not.toMatch(/\b(email|phone)\b/i);
+  });
+});
+
+describe('Supabase repo schema contract — child game-data tables', () => {
+  const dataTables = [
+    'child_progress',
+    'brushing_sessions',
+    'brushing_slot_evaluations',
+    'child_preferences',
+  ] as const;
+
+  it('enables row level security on every child game-data table', () => {
+    for (const table of dataTables) {
+      expect(childDataRls).toContain(`alter table public.${table} enable row level security`);
+    }
+  });
+
+  it('scopes every row to a child_profiles row owned by the authenticated parent', () => {
+    // Ownership predicate: child_id -> child_profiles.parent_id == auth.uid().
+    expect(childDataRls).toContain('cp.parent_id = (select auth.uid())');
+    expect(childDataRls).toContain('references public.child_profiles(id) on delete cascade');
+    for (const table of dataTables) {
+      expect(childDataRls).toContain(`create policy "${table}_owned" on public.${table}`);
+      expect(childDataRls).toMatch(
+        new RegExp(`policy "${table}_owned"[\\s\\S]*?using \\(public\\.owns_child\\(child_id\\)\\)`),
+      );
+    }
+  });
+
+  it('gives anon no access to any child game-data table', () => {
+    for (const table of dataTables) {
+      expect(childDataRls).toContain(`revoke all on public.${table} from anon`);
+    }
+  });
+
+  it('constrains reward_mine / penalty_mine / period / voice_guide to the product values', () => {
+    expect(childDataRls).toContain("reward_mine in (0, 20)");
+    expect(childDataRls).toContain("penalty_mine in (0, -10)");
+    expect(childDataRls).toContain("status in ('completed', 'interrupted')");
+    expect(childDataRls).toContain("voice_guide in ('gokce', 'samet', 'off')");
+  });
+});
+
+describe('client source contains no server secrets', () => {
+  const forbidden = [
+    /service[_-]?role/i,
+    /SUPABASE_SERVICE_ROLE/i,
+    /SERVICE_ROLE_KEY/i,
+    /postgres:\/\/[^"'\s]*:[^"'\s]+@/i, // db connection string with password
+    /db[_-]?password/i,
+  ];
+
+  const walk = (dir: string): string[] => {
+    const out: string[] = [];
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === '__tests__') continue;
+        out.push(...walk(full));
+      } else if (/\.(ts|tsx|js|jsx)$/.test(entry.name) && !/\.test\.[tj]sx?$/.test(entry.name)) {
+        out.push(full);
+      }
+    }
+    return out;
+  };
+
+  it('never references a service-role key or database password', () => {
+    const files = [...walk(resolve('src')), ...walk(resolve('app'))];
+    const offenders: string[] = [];
+    for (const file of files) {
+      const contents = readFileSync(file, 'utf8');
+      if (forbidden.some((pattern) => pattern.test(contents))) offenders.push(file);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('reads only the publishable/client-safe Supabase key from env', () => {
+    const config = readFileSync(resolve('src/config/supabase.ts'), 'utf8');
+    expect(config).toContain('EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY');
+    expect(config).not.toMatch(/anon[_-]?key/i);
+    expect(config).not.toMatch(/service[_-]?role/i);
   });
 });

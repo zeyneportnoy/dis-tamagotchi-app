@@ -254,13 +254,39 @@ export class SQLiteChildProfileRepository implements ChildProfileRepository {
     return { ...mapProfile(current), ...updated };
   }
 
+  private async enqueueCloudRemoval(
+    parentId: string,
+    profileId: string,
+    mode: 'archive' | 'delete',
+    archivedAt: string | null,
+  ): Promise<void> {
+    const row = await this.database.getFirstAsync<{ remote_id: string | null }>(
+      `SELECT remote_id FROM child_profiles WHERE id = ? AND parent_auth_user_id = ?`,
+      profileId,
+      parentId,
+    );
+    if (!row?.remote_id) return; // never cloud-synced → nothing to remove there
+    await this.database.runAsync(
+      `INSERT OR REPLACE INTO pending_cloud_profile_removals
+        (remote_id, parent_auth_user_id, mode, archived_at, requested_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      row.remote_id,
+      parentId,
+      mode,
+      archivedAt,
+      this.now(),
+    );
+  }
+
   async archive(profileId: string): Promise<void> {
     const parentId = await this.requireActiveParentId();
     await this.database.withTransactionAsync(async () => {
+      const archivedAt = this.now();
+      await this.enqueueCloudRemoval(parentId, profileId, 'archive', archivedAt);
       const result = await this.database.runAsync(
         `UPDATE child_profiles SET archived_at = ?
          WHERE id = ? AND parent_auth_user_id = ?`,
-        this.now(),
+        archivedAt,
         profileId,
         parentId,
       );
@@ -277,6 +303,7 @@ export class SQLiteChildProfileRepository implements ChildProfileRepository {
   async delete(profileId: string): Promise<void> {
     const parentId = await this.requireActiveParentId();
     await this.database.withTransactionAsync(async () => {
+      await this.enqueueCloudRemoval(parentId, profileId, 'delete', null);
       const result = await this.database.runAsync(
         'DELETE FROM child_profiles WHERE id = ? AND parent_auth_user_id = ?',
         profileId,

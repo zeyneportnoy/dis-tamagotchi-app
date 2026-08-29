@@ -27,6 +27,10 @@ export class ParentAuthUseCases {
     return this.service.signOut();
   }
 
+  deleteAccount(): Promise<void> {
+    return this.service.deleteAccount();
+  }
+
   resendVerification(email: string): Promise<void> {
     return this.service.resendVerification(passwordResetRequestSchema.parse({ email }).email);
   }

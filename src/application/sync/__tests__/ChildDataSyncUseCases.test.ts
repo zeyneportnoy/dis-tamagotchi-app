@@ -42,6 +42,7 @@ const cloud = (
   upsertProgress: jest.fn().mockResolvedValue('2026-08-25T00:00:00.000Z'),
   upsertSession: jest.fn().mockResolvedValue('2026-08-25T00:00:00.000Z'),
   upsertSlotEvaluation: jest.fn().mockResolvedValue('2026-08-25T00:00:00.000Z'),
+  getProgress: jest.fn().mockResolvedValue(null),
   listOwnedProgress: jest.fn().mockResolvedValue([]),
   listOwnedSessions: jest.fn().mockResolvedValue([]),
   listOwnedSlotEvaluations: jest.fn().mockResolvedValue([]),
@@ -127,6 +128,54 @@ describe('ChildDataSyncUseCases — push', () => {
     const cloudRepo = cloud();
     await new ChildDataSyncUseCases(localRepo, cloudRepo).pushChild('profile-1');
     expect(cloudRepo.upsertProgress).not.toHaveBeenCalled();
+  });
+
+  it('does not overwrite a cloud row that advanced past this device since its last sync', async () => {
+    const localRepo = local({
+      readProgressSnapshot: jest.fn().mockResolvedValue(
+        snapshot({
+          currentMineScore: 260, // dirty local edit
+          syncedScore: 240,
+          syncedStreak: 3,
+          streak: 3,
+          syncedAt: '2026-08-20T00:00:00.000Z',
+        }),
+      ),
+    });
+    const cloudRepo = cloud({
+      // Another device pushed 300 after our last sync at 2026-08-20.
+      getProgress: jest.fn().mockResolvedValue({
+        childId: 'remote-1',
+        currentMineScore: 300,
+        streak: 4,
+        updatedAt: '2026-08-24T00:00:00.000Z',
+      }),
+    });
+    await new ChildDataSyncUseCases(localRepo, cloudRepo).pushProgress('profile-1');
+    expect(cloudRepo.upsertProgress).not.toHaveBeenCalled();
+    expect(localRepo.markProgressSynced).not.toHaveBeenCalled();
+  });
+
+  it('still pushes when the cloud row has not advanced past our last sync', async () => {
+    const localRepo = local({
+      readProgressSnapshot: jest.fn().mockResolvedValue(
+        snapshot({ currentMineScore: 260, syncedScore: 240, syncedAt: '2026-08-24T00:00:00.000Z' }),
+      ),
+    });
+    const cloudRepo = cloud({
+      getProgress: jest.fn().mockResolvedValue({
+        childId: 'remote-1',
+        currentMineScore: 240,
+        streak: 3,
+        updatedAt: '2026-08-20T00:00:00.000Z', // older than our syncedAt
+      }),
+    });
+    await new ChildDataSyncUseCases(localRepo, cloudRepo).pushProgress('profile-1');
+    expect(cloudRepo.upsertProgress).toHaveBeenCalledWith({
+      childId: 'remote-1',
+      currentMineScore: 260,
+      streak: 3,
+    });
   });
 });
 
