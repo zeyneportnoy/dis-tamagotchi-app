@@ -1,5 +1,5 @@
 import { useFocusEffect } from 'expo-router';
-import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   PanResponder,
@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 
 import { getChildExperienceUseCases } from '@/application/child';
 import { getFamilyUseCases, type ChildProfileViewModel } from '@/application/family';
+import { syncChildPreferences } from '@/application/sync';
 import {
   ErrorState,
   LoadingState,
@@ -307,6 +308,14 @@ export default function CollectionScreen() {
       };
     }, []),
   );
+
+  // Best-effort: mirror the child's selected brush/background/effect + room
+  // configuration to Supabase after any local customization change. Local write
+  // is the source of truth; a cloud failure never rolls the selection back.
+  useEffect(() => {
+    if (!profile) return;
+    void syncChildPreferences(profile.id);
+  }, [customization, profile]);
 
   const select = async (itemKey: RewardItemKey, unlocked: boolean): Promise<void> => {
     if (!profile || !unlocked) {

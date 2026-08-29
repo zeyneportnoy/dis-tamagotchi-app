@@ -3,17 +3,42 @@ import { getSupabaseClient } from '@/data/auth';
 import { getDatabase } from '@/data/db';
 import {
   SQLiteChildCloudSyncRepository,
+  SQLiteChildPreferenceSyncRepository,
   SQLiteProfileSyncRepository,
   SupabaseChildDataRepository,
+  SupabaseChildPreferencesRepository,
   SupabaseChildProfileRepository,
 } from '@/data/repositories';
 import { toLocalDateKey } from '@/domain/brushing';
+import { getBrushingVoiceProfile, hasStoredVoiceProfile, setBrushingVoiceProfile } from '@/features/brushing';
+import { reminderSettingsService } from '@/features/reminders';
 
 import { ChildDataSyncUseCases } from './ChildDataSyncUseCases';
+import {
+  ChildPreferencesSyncUseCases,
+  type ParentPreferenceAccessors,
+} from './ChildPreferencesSyncUseCases';
 import { ProfileSyncUseCases } from './ProfileSyncUseCases';
 
 let useCasesPromise: Promise<ProfileSyncUseCases | null> | undefined;
 let childDataSyncPromise: Promise<ChildDataSyncUseCases | null> | undefined;
+let childPreferencesSyncPromise: Promise<ChildPreferencesSyncUseCases | null> | undefined;
+
+const parentPreferenceAccessors: ParentPreferenceAccessors = {
+  readVoice: (parentUserId) => getBrushingVoiceProfile(parentUserId),
+  hasStoredVoice: (parentUserId) => hasStoredVoiceProfile(parentUserId),
+  writeVoice: (parentUserId, voice) => setBrushingVoiceProfile(parentUserId, voice),
+  async readReminders(parentUserId) {
+    const settings = await reminderSettingsService.get(parentUserId);
+    return {
+      morning: { enabled: settings.morning.enabled, time: settings.morning.time },
+      evening: { enabled: settings.evening.enabled, time: settings.evening.time },
+    };
+  },
+  hasStoredReminders: (parentUserId) => reminderSettingsService.hasStoredSettings(parentUserId),
+  writeReminders: (parentUserId, values) =>
+    reminderSettingsService.hydratePreferences(parentUserId, values),
+};
 
 export function getProfileSyncUseCases(): Promise<ProfileSyncUseCases | null> {
   useCasesPromise ??= getDatabase().then((database) => {
@@ -118,6 +143,61 @@ export async function recoverChildCloudProgress(): Promise<void> {
   try {
     const sync = await getChildDataSyncUseCases();
     await sync?.recoverProgress();
+  } catch {
+    // Swallowed: local data (if any) stays intact.
+  }
+}
+
+export function getChildPreferencesSyncUseCases(): Promise<ChildPreferencesSyncUseCases | null> {
+  childPreferencesSyncPromise ??= getDatabase().then((database) => {
+    const client = getSupabaseClient();
+    return client
+      ? new ChildPreferencesSyncUseCases(
+          new SQLiteChildPreferenceSyncRepository(database),
+          new SupabaseChildPreferencesRepository(client),
+          parentPreferenceAccessors,
+        )
+      : null;
+  });
+  return childPreferencesSyncPromise;
+}
+
+/**
+ * Fire-and-forget push of one child's customization + preference snapshot after
+ * a local write. The local write is the source of truth; a cloud failure is
+ * swallowed and never rolls back the selection.
+ */
+export async function syncChildPreferences(profileId: string): Promise<void> {
+  try {
+    const sync = await getChildPreferencesSyncUseCases();
+    await sync?.pushForProfile(profileId);
+  } catch {
+    // Swallowed: local preference already saved.
+  }
+}
+
+/**
+ * Fire-and-forget push for every synced child. Used when a per-parent preference
+ * (voice guide, reminder settings) changes, since those apply to all children.
+ */
+export async function syncAllChildPreferences(): Promise<void> {
+  try {
+    const sync = await getChildPreferencesSyncUseCases();
+    await sync?.pushForAllSyncedChildren();
+  } catch {
+    // Swallowed: local preference already saved.
+  }
+}
+
+/**
+ * On app/session restore: hydrate cloud customization + per-parent preferences
+ * into local storage only where nothing is stored locally yet. Locked cloud
+ * selections stay governed by the existing render-time unlock guards.
+ */
+export async function recoverChildPreferences(): Promise<void> {
+  try {
+    const sync = await getChildPreferencesSyncUseCases();
+    await sync?.recover();
   } catch {
     // Swallowed: local data (if any) stays intact.
   }

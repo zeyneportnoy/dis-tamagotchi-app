@@ -5,5 +5,7 @@ export { SQLiteProfileProgressRepository } from './SQLiteProfileProgressReposito
 export { SQLiteInventoryRepository } from './SQLiteInventoryRepository';
 export { SQLiteProfileSyncRepository } from './SQLiteProfileSyncRepository';
 export { SQLiteChildCloudSyncRepository } from './SQLiteChildCloudSyncRepository';
+export { SQLiteChildPreferenceSyncRepository } from './SQLiteChildPreferenceSyncRepository';
 export { SupabaseChildProfileRepository } from './SupabaseChildProfileRepository';
 export { SupabaseChildDataRepository } from './SupabaseChildDataRepository';
+export { SupabaseChildPreferencesRepository } from './SupabaseChildPreferencesRepository';

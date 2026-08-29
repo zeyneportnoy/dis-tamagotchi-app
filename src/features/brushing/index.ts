@@ -1,6 +1,7 @@
 export {
   getBrushingVoiceProfile,
   getNicknamePersonalizationEnabled,
+  hasStoredVoiceProfile,
   setBrushingVoiceProfile,
   setNicknamePersonalizationEnabled,
 } from './preferences';

@@ -60,6 +60,39 @@ export class ReminderSettingsService {
     return parseSettings(await this.storage.getItem(storageKey(parentId)));
   }
 
+  /** True once reminder settings have been explicitly stored (gates cloud recovery). */
+  async hasStoredSettings(parentId: string): Promise<boolean> {
+    return (await this.storage.getItem(storageKey(parentId))) !== null;
+  }
+
+  /**
+   * Writes reminder preference values (enabled + time) without touching local
+   * notification scheduling. Used only by cloud recovery when nothing is stored
+   * locally yet; a later `update()` reschedules on device.
+   */
+  async hydratePreferences(
+    parentId: string,
+    values: Readonly<Record<ReminderSlot, Readonly<{ enabled: boolean; time: string }>>>,
+  ): Promise<void> {
+    const settings: BrushingReminderSettings = {
+      morning: {
+        enabled: values.morning.enabled,
+        notificationId: null,
+        time: timePattern.test(values.morning.time)
+          ? values.morning.time
+          : defaultReminderSettings.morning.time,
+      },
+      evening: {
+        enabled: values.evening.enabled,
+        notificationId: null,
+        time: timePattern.test(values.evening.time)
+          ? values.evening.time
+          : defaultReminderSettings.evening.time,
+      },
+    };
+    await this.storage.setItem(storageKey(parentId), JSON.stringify(settings));
+  }
+
   async update(
     parentId: string,
     slot: ReminderSlot,

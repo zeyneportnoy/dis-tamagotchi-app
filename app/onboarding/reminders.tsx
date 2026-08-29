@@ -13,6 +13,7 @@ import {
   spacing,
   typography,
 } from '@/design-system';
+import { syncAllChildPreferences } from '@/application/sync';
 import { useAuth } from '@/features/auth';
 import {
   defaultReminderSettings,
@@ -72,6 +73,7 @@ export default function OnboardingRemindersScreen() {
         enabled: true,
         time: settings.evening.time,
       });
+      void syncAllChildPreferences();
       router.push('/onboarding/summary');
     } catch {
       setError(true);

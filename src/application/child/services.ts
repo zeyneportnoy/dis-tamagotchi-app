@@ -1,5 +1,9 @@
 import { getParentAuthUseCases } from '@/application/auth';
-import { syncChildBrushingSession, syncChildCloudProgress } from '@/application/sync';
+import {
+  syncChildBrushingSession,
+  syncChildCloudProgress,
+  syncChildPreferences,
+} from '@/application/sync';
 import { getDatabase } from '@/data/db';
 import {
   SQLiteBrushingSessionRepository,
@@ -7,7 +11,7 @@ import {
   SQLiteProfileProgressRepository,
 } from '@/data/repositories';
 import type { ProfileProgress } from '@/domain/family';
-import type { BrushingRewardResult } from '@/domain/rewards';
+import type { AccessorySlot, BrushingRewardResult, RewardItemKey } from '@/domain/rewards';
 
 import { ChildExperienceUseCases } from './useCases';
 
@@ -47,6 +51,16 @@ class CloudAwareChildExperienceUseCases extends ChildExperienceUseCases {
   ): Promise<void> {
     await super.abandonBrushingSession(sessionId, profileId, startedAt, durationSeconds);
     void syncChildBrushingSession(profileId, sessionId);
+  }
+
+  override async equipItem(profileId: string, itemKey: RewardItemKey): Promise<void> {
+    await super.equipItem(profileId, itemKey);
+    void syncChildPreferences(profileId);
+  }
+
+  override async unequipAccessorySlot(profileId: string, slot: AccessorySlot): Promise<void> {
+    await super.unequipAccessorySlot(profileId, slot);
+    void syncChildPreferences(profileId);
   }
 }
 

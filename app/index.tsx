@@ -2,7 +2,11 @@ import { Redirect, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
 
 import { getFamilyUseCases } from '@/application/family';
-import { getProfileSyncUseCases, recoverChildCloudProgress } from '@/application/sync';
+import {
+  getProfileSyncUseCases,
+  recoverChildCloudProgress,
+  recoverChildPreferences,
+} from '@/application/sync';
 import { ErrorState, LoadingState } from '@/design-system';
 import { isLegacyAgeBand } from '@/domain/family';
 import { useAuth } from '@/features/auth';
@@ -26,9 +30,10 @@ export default function Index() {
         if (sync && (await sync.countLegacyProfiles(session.userId)) > 0)
           return 'claim-local' as const;
         if (sync) await sync.recoverFromCloud();
-        // Child profiles exist locally now; hydrate cloud Mine Puan for any that
-        // have no local progress row yet (never overwrites existing local data).
+        // Child profiles exist locally now; hydrate cloud Mine Puan + preferences
+        // for any that have nothing stored locally (never overwrites local data).
         await recoverChildCloudProgress();
+        await recoverChildPreferences();
         const useCases = await getFamilyUseCases();
         return useCases.getActiveProfile();
       })

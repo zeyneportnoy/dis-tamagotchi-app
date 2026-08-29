@@ -5,7 +5,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { getFamilyUseCases } from '@/application/family';
-import { getProfileSyncUseCases } from '@/application/sync';
+import { getProfileSyncUseCases, syncAllChildPreferences } from '@/application/sync';
 import { Button, Screen, SelectionCard, Text, colors, radii, spacing } from '@/design-system';
 import {
   brushingVoiceCues,
@@ -60,6 +60,7 @@ export default function SummaryScreen() {
           if (sync && session) return sync.claimLegacyProfiles(session.userId);
           return undefined;
         })
+        .then(() => syncAllChildPreferences())
         .catch(() => {
           // Local profile creation is the offline-first success boundary. Sync retries later.
         });

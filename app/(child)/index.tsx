@@ -1,10 +1,11 @@
 import { router, type Href, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { getChildExperienceUseCases } from '@/application/child';
 import { getFamilyUseCases, type ChildProfileViewModel } from '@/application/family';
+import { syncChildPreferences } from '@/application/sync';
 import {
   Button,
   ErrorState,
@@ -191,6 +192,13 @@ export default function ChildHomeScreen() {
       };
     }, []),
   );
+
+  // Best-effort: mirror room-material placement changes to Supabase after the
+  // local write. Never blocks the UI and never rolls back the local layout.
+  useEffect(() => {
+    if (!active) return;
+    void syncChildPreferences(active.id);
+  }, [active, customization]);
 
   if (failed) return <ErrorState />;
   if (!active || !progress) return <LoadingState />;

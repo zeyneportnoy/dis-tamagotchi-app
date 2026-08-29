@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { getFamilyUseCases, type ChildProfileViewModel } from '@/application/family';
+import { syncAllChildPreferences } from '@/application/sync';
 import { Button, Screen, ScreenHeader, Text, colors, radii, spacing } from '@/design-system';
 import { ageBandFromDateOfBirth } from '@/domain/family';
 import { useAuth } from '@/features/auth';
@@ -64,9 +65,11 @@ export default function ParentSettingsScreen() {
     if (!session?.userId || voiceProfile === null) return;
     const previousProfile = voiceProfile;
     setVoiceProfile(nextProfile);
-    void setBrushingVoiceProfile(session.userId, nextProfile).catch(() => {
-      setVoiceProfile(previousProfile);
-    });
+    void setBrushingVoiceProfile(session.userId, nextProfile)
+      .then(() => syncAllChildPreferences())
+      .catch(() => {
+        setVoiceProfile(previousProfile);
+      });
   };
 
   const playPreview = (profile: Exclude<BrushingVoiceProfile, 'off'>): void => {

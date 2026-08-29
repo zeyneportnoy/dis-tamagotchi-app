@@ -28,6 +28,11 @@ export async function setBrushingVoiceProfile(
   await AsyncStorage.setItem(voiceProfileKey(parentUserId), profile);
 }
 
+/** True once a voice profile has been explicitly stored (used to gate cloud recovery). */
+export async function hasStoredVoiceProfile(parentUserId: string): Promise<boolean> {
+  return (await AsyncStorage.getItem(voiceProfileKey(parentUserId))) !== null;
+}
+
 export async function getNicknamePersonalizationEnabled(
   parentUserId: string,
   childProfileId: string,

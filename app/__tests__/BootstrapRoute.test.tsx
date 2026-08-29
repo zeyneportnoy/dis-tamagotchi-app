@@ -17,6 +17,7 @@ jest.mock('@/application/sync', () => ({
       recoverFromCloud: () => Promise.resolve(0),
     }),
   recoverChildCloudProgress: () => Promise.resolve(),
+  recoverChildPreferences: () => Promise.resolve(),
 }));
 jest.mock('@/features/auth', () => ({
   useAuth: () => ({

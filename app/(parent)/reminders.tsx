@@ -13,6 +13,7 @@ import {
   spacing,
   typography,
 } from '@/design-system';
+import { syncAllChildPreferences } from '@/application/sync';
 import { useAuth } from '@/features/auth';
 import {
   defaultReminderSettings,
@@ -54,6 +55,7 @@ export default function BrushingRemindersScreen() {
     try {
       const result = await reminderSettingsService.update(session.userId, slot, change);
       setSettings(result.settings);
+      void syncAllChildPreferences();
       if (result.permissionDenied) setError(t('parent.reminders.permissionRequired'));
     } catch {
       setError(t('parent.reminders.updateError'));
