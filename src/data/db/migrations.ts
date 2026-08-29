@@ -384,4 +384,22 @@ export const migrations: readonly Migration[] = [
         ON brushing_slot_evaluations(child_profile_id, evaluated_at);`,
     ],
   },
+  {
+    version: 18,
+    name: 'add_cloud_sync_metadata',
+    statements: [
+      // What was last successfully pushed to Supabase, so the sync layer can tell
+      // "local has unpushed changes" from "cloud is newer than this device".
+      `ALTER TABLE profile_progress ADD COLUMN synced_at TEXT;`,
+      `ALTER TABLE profile_progress ADD COLUMN synced_score INTEGER;`,
+      `ALTER TABLE profile_progress ADD COLUMN synced_streak INTEGER;`,
+      // Append-only history rows: NULL synced_at means "not yet in the cloud".
+      `ALTER TABLE brushing_sessions ADD COLUMN synced_at TEXT;`,
+      `CREATE INDEX brushing_sessions_unsynced_idx
+        ON brushing_sessions(profile_id) WHERE synced_at IS NULL;`,
+      `ALTER TABLE brushing_slot_evaluations ADD COLUMN synced_at TEXT;`,
+      `CREATE INDEX brushing_slot_evaluations_unsynced_idx
+        ON brushing_slot_evaluations(child_profile_id) WHERE synced_at IS NULL;`,
+    ],
+  },
 ];

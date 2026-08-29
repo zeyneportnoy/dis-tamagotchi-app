@@ -11,12 +11,27 @@ import {
   type AccessorySlot,
   type RewardItemKey,
 } from '@/domain/rewards';
-import type { CloudChildPreferences, LocalChildPreferenceSyncRepository } from '@/domain/sync';
+import type {
+  CloudChildPreferences,
+  CustomizationSyncMeta,
+  LocalChildPreferenceSyncRepository,
+} from '@/domain/sync';
 import {
   customizationStorageKey,
   decodeCustomizationState,
   type CustomizationState,
 } from '@/features/customization';
+
+const customizationSyncMetaKey = (profileId: string): string =>
+  `customization.profile.${profileId}.sync-meta.v1`;
+
+/** Stable string identity of a customization state, ignoring key order. */
+const customizationFingerprint = (state: CustomizationState): string =>
+  JSON.stringify({
+    developerEquipped: state.developerEquipped,
+    placements: state.placements,
+    selectedRoomMaterials: [...state.selectedRoomMaterials].sort(),
+  });
 
 type ScoreGatedSlot = 'brush' | 'background' | 'effect';
 
@@ -196,6 +211,38 @@ export class SQLiteChildPreferenceSyncRepository implements LocalChildPreference
           key,
         );
       });
+    }
+
+    // The state we just wrote is, by definition, in sync with what we recovered.
+    await this.markCustomizationSynced(profileId, preferences.roomConfiguration);
+  }
+
+  async markCustomizationSynced(profileId: string, roomConfiguration: unknown): Promise<void> {
+    const raw =
+      roomConfiguration == null
+        ? null
+        : typeof roomConfiguration === 'string'
+          ? roomConfiguration
+          : JSON.stringify(roomConfiguration);
+    const fingerprint = customizationFingerprint(decodeCustomizationState(raw));
+    await AsyncStorage.setItem(
+      customizationSyncMetaKey(profileId),
+      JSON.stringify({ syncedAt: new Date().toISOString(), fingerprint }),
+    );
+  }
+
+  async readCustomizationSyncMeta(profileId: string): Promise<CustomizationSyncMeta> {
+    const stored = await AsyncStorage.getItem(customizationSyncMetaKey(profileId));
+    if (!stored) return { syncedAt: null, dirty: true };
+    try {
+      const parsed = JSON.parse(stored) as { syncedAt?: string; fingerprint?: string };
+      const current = customizationFingerprint(await this.loadCustomization(profileId));
+      return {
+        syncedAt: typeof parsed.syncedAt === 'string' ? parsed.syncedAt : null,
+        dirty: parsed.fingerprint !== current,
+      };
+    } catch {
+      return { syncedAt: null, dirty: true };
     }
   }
 }

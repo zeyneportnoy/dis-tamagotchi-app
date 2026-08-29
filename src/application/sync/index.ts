@@ -8,6 +8,8 @@ export {
   syncChildCloudProgress,
   syncChildBrushingSession,
   recoverChildCloudProgress,
+  recoverChildBrushingHistory,
+  retryPendingCloudSync,
   getChildPreferencesSyncUseCases,
   syncChildPreferences,
   syncAllChildPreferences,

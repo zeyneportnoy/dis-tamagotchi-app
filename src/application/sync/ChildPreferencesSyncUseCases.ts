@@ -67,28 +67,34 @@ export class ChildPreferencesSyncUseCases {
     };
   }
 
+  private async pushSnapshot(profileId: string, childId: string): Promise<void> {
+    const snapshot = await this.buildSnapshot(profileId, childId);
+    await this.cloud.upsert(snapshot);
+    await this.local.markCustomizationSynced(profileId, snapshot.roomConfiguration);
+  }
+
   async pushForProfile(profileId: string): Promise<void> {
     const childId = await this.local.resolveRemoteChildId(profileId);
     if (!childId) return;
-    await this.cloud.upsert(await this.buildSnapshot(profileId, childId));
+    await this.pushSnapshot(profileId, childId);
   }
 
   async pushForAllSyncedChildren(): Promise<void> {
     for (const profileId of await this.local.listSyncedProfileIds()) {
       const childId = await this.local.resolveRemoteChildId(profileId);
       if (!childId) continue;
-      await this.cloud.upsert(await this.buildSnapshot(profileId, childId));
+      await this.pushSnapshot(profileId, childId);
     }
   }
 
   /**
-   * Fresh-install recovery. For every owned cloud row: hydrate customization
-   * into the production source of truth when nothing is stored locally, and
-   * hydrate that child's voice / reminder preferences when nothing is stored
-   * locally — rescheduling enabled reminders on device. Existing local values
-   * are never overwritten. Customization is written verbatim; the current-Mine-
-   * Puan unlock guards still decide what activates, so a locked cloud selection
-   * can never become active.
+   * Multi-device recovery. Customization is hydrated when local is missing, or
+   * when local is clean (unchanged since the last push) and the cloud row is
+   * newer than that push — local unpushed edits are never overwritten. Voice /
+   * reminder preferences hydrate only when nothing is stored locally yet;
+   * enabled reminders are rescheduled on device. Customization is written
+   * verbatim; the current-Mine-Puan unlock guards still decide what activates,
+   * so a locked cloud selection can never become active.
    */
   async recover(): Promise<void> {
     for (const row of await this.cloud.listOwned()) {
@@ -97,6 +103,12 @@ export class ChildPreferencesSyncUseCases {
 
       if (!(await this.local.hasLocalCustomization(profileId))) {
         await this.local.hydrateCustomization(profileId, row);
+      } else {
+        const meta = await this.local.readCustomizationSyncMeta(profileId);
+        const cloudNewer = Boolean(row.updatedAt && meta.syncedAt && row.updatedAt > meta.syncedAt);
+        if (!meta.dirty && cloudNewer) {
+          await this.local.hydrateCustomization(profileId, row);
+        }
       }
 
       const parentUserId = await this.local.resolveParentUserId(profileId);

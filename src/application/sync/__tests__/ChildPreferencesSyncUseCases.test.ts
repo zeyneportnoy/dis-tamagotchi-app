@@ -45,6 +45,10 @@ const local = (
   hasLocalCustomization: jest.fn().mockResolvedValue(false),
   hydrateCustomization: jest.fn().mockResolvedValue(undefined),
   findProfileByRemoteChildId: jest.fn().mockResolvedValue('profile-1'),
+  markCustomizationSynced: jest.fn().mockResolvedValue(undefined),
+  readCustomizationSyncMeta: jest
+    .fn()
+    .mockResolvedValue({ syncedAt: '2026-08-20T00:00:00.000Z', dirty: false }),
   ...overrides,
 });
 
@@ -131,16 +135,52 @@ describe('ChildPreferencesSyncUseCases', () => {
       });
     });
 
-    it('never overwrites local customization / voice / reminders that already exist', async () => {
-      const localRepo = local({ hasLocalCustomization: jest.fn().mockResolvedValue(true) });
+    it('never overwrites local customization / voice / reminders that already exist and are clean-but-not-stale', async () => {
+      const localRepo = local({
+        hasLocalCustomization: jest.fn().mockResolvedValue(true),
+        readCustomizationSyncMeta: jest
+          .fn()
+          .mockResolvedValue({ syncedAt: '2026-08-26T00:00:00.000Z', dirty: false }),
+      });
       const prefAccessors = prefs({
         hasStoredVoice: jest.fn().mockResolvedValue(true),
         hasStoredReminders: jest.fn().mockResolvedValue(true),
       });
+      // cloudRow has no updatedAt → not newer.
       await new ChildPreferencesSyncUseCases(localRepo, cloud([cloudRow]), prefAccessors).recover();
       expect(localRepo.hydrateCustomization).not.toHaveBeenCalled();
       expect(prefAccessors.writeVoice).not.toHaveBeenCalled();
       expect(prefAccessors.applyRecoveredReminders).not.toHaveBeenCalled();
     });
+
+    it('refreshes customization when local is clean and the cloud row is newer', async () => {
+      const localRepo = local({
+        hasLocalCustomization: jest.fn().mockResolvedValue(true),
+        readCustomizationSyncMeta: jest
+          .fn()
+          .mockResolvedValue({ syncedAt: '2026-08-20T00:00:00.000Z', dirty: false }),
+      });
+      const newerRow = { ...cloudRow, updatedAt: '2026-08-25T00:00:00.000Z' };
+      await new ChildPreferencesSyncUseCases(localRepo, cloud([newerRow]), prefs()).recover();
+      expect(localRepo.hydrateCustomization).toHaveBeenCalledWith('profile-1', newerRow);
+    });
+
+    it('keeps local customization when it holds unpushed edits even if the cloud row is newer', async () => {
+      const localRepo = local({
+        hasLocalCustomization: jest.fn().mockResolvedValue(true),
+        readCustomizationSyncMeta: jest
+          .fn()
+          .mockResolvedValue({ syncedAt: '2026-08-20T00:00:00.000Z', dirty: true }),
+      });
+      const newerRow = { ...cloudRow, updatedAt: '2026-08-25T00:00:00.000Z' };
+      await new ChildPreferencesSyncUseCases(localRepo, cloud([newerRow]), prefs()).recover();
+      expect(localRepo.hydrateCustomization).not.toHaveBeenCalled();
+    });
+  });
+
+  it('stamps the customization sync marker after a successful push', async () => {
+    const localRepo = local();
+    await new ChildPreferencesSyncUseCases(localRepo, cloud(), prefs()).pushForProfile('profile-1');
+    expect(localRepo.markCustomizationSynced).toHaveBeenCalledWith('profile-1', roomConfig);
   });
 });

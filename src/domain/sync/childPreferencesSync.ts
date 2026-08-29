@@ -29,6 +29,15 @@ export type CloudChildPreferences = Readonly<{
   eveningReminder: CloudReminderPreference;
   dentistReminderEnabled: boolean;
   dentistLastVisitDate: string | null;
+  /** Supabase `updated_at`; used to decide whether the cloud is newer. */
+  updatedAt?: string;
+}>;
+
+export type CustomizationSyncMeta = Readonly<{
+  /** Last successful push timestamp, or null when never pushed from this device. */
+  syncedAt: string | null;
+  /** True when the local customization state changed since that push. */
+  dirty: boolean;
 }>;
 
 export interface CloudChildPreferencesRepository {
@@ -63,4 +72,9 @@ export interface LocalChildPreferenceSyncRepository {
   hydrateCustomization(profileId: string, preferences: CloudChildPreferences): Promise<void>;
   /** Local profile that maps to `remoteChildId`, or null when none is owned. */
   findProfileByRemoteChildId(remoteChildId: string): Promise<string | null>;
+
+  /** Records what was just pushed so a later recovery can compare timestamps. */
+  markCustomizationSynced(profileId: string, roomConfiguration: unknown): Promise<void>;
+  /** Whether the local customization is newer than the last push, and when that was. */
+  readCustomizationSyncMeta(profileId: string): Promise<CustomizationSyncMeta>;
 }

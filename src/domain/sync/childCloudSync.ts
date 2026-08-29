@@ -1,10 +1,11 @@
 /**
- * Phase 2 cloud sync contracts for the child's Mine Puan progress, brushing
- * session history and morning/evening slot evaluations.
+ * Cloud sync contracts for the child's Mine Puan progress, brushing session
+ * history and morning/evening slot evaluations.
  *
- * These are best-effort persistence + recovery only. The local SQLite domain
- * transaction stays the single source of truth for every reward/penalty
- * calculation — nothing here re-derives score.
+ * Best-effort persistence + recovery only. The local SQLite domain transaction
+ * stays the single source of truth for every reward/penalty calculation —
+ * nothing here re-derives score, and hydration restores past results without
+ * re-running reward/penalty business logic.
  */
 
 export type CloudChildProgress = Readonly<{
@@ -12,6 +13,8 @@ export type CloudChildProgress = Readonly<{
   childId: string;
   currentMineScore: number;
   streak: number;
+  /** Supabase `updated_at`; used to decide whether the cloud is newer. Push side leaves it undefined. */
+  updatedAt?: string;
 }>;
 
 export type CloudBrushingPeriod = 'morning' | 'evening' | 'off_slot';
@@ -29,6 +32,7 @@ export type CloudBrushingSession = Readonly<{
   /** Mirrors the local reward: only ever 0 or 20. */
   rewardMine: 0 | 20;
   timezoneOffsetMinutes: number;
+  updatedAt?: string;
 }>;
 
 export type CloudSlotEvaluation = Readonly<{
@@ -39,14 +43,26 @@ export type CloudSlotEvaluation = Readonly<{
   /** Mirrors the local penalty: only ever 0 or -10. */
   penaltyMine: 0 | -10;
   evaluatedAt: string;
+  updatedAt?: string;
 }>;
 
 export interface CloudChildDataRepository {
-  upsertProgress(progress: CloudChildProgress): Promise<void>;
-  upsertSession(session: CloudBrushingSession): Promise<void>;
-  upsertSlotEvaluation(evaluation: CloudSlotEvaluation): Promise<void>;
+  /** Returns the Supabase `updated_at` that was written. */
+  upsertProgress(progress: CloudChildProgress): Promise<string>;
+  upsertSession(session: CloudBrushingSession): Promise<string>;
+  upsertSlotEvaluation(evaluation: CloudSlotEvaluation): Promise<string>;
   listOwnedProgress(): Promise<readonly CloudChildProgress[]>;
+  listOwnedSessions(): Promise<readonly CloudBrushingSession[]>;
+  listOwnedSlotEvaluations(): Promise<readonly CloudSlotEvaluation[]>;
 }
+
+export type LocalProgressSnapshot = Readonly<{
+  currentMineScore: number;
+  streak: number;
+  syncedAt: string | null;
+  syncedScore: number | null;
+  syncedStreak: number | null;
+}>;
 
 export interface LocalChildCloudSyncRepository {
   /**
@@ -54,22 +70,33 @@ export interface LocalChildCloudSyncRepository {
    * profile itself has not finished syncing yet (dependent data must wait).
    */
   resolveRemoteChildId(profileId: string): Promise<string | null>;
-  readProgressForPush(
+  /** Local profile ids whose child profile is already cloud-synced. */
+  listSyncedProfileIds(): Promise<readonly string[]>;
+  findProfileByRemoteChildId(remoteChildId: string): Promise<string | null>;
+
+  readProgressSnapshot(profileId: string): Promise<LocalProgressSnapshot | null>;
+  /** Insert or refresh the local progress row from a cloud value + stamp sync markers. */
+  writeRecoveredProgress(profileId: string, progress: CloudChildProgress): Promise<void>;
+  /** Record what was just pushed so future recoveries can compare timestamps. */
+  markProgressSynced(
     profileId: string,
-  ): Promise<{ currentMineScore: number; streak: number } | null>;
-  readSessionForPush(
+    score: number,
+    streak: number,
+    syncedAt: string,
+  ): Promise<void>;
+
+  readUnsyncedSessions(profileId: string): Promise<readonly Omit<CloudBrushingSession, 'childId'>[]>;
+  markSessionSynced(sessionId: string, syncedAt: string): Promise<void>;
+  hydrateSession(profileId: string, session: CloudBrushingSession): Promise<void>;
+
+  readUnsyncedEvaluations(
     profileId: string,
-    sessionId: string,
-  ): Promise<Omit<CloudBrushingSession, 'childId'> | null>;
-  readRecentEvaluationsForPush(
-    profileId: string,
-    sinceDayKey: string,
   ): Promise<readonly Omit<CloudSlotEvaluation, 'childId'>[]>;
-  /**
-   * A local profile that maps to `remoteChildId` and has no `profile_progress`
-   * row yet (safe to hydrate). Returns `null` when local data already exists —
-   * local pending/newer values are never overwritten by an older cloud value.
-   */
-  findHydratableProfile(remoteChildId: string): Promise<string | null>;
-  hydrateProgress(profileId: string, progress: CloudChildProgress): Promise<void>;
+  markEvaluationSynced(
+    profileId: string,
+    localDayKey: string,
+    period: 'morning' | 'evening',
+    syncedAt: string,
+  ): Promise<void>;
+  hydrateSlotEvaluation(profileId: string, evaluation: CloudSlotEvaluation): Promise<void>;
 }

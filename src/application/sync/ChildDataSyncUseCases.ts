@@ -1,10 +1,22 @@
-import type { CloudChildDataRepository, LocalChildCloudSyncRepository } from '@/domain/sync';
+import type {
+  CloudChildDataRepository,
+  CloudChildProgress,
+  LocalChildCloudSyncRepository,
+  LocalProgressSnapshot,
+} from '@/domain/sync';
 
 /**
- * Orchestrates best-effort cloud persistence + recovery for a child's Mine Puan
- * progress, brushing sessions and slot evaluations. It never computes score —
- * the local SQLite transaction has already produced the truth by the time any
- * method here runs.
+ * Orchestrates multi-device cloud sync for a child's Mine Puan progress,
+ * brushing session history and slot evaluations. It never computes score — the
+ * local SQLite transaction has already produced the truth, and hydration only
+ * restores past results (no reward/penalty re-run).
+ *
+ * Conflict rule (deterministic):
+ *  - local has unpushed edits (current values != last-synced snapshot) → keep
+ *    local, push it to the cloud; never let an older cloud value overwrite it.
+ *  - local is clean and the cloud row is newer than this device's last sync →
+ *    hydrate the cloud value into local.
+ *  - already equal → do nothing.
  */
 export class ChildDataSyncUseCases {
   constructor(
@@ -12,49 +24,120 @@ export class ChildDataSyncUseCases {
     private readonly cloud: CloudChildDataRepository,
   ) {}
 
+  private static isProgressDirty(snapshot: LocalProgressSnapshot): boolean {
+    return (
+      snapshot.syncedScore === null ||
+      snapshot.syncedStreak === null ||
+      snapshot.currentMineScore !== snapshot.syncedScore ||
+      snapshot.streak !== snapshot.syncedStreak
+    );
+  }
+
   async pushProgress(profileId: string): Promise<void> {
     const childId = await this.local.resolveRemoteChildId(profileId);
     if (!childId) return;
-    const progress = await this.local.readProgressForPush(profileId);
-    if (!progress) return;
-    await this.cloud.upsertProgress({
+    const snapshot = await this.local.readProgressSnapshot(profileId);
+    if (!snapshot) return;
+    const updatedAt = await this.cloud.upsertProgress({
       childId,
-      currentMineScore: progress.currentMineScore,
-      streak: progress.streak,
+      currentMineScore: snapshot.currentMineScore,
+      streak: snapshot.streak,
     });
+    await this.local.markProgressSynced(
+      profileId,
+      snapshot.currentMineScore,
+      snapshot.streak,
+      updatedAt,
+    );
   }
 
-  async pushSession(profileId: string, sessionId: string): Promise<void> {
-    const childId = await this.local.resolveRemoteChildId(profileId);
-    if (!childId) return;
-    const session = await this.local.readSessionForPush(profileId, sessionId);
-    if (!session) return;
-    await this.cloud.upsertSession({ ...session, childId });
+  private async pushProgressIfDirty(profileId: string): Promise<void> {
+    const snapshot = await this.local.readProgressSnapshot(profileId);
+    if (!snapshot || !ChildDataSyncUseCases.isProgressDirty(snapshot)) return;
+    await this.pushProgress(profileId);
   }
 
-  async pushRecentEvaluations(profileId: string, sinceDayKey: string): Promise<void> {
+  async pushUnsyncedSessions(profileId: string): Promise<void> {
     const childId = await this.local.resolveRemoteChildId(profileId);
     if (!childId) return;
-    const evaluations = await this.local.readRecentEvaluationsForPush(profileId, sinceDayKey);
-    for (const evaluation of evaluations) {
-      await this.cloud.upsertSlotEvaluation({ ...evaluation, childId });
+    for (const session of await this.local.readUnsyncedSessions(profileId)) {
+      const updatedAt = await this.cloud.upsertSession({ ...session, childId });
+      await this.local.markSessionSynced(session.id, updatedAt);
+    }
+  }
+
+  async pushUnsyncedEvaluations(profileId: string): Promise<void> {
+    const childId = await this.local.resolveRemoteChildId(profileId);
+    if (!childId) return;
+    for (const evaluation of await this.local.readUnsyncedEvaluations(profileId)) {
+      const updatedAt = await this.cloud.upsertSlotEvaluation({ ...evaluation, childId });
+      await this.local.markEvaluationSynced(
+        profileId,
+        evaluation.localDayKey,
+        evaluation.period,
+        updatedAt,
+      );
+    }
+  }
+
+  /** Flush every locally pending write for one child (post-write / retry path). */
+  async pushChild(profileId: string): Promise<void> {
+    if (!(await this.local.resolveRemoteChildId(profileId))) return;
+    await this.pushProgressIfDirty(profileId);
+    await this.pushUnsyncedSessions(profileId);
+    await this.pushUnsyncedEvaluations(profileId);
+  }
+
+  /** Retry path: flush every synced child's pending writes. */
+  async pushAllPending(): Promise<void> {
+    for (const profileId of await this.local.listSyncedProfileIds()) {
+      await this.pushChild(profileId);
     }
   }
 
   /**
-   * Hydrate cloud progress into local SQLite for children that have no local
-   * `profile_progress` row yet (fresh install / cleared cache). Existing local
-   * rows are left untouched.
+   * Multi-device recovery for Mine Puan progress. Hydrates when local is missing
+   * or clean-and-stale; keeps local when it holds unpushed edits.
    */
-  async recoverProgress(): Promise<number> {
-    const rows = await this.cloud.listOwnedProgress();
-    let hydrated = 0;
-    for (const row of rows) {
-      const profileId = await this.local.findHydratableProfile(row.childId);
+  async recoverProgress(): Promise<void> {
+    for (const row of await this.cloud.listOwnedProgress()) {
+      const profileId = await this.local.findProfileByRemoteChildId(row.childId);
       if (!profileId) continue;
-      await this.local.hydrateProgress(profileId, row);
-      hydrated += 1;
+      const snapshot = await this.local.readProgressSnapshot(profileId);
+
+      if (!snapshot) {
+        await this.local.writeRecoveredProgress(profileId, row);
+        continue;
+      }
+      if (ChildDataSyncUseCases.isProgressDirty(snapshot)) continue; // local wins; pushed later
+
+      const cloudNewer =
+        !snapshot.syncedAt || (row.updatedAt ? row.updatedAt > snapshot.syncedAt : false);
+      const valueDiffers =
+        row.currentMineScore !== snapshot.currentMineScore || row.streak !== snapshot.streak;
+      if (cloudNewer && valueDiffers) {
+        await this.local.writeRecoveredProgress(profileId, row);
+      }
     }
-    return hydrated;
+  }
+
+  /**
+   * Fresh-install recovery of brushing session + slot evaluation history.
+   * Idempotent INSERT OR IGNORE on the stable id / composite key — repeated
+   * recovery never duplicates a row and never re-applies a reward or penalty.
+   */
+  async recoverBrushingHistory(): Promise<void> {
+    for (const session of await this.cloud.listOwnedSessions()) {
+      const profileId = await this.local.findProfileByRemoteChildId(session.childId);
+      if (!profileId) continue;
+      await this.local.hydrateSession(profileId, session);
+    }
+    for (const evaluation of await this.cloud.listOwnedSlotEvaluations()) {
+      const profileId = await this.local.findProfileByRemoteChildId(evaluation.childId);
+      if (!profileId) continue;
+      await this.local.hydrateSlotEvaluation(profileId, evaluation);
+    }
   }
 }
+
+export type { CloudChildProgress };

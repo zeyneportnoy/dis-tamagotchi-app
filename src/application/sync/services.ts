@@ -9,7 +9,6 @@ import {
   SupabaseChildPreferencesRepository,
   SupabaseChildProfileRepository,
 } from '@/data/repositories';
-import { toLocalDateKey } from '@/domain/brushing';
 import { getBrushingVoiceProfile, hasStoredVoiceProfile, setBrushingVoiceProfile } from '@/features/brushing';
 import { reminderSettingsService } from '@/features/reminders';
 
@@ -88,19 +87,16 @@ export function getChildDataSyncUseCases(): Promise<ChildDataSyncUseCases | null
   return childDataSyncPromise;
 }
 
-// Only push child_progress when the value actually changed since the last push,
-// so a screen-focus `getProgress()` does not spam the network.
+// Skip a redundant push when a screen-focus getProgress() reports an unchanged
+// value; the durable "is dirty?" check lives in the SQLite sync markers.
 const lastPushedProgress = new Map<string, string>();
 
-const evaluationPushFloorDayKey = (): string =>
-  toLocalDateKey(new Date(Date.now() - 14 * 24 * 60 * 60 * 1000));
-
 /**
- * Fire-and-forget push of a child's Mine Puan + streak, plus its recent slot
- * evaluations. `snapshot` lets callers skip a redundant push when nothing
- * changed. Every failure is swallowed and the change marker is cleared so the
- * next call retries. Local data is the source of truth and is never rolled back
- * here.
+ * Fire-and-forget flush of a child's pending cloud writes (Mine Puan + streak,
+ * plus any unsynced sessions / slot evaluations). `snapshot` lets callers skip a
+ * redundant call when nothing changed. Every failure is swallowed; the local
+ * SQLite sync markers keep the backlog for the next retry. Local data is never
+ * rolled back here.
  */
 export async function syncChildCloudProgress(
   profileId: string,
@@ -112,36 +108,34 @@ export async function syncChildCloudProgress(
   try {
     const sync = await getChildDataSyncUseCases();
     if (!sync) return;
-    await sync.pushProgress(profileId);
-    await sync.pushRecentEvaluations(profileId, evaluationPushFloorDayKey());
+    await sync.pushChild(profileId);
   } catch {
     if (marker) lastPushedProgress.delete(profileId);
   }
 }
 
 /**
- * Fire-and-forget push of one brushing session (stable local UUID → cloud upsert
- * on `id`) followed by the child's progress. Retrying the same session never
- * creates a second cloud row or a second reward.
+ * Fire-and-forget flush after a brushing session finishes. Pushes every unsynced
+ * session (stable local UUID → cloud upsert on `id`, so an offline session
+ * reaches the cloud under the same id and never grants a second +20), its slot
+ * evaluations and progress.
  */
 export async function syncChildBrushingSession(
   profileId: string,
-  sessionId: string,
+  _sessionId: string,
 ): Promise<void> {
   try {
     const sync = await getChildDataSyncUseCases();
-    if (!sync) return;
-    await sync.pushSession(profileId, sessionId);
-    await sync.pushProgress(profileId);
+    await sync?.pushChild(profileId);
   } catch {
     // Swallowed: local session + reward already committed.
   }
 }
 
 /**
- * On app/session restore: hydrate cloud Mine Puan progress into local SQLite for
- * children that have no local progress row yet. Never overwrites existing local
- * data.
+ * On app/session restore: multi-device recovery of Mine Puan progress. Hydrates
+ * when local is missing or clean-and-stale; never overwrites local unpushed
+ * edits.
  */
 export async function recoverChildCloudProgress(): Promise<void> {
   try {
@@ -149,6 +143,38 @@ export async function recoverChildCloudProgress(): Promise<void> {
     await sync?.recoverProgress();
   } catch {
     // Swallowed: local data (if any) stays intact.
+  }
+}
+
+/**
+ * On fresh install: hydrate brushing session + slot evaluation history from the
+ * cloud so the Görevler/Takvim history is not empty. Idempotent — never
+ * duplicates a row and never re-applies a reward/penalty. Must run before the
+ * first getProgress()/reconcile so hydrated evaluations block a second -10.
+ */
+export async function recoverChildBrushingHistory(): Promise<void> {
+  try {
+    const sync = await getChildDataSyncUseCases();
+    await sync?.recoverBrushingHistory();
+  } catch {
+    // Swallowed: local data (if any) stays intact.
+  }
+}
+
+/**
+ * Retry every locally pending cloud write (child profiles first, then dependent
+ * progress / sessions / evaluations / preferences). Triggered on bootstrap and
+ * when the app returns to the foreground — not polled. Idempotent upserts, so a
+ * child that is not cloud-synced yet is simply skipped until it is.
+ */
+export async function retryPendingCloudSync(): Promise<void> {
+  try {
+    await pushPendingChildProfiles();
+    const sync = await getChildDataSyncUseCases();
+    await sync?.pushAllPending();
+    await syncAllChildPreferences();
+  } catch {
+    // Swallowed: retried again on the next trigger.
   }
 }
 

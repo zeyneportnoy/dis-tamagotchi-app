@@ -6,10 +6,13 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
+import { AppState } from 'react-native';
 
 import { getParentAuthUseCases, type ParentAuthUseCases } from '@/application/auth';
+import { retryPendingCloudSync } from '@/application/sync';
 import { LoadingState } from '@/design-system';
 import type { ParentSession } from '@/domain/auth';
 
@@ -53,6 +56,26 @@ export function AuthProvider({ children }: PropsWithChildren) {
       unsubscribe();
     };
   }, [useCases]);
+
+  // Offline → online retry: flush pending cloud writes whenever a verified
+  // session is available and again each time the app returns to the foreground.
+  // No polling — just these two triggers.
+  const sessionReady = Boolean(session?.emailVerified);
+  const lastRetryAt = useRef(0);
+  useEffect(() => {
+    if (!sessionReady) return;
+    const attempt = (): void => {
+      const now = Date.now();
+      if (now - lastRetryAt.current < 15_000) return;
+      lastRetryAt.current = now;
+      void retryPendingCloudSync();
+    };
+    attempt();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') attempt();
+    });
+    return () => subscription.remove();
+  }, [sessionReady]);
 
   useEffect(() => {
     if (loading) return;

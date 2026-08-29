@@ -214,4 +214,50 @@ describe('SQLiteChildPreferenceSyncRepository', () => {
     );
     expect(effectRows).toEqual([]);
   });
+
+  describe('customization sync markers (multi-device conflict)', () => {
+    it('reports "dirty, never synced" before any push', async () => {
+      const { db, repo } = await build();
+      await seedChild(db, 'profile-1');
+      await AsyncStorage.setItem(
+        customizationStorageKey('profile-1'),
+        JSON.stringify({
+          developerEquipped: { brush: 'star-brush' },
+          placements: {},
+          selectedRoomMaterials: [],
+          version: 1,
+        }),
+      );
+      await expect(repo.readCustomizationSyncMeta('profile-1')).resolves.toEqual({
+        syncedAt: null,
+        dirty: true,
+      });
+    });
+
+    it('is clean right after markCustomizationSynced, then dirty once the state changes', async () => {
+      const { db, repo } = await build();
+      await seedChild(db, 'profile-1');
+      const state = {
+        developerEquipped: { brush: 'star-brush' },
+        placements: {},
+        selectedRoomMaterials: ['pastel-toy-box'],
+        version: 1,
+      };
+      await AsyncStorage.setItem(customizationStorageKey('profile-1'), JSON.stringify(state));
+      await repo.markCustomizationSynced('profile-1', state);
+
+      const clean = await repo.readCustomizationSyncMeta('profile-1');
+      expect(clean.dirty).toBe(false);
+      expect(typeof clean.syncedAt).toBe('string');
+
+      // Local edit → now dirty; recovery must not overwrite it.
+      await AsyncStorage.setItem(
+        customizationStorageKey('profile-1'),
+        JSON.stringify({ ...state, developerEquipped: { brush: 'pink-brush' } }),
+      );
+      await expect(repo.readCustomizationSyncMeta('profile-1')).resolves.toMatchObject({
+        dirty: true,
+      });
+    });
+  });
 });

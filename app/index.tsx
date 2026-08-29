@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react';
 import { getFamilyUseCases } from '@/application/family';
 import {
   getProfileSyncUseCases,
+  recoverChildBrushingHistory,
   recoverChildCloudProgress,
   recoverChildPreferences,
+  retryPendingCloudSync,
 } from '@/application/sync';
 import { ErrorState, LoadingState } from '@/design-system';
 import { isLegacyAgeBand } from '@/domain/family';
@@ -30,10 +32,15 @@ export default function Index() {
         if (sync && (await sync.countLegacyProfiles(session.userId)) > 0)
           return 'claim-local' as const;
         if (sync) await sync.recoverFromCloud();
-        // Child profiles exist locally now; hydrate cloud Mine Puan + preferences
-        // for any that have nothing stored locally (never overwrites local data).
+        // Child profiles exist locally now. Recover Mine Puan (multi-device
+        // conflict-aware) and — before any getProgress()/reconcile runs —
+        // brushing + slot-evaluation history, so hydrated evaluations block a
+        // second -10. Then per-child preferences.
         await recoverChildCloudProgress();
+        await recoverChildBrushingHistory();
         await recoverChildPreferences();
+        // Flush anything this device changed while offline (never blocks routing).
+        void retryPendingCloudSync();
         const useCases = await getFamilyUseCases();
         return useCases.getActiveProfile();
       })
