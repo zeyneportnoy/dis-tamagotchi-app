@@ -4,6 +4,8 @@ export type CloudChildProfile = Readonly<{
   id: string;
   parentId: string;
   nickname: string;
+  /** Exact date of birth (YYYY-MM-DD); the source of truth `ageBand` is derived from. */
+  dateOfBirth: string | null;
   ageBand: AgeBand;
   avatarId: StarterAvatarKey;
   createdAt: string;

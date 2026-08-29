@@ -1,2 +1,2 @@
 export { ProfileSyncUseCases } from './ProfileSyncUseCases';
-export { getProfileSyncUseCases } from './services';
+export { getProfileSyncUseCases, pushPendingChildProfiles } from './services';

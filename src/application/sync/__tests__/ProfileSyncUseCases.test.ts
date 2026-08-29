@@ -6,6 +6,7 @@ const profile = {
   id: '11111111-1111-4111-8111-111111111111',
   parentId: '',
   nickname: 'Ege',
+  dateOfBirth: null,
   ageBand: '4_6' as const,
   avatarId: 'inci' as const,
   createdAt: '2026-08-08T10:00:00.000Z',

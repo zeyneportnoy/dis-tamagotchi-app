@@ -7,6 +7,7 @@ type CloudRow = {
   id: string;
   parent_id: string;
   nickname: string;
+  date_of_birth: string | null;
   age_band: AgeBand;
   avatar_id: StarterAvatarKey;
   created_at: string;
@@ -18,6 +19,7 @@ const mapRow = (row: CloudRow): CloudChildProfile => ({
   id: row.id,
   parentId: row.parent_id,
   nickname: row.nickname,
+  dateOfBirth: row.date_of_birth ?? null,
   ageBand: row.age_band,
   avatarId: row.avatar_id,
   createdAt: row.created_at,
@@ -46,6 +48,7 @@ export class SupabaseChildProfileRepository implements CloudChildProfileReposito
           id: profile.id,
           parent_id: profile.parentId,
           nickname: profile.nickname,
+          date_of_birth: profile.dateOfBirth,
           age_band: profile.ageBand,
           avatar_id: profile.avatarId,
           created_at: profile.createdAt,

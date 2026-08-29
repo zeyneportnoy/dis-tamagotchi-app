@@ -8,6 +8,7 @@ type LegacyRow = {
   id: string;
   parent_auth_user_id: string | null;
   nickname: string;
+  date_of_birth: string | null;
   age_band: AgeBand;
   avatar_id: StarterAvatarKey;
   created_at: string;
@@ -30,6 +31,7 @@ export class SQLiteProfileSyncRepository implements LocalProfileSyncRepository {
       id: row.id,
       parentId: row.parent_auth_user_id ?? '',
       nickname: row.nickname,
+      dateOfBirth: row.date_of_birth ?? null,
       ageBand: row.age_band,
       avatarId: row.avatar_id,
       createdAt: row.created_at,
@@ -54,10 +56,11 @@ export class SQLiteProfileSyncRepository implements LocalProfileSyncRepository {
       const familyId = await this.ensureLocalFamilyId();
       await this.database.runAsync(
         `INSERT INTO child_profiles
-          (id, family_id, nickname, age_band, avatar_id, created_at, archived_at,
+          (id, family_id, nickname, date_of_birth, age_band, avatar_id, created_at, archived_at,
            remote_id, parent_auth_user_id, sync_status, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
          ON CONFLICT(id) DO UPDATE SET nickname = excluded.nickname,
+          date_of_birth = excluded.date_of_birth,
           age_band = excluded.age_band, avatar_id = excluded.avatar_id,
           archived_at = excluded.archived_at, remote_id = excluded.remote_id,
           parent_auth_user_id = excluded.parent_auth_user_id,
@@ -65,6 +68,7 @@ export class SQLiteProfileSyncRepository implements LocalProfileSyncRepository {
         profile.id,
         familyId,
         profile.nickname,
+        profile.dateOfBirth,
         profile.ageBand,
         profile.avatarId,
         profile.createdAt,

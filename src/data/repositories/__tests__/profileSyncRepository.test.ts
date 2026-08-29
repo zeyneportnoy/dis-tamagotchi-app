@@ -14,6 +14,7 @@ const cloudProfile: CloudChildProfile = {
   id: '20000000-0000-4000-8000-000000000001',
   parentId,
   nickname: 'Emrah',
+  dateOfBirth: '2017-03-15',
   ageBand: '7_11',
   createdAt: '2026-08-02T12:00:00.000Z',
   updatedAt: '2026-08-02T12:00:00.000Z',
@@ -39,11 +40,16 @@ describe('SQLiteProfileSyncRepository.upsertCloud', () => {
     const stored = await (database as unknown as SQLiteDatabase).getFirstAsync<{
       family_id: string;
       nickname: string;
+      date_of_birth: string | null;
       sync_status: string;
-    }>('SELECT family_id, nickname, sync_status FROM child_profiles WHERE id = ?', cloudProfile.id);
+    }>(
+      'SELECT family_id, nickname, date_of_birth, sync_status FROM child_profiles WHERE id = ?',
+      cloudProfile.id,
+    );
     expect(stored).toEqual({
       family_id: familyId,
       nickname: 'Emrah',
+      date_of_birth: '2017-03-15',
       sync_status: 'synced',
     });
   });

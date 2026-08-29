@@ -1,4 +1,20 @@
-import type { CloudChildProfileRepository, LocalProfileSyncRepository } from '@/domain/sync';
+import { ageBandFromDateOfBirth } from '@/domain/family';
+import type {
+  CloudChildProfile,
+  CloudChildProfileRepository,
+  LocalProfileSyncRepository,
+} from '@/domain/sync';
+
+/**
+ * Exact date of birth is the source of truth: when a cloud profile carries a
+ * DOB, re-derive its age band from it so a stale `age_band` written earlier in
+ * Supabase never misroutes the app.
+ */
+function withDerivedAgeBand(profile: CloudChildProfile): CloudChildProfile {
+  if (!profile.dateOfBirth) return profile;
+  const derived = ageBandFromDateOfBirth(profile.dateOfBirth);
+  return derived && derived !== profile.ageBand ? { ...profile, ageBand: derived } : profile;
+}
 
 export class ProfileSyncUseCases {
   constructor(
@@ -8,7 +24,7 @@ export class ProfileSyncUseCases {
 
   async recoverFromCloud(): Promise<number> {
     const profiles = await this.cloud.listOwned();
-    for (const profile of profiles) await this.local.upsertCloud(profile);
+    for (const profile of profiles) await this.local.upsertCloud(withDerivedAgeBand(profile));
     return profiles.length;
   }
 
