@@ -1609,7 +1609,7 @@ const styles = StyleSheet.create({
     paddingTop: 68,
   },
   sessionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  smileActiveLeftLower: { bottom: 8, right: 8 },
+  smileActiveLeftLower: { right: 8, top: 44 },
   smileActiveLeftUpper: { right: 8, top: 8 },
   smileActiveOverlay: {
     backgroundColor: 'rgba(129,80,230,0.28)',
@@ -1623,7 +1623,7 @@ const styles = StyleSheet.create({
     shadowRadius: 7,
     width: 55,
   },
-  smileActiveRightLower: { bottom: 8, left: 8 },
+  smileActiveRightLower: { left: 8, top: 44 },
   smileActiveRightUpper: { left: 8, top: 8 },
   smileMap: { flex: 1, overflow: 'hidden' },
   smileMapImage: { height: '100%', width: '100%' },
