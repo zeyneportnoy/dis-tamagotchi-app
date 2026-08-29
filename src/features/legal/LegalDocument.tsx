@@ -1,4 +1,5 @@
 import { ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BackButton, Screen, Text, colors, radii, spacing } from '@/design-system';
 
@@ -10,12 +11,18 @@ type Props = Readonly<{
 }>;
 
 export function LegalDocument({ incomplete, placeholder, sections, title }: Props) {
+  const insets = useSafeAreaInsets();
+
   return (
     <Screen style={styles.screen}>
-      <View style={styles.back}>
+      <View style={[styles.back, { top: insets.top + spacing.sm }]} testID="legal-back-safe-area">
         <BackButton fallbackHref="/auth/signup" />
       </View>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        testID="legal-document-scroll"
+      >
         <Text variant="title">{title}</Text>
         <View style={styles.notice}>
           <Text>{placeholder}</Text>
@@ -32,7 +39,7 @@ export function LegalDocument({ incomplete, placeholder, sections, title }: Prop
 }
 
 const styles = StyleSheet.create({
-  back: { left: spacing.lg, position: 'absolute', top: spacing.sm, zIndex: 2 },
+  back: { left: spacing.lg, position: 'absolute', zIndex: 2 },
   card: {
     backgroundColor: colors.white,
     borderRadius: radii.lg,

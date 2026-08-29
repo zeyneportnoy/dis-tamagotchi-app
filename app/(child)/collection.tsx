@@ -67,7 +67,6 @@ import {
   presentCustomizationInventory,
   placementAfterBoundedDrag,
   roomMaterialsForTheme,
-  roomMaterialUnlockXp,
   saveDeveloperEquippedItem,
   saveItemPlacement,
   saveSelectedRoomMaterials,
@@ -379,7 +378,7 @@ export default function CollectionScreen() {
   };
 
   const selectRoomMaterial = async (material: RoomMaterial): Promise<void> => {
-    if (!profile || !isRoomMaterialUnlocked(material, items ?? [], __DEV__)) {
+    if (!profile || !isRoomMaterialUnlocked(material, currentMineScore)) {
       setLockedMessage(true);
       return;
     }
@@ -396,7 +395,7 @@ export default function CollectionScreen() {
     material: RoomMaterial,
     placement: ItemPlacement,
   ): Promise<void> => {
-    if (!profile || !isRoomMaterialUnlocked(material, items ?? [], __DEV__)) return;
+    if (!profile || !isRoomMaterialUnlocked(material, currentMineScore)) return;
     const nextKeys = customization.selectedRoomMaterials.includes(material.key)
       ? customization.selectedRoomMaterials
       : [...customization.selectedRoomMaterials, material.key];
@@ -467,8 +466,10 @@ export default function CollectionScreen() {
     ? selectedEffect.key
     : null;
   const roomMaterials = roomMaterialsForTheme(selectedBackground?.key);
-  const selectedRoomMaterials = roomMaterials.filter((item) =>
-    customization.selectedRoomMaterials.includes(item.key),
+  const selectedRoomMaterials = roomMaterials.filter(
+    (item) =>
+      isRoomMaterialUnlocked(item, currentMineScore) &&
+      customization.selectedRoomMaterials.includes(item.key),
   );
   const visibleItems = items.filter(
     (item) =>
@@ -625,7 +626,7 @@ export default function CollectionScreen() {
         <View style={styles.grid} testID="collection-item-grid">
           {activeSlot === 'decor'
             ? roomMaterials.map((material) => {
-                const unlocked = isRoomMaterialUnlocked(material, items, __DEV__);
+                const unlocked = isRoomMaterialUnlocked(material, currentMineScore);
                 const selected = customization.selectedRoomMaterials.includes(material.key);
                 return (
                   <DraggableCollectionCard
@@ -699,7 +700,6 @@ export default function CollectionScreen() {
                           : unlocked
                             ? 'collection.dragToPlace'
                             : 'collection.lockedHint',
-                        { xp: roomMaterialUnlockXp(material) },
                       )}
                     </Text>
                   </DraggableCollectionCard>
@@ -712,9 +712,7 @@ export default function CollectionScreen() {
             // re-lock if it drops back below the threshold.
             const gate = isScoreGatedSlot(activeSlot) ? scoreGatedSlots[activeSlot] : null;
             const scoreTarget = gate ? gate.unlockScore(item.key) : null;
-            const unlocked = gate
-              ? gate.isUnlocked(item.key, currentMineScore)
-              : item.unlocked;
+            const unlocked = gate ? gate.isUnlocked(item.key, currentMineScore) : item.unlocked;
             // A stored selection that has re-locked (score dropped) must never
             // still read as "equipped", even if the revert write has not landed.
             const equipped = item.equipped && unlocked;

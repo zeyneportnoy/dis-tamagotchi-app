@@ -384,3 +384,20 @@ onboarding ve Mood Lab aynı render bileşenini kullanır.
   mevcut anahtarları, kilit eşikleri ve child-specific equip persistence davranışı korunur.
 - Altı efektin tamamı seçili kaldıkları sürece düşük yoğunluklu, sürekli bir loop çalıştırır; Kutlama
   da karakter etkileşimi gerektirmeden küçük yıldız ve confetti hareketini sürdürür.
+
+# 2026-08-29 — Oda malzemeleri matching background kilidini paylaşır
+
+- Altı desteklenen temadaki oda malzemelerinin ayrı Mine Puan eşiği yoktur. Her malzemenin
+  kullanılabilirliği yalnız matching background anahtarının güncel skor kilidinden türetilir; tema
+  açıldığında beş malzeme birlikte açılır, background yeniden kilitlendiğinde birlikte kullanılamaz.
+- Eski beş `decor` reward anahtarına bağlı malzeme kilitleri kaldırılır. Child-specific seçim ve
+  yerleşimler korunur; kullanılamayan kayıtlar sahnede render edilmez ve mevcut background fallback
+  davranışı geçerli kalır.
+
+# 2026-08-29 — Native ve bootstrap splash aynı onaylı marka görselini kullanır
+
+- Expo native launch screen, onaylı sabit DentHero splash PNG’sini lavanta arka plan üzerinde
+  `cover` ile gösterir; spinner, loading noktası veya yapay minimum bekleme süresi içermez.
+- Native splash yalnız fontlar ve yerel veritabanı hazır olduğunda kaldırılır. Auth restore ve ilk
+  route çözülürken aynı yerel PNG React katmanında gösterilerek aradaki beyaz/loading-state karesi
+  önlenir; auth ve navigation kararları değiştirilmez.

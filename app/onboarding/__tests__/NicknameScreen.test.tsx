@@ -5,7 +5,10 @@ import NicknameScreen from '../nickname';
 
 const mockSetNickname = jest.fn();
 
-jest.mock('expo-router', () => ({ router: { push: jest.fn(), replace: jest.fn() } }));
+jest.mock('expo-router', () => ({
+  router: { push: jest.fn(), replace: jest.fn() },
+  Stack: { Screen: () => null },
+}));
 jest.mock('@/application/family', () => ({ getFamilyUseCases: jest.fn() }));
 jest.mock('@/features/onboarding/OnboardingDraftContext', () => ({
   useOnboardingDraft: () => ({
@@ -26,6 +29,12 @@ describe('nickname onboarding input', () => {
     const input = view.getByLabelText('Çocuk takma adı');
 
     expect(input.props.keyboardType).toBe('default');
+    expect(view.getByTestId('nickname-static-content')).toBeTruthy();
+    expect(view.queryByTestId('nickname-scroll')).toBeNull();
+    expect(view.getByTestId('character-inci', { includeHiddenElements: true })).toBeTruthy();
+    expect(view.getByTestId('character-scene-decor', { includeHiddenElements: true })).toBeTruthy();
+    expect(view.queryByText('☺')).toBeNull();
+    expect(view.getByText('Merhaba!')).toBeTruthy();
     await fireEvent.changeText(input, 'Işıl Şen');
     await fireEvent.press(view.getByRole('button', { name: 'Devam et' }));
 

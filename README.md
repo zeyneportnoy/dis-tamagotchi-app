@@ -1,4 +1,4 @@
-# Diş Tamagotchi
+# DentHero
 
 M3.5 auth foundation, doğrulanmış veli hesabı ve child profile recovery için Supabase kullanır; SQLite local-first kaynak olarak korunur. Dashboard kurulumu için `docs/SUPABASE_SETUP.md`, auth sınırları için `docs/AUTH.md` dosyasına bakın. Gerçek `.env` ve service-role secret commit etmeyin.
 

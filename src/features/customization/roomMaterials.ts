@@ -1,6 +1,6 @@
 import type { ImageSourcePropType } from 'react-native';
 
-import { rewardItemForKey, type InventoryItem, type RewardItemKey } from '@/domain/rewards';
+import { isBackgroundUnlockedForScore, type RewardItemKey } from '@/domain/rewards';
 
 export const roomThemeKeys = [
   'pastel-playroom',
@@ -56,16 +56,7 @@ export type RoomMaterial = Readonly<{
   key: RoomMaterialKey;
   kind: RoomMaterialKind;
   source: ImageSourcePropType;
-  unlockItemKey: RewardItemKey;
 }>;
-
-const unlockItemKeys = [
-  'cozy-scarf',
-  'heart-rug',
-  'toy-box',
-  'heart-badge',
-  'star-badge',
-] as const satisfies readonly RewardItemKey[];
 
 const defaults = [
   {
@@ -101,7 +92,7 @@ function material(
   index: 0 | 1 | 2 | 3 | 4,
   source: ImageSourcePropType,
 ): RoomMaterial {
-  return { ...defaults[index], backgroundKey, key, source, unlockItemKey: unlockItemKeys[index] };
+  return { ...defaults[index], backgroundKey, key, source };
 }
 
 export const roomMaterialCatalog = [
@@ -309,17 +300,6 @@ export function roomMaterialsForTheme(themeKey: string | undefined): readonly Ro
   return roomMaterialCatalog.filter((item) => item.backgroundKey === safeThemeKey);
 }
 
-export function isRoomMaterialUnlocked(
-  item: RoomMaterial,
-  inventory: readonly InventoryItem[],
-  developerMode: boolean,
-): boolean {
-  if (developerMode) return true;
-  return inventory.some(
-    (inventoryItem) => inventoryItem.key === item.unlockItemKey && inventoryItem.unlocked,
-  );
-}
-
-export function roomMaterialUnlockXp(item: RoomMaterial): number {
-  return rewardItemForKey(item.unlockItemKey).unlockXp;
+export function isRoomMaterialUnlocked(item: RoomMaterial, currentMineScore: number): boolean {
+  return isBackgroundUnlockedForScore(item.backgroundKey, currentMineScore);
 }

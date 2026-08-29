@@ -107,12 +107,10 @@ describe('Parent Settings navigation header', () => {
         true,
       ),
     );
-    await fireEvent.press(view.getByRole('radio', { name: 'Samet' }));
+    await fireEvent.press(view.getByRole('radio', { name: 'Sam' }));
     expect(mockSetBrushingVoiceProfile).toHaveBeenCalledWith('parent-a', 'child-a', 'samet');
     await waitFor(() =>
-      expect(view.getByRole('radio', { name: 'Samet' }).props.accessibilityState.checked).toBe(
-        true,
-      ),
+      expect(view.getByRole('radio', { name: 'Sam' }).props.accessibilityState.checked).toBe(true),
     );
     expect(view.getByRole('radio', { name: 'Kapalı' })).toBeTruthy();
     expect(view.queryByText('Sıcak ve neşeli kadın sesi')).toBeNull();

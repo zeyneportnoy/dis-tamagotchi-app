@@ -116,7 +116,7 @@ describe('profile summary', () => {
 
     await fireEvent.press(view.getByRole('button', { name: 'Gökçe sesini dinle' }));
     await waitFor(() => expect(mockGokcePreview.play).toHaveBeenCalledTimes(1));
-    await fireEvent.press(view.getByRole('button', { name: 'Samet sesini dinle' }));
+    await fireEvent.press(view.getByRole('button', { name: 'Sam sesini dinle' }));
     await waitFor(() => expect(mockSametPreview.play).toHaveBeenCalledTimes(1));
 
     expect(view.queryByRole('button', { name: 'Kapalı sesini dinle' })).toBeNull();
@@ -136,7 +136,7 @@ describe('profile summary', () => {
       paddingBottom: 24,
     });
     expect(view.getByRole('radio', { name: 'Gökçe' })).toBeTruthy();
-    expect(view.getByRole('radio', { name: 'Samet' })).toBeTruthy();
+    expect(view.getByRole('radio', { name: 'Sam' })).toBeTruthy();
     expect(view.getByRole('radio', { name: 'Kapalı' })).toBeTruthy();
   });
 

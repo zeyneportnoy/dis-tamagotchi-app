@@ -121,7 +121,7 @@ export default function SignUpScreen() {
         <Text>{configured ? t('auth.signupError') : t('auth.configMissingBody')}</Text>
       ) : null}
       <Button
-        disabled={saving || !configured}
+        disabled={saving || !configured || !termsAccepted || !privacyAcknowledged}
         label={t('auth.createAccount')}
         onPress={() => void submit()}
       />

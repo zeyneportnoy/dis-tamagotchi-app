@@ -9,17 +9,13 @@ import {
   recoverChildPreferences,
   retryPendingCloudSync,
 } from '@/application/sync';
-import { ErrorState, LoadingState } from '@/design-system';
+import { ErrorState } from '@/design-system';
 import { isLegacyAgeBand } from '@/domain/family';
 import { useAuth } from '@/features/auth';
+import { BrandedSplash } from '@/features/splash';
 
 type Destination =
-  | 'age-band-update'
-  | 'child'
-  | 'onboarding'
-  | 'profile-onboarding'
-  | 'claim-local'
-  | 'error';
+  'age-band-update' | 'child' | 'onboarding' | 'profile-onboarding' | 'claim-local' | 'error';
 
 export default function Index() {
   const { configured, loading: authLoading, session } = useAuth();
@@ -28,9 +24,10 @@ export default function Index() {
   // for. When the signed-in user changes (logout → another login) the tag stops
   // matching, so the previous account's screen can never flash before the new
   // bootstrap runs.
-  const [resolved, setResolved] = useState<{ userId: string | null; destination: Destination | null }>(
-    { userId: null, destination: null },
-  );
+  const [resolved, setResolved] = useState<{
+    userId: string | null;
+    destination: Destination | null;
+  }>({ userId: null, destination: null });
   const destination = resolved.userId === userId ? resolved.destination : null;
 
   useEffect(() => {
@@ -75,11 +72,11 @@ export default function Index() {
       });
   }, [authLoading, configured, session]);
 
-  if (authLoading) return <LoadingState />;
+  if (authLoading) return <BrandedSplash />;
   if (!configured || !session) return <Redirect href="/onboarding" />;
-  if (!session.emailVerified) return <LoadingState />;
+  if (!session.emailVerified) return <BrandedSplash />;
   if (destination === 'error') return <ErrorState />;
-  if (!destination) return <LoadingState />;
+  if (!destination) return <BrandedSplash />;
   const href =
     destination === 'child'
       ? '/(child)'

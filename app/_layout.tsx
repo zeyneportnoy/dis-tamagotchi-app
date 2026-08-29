@@ -3,11 +3,12 @@ import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 
-import { ErrorState, LoadingState } from '@/design-system';
+import { ErrorState } from '@/design-system';
 import { initializeDatabase } from '@/data/db';
 import { AuthProvider } from '@/features/auth';
 import { OnboardingDraftProvider } from '@/features/onboarding/OnboardingDraftContext';
 import { configureNotificationPresentation } from '@/features/reminders/configureNotifications';
+import { BrandedSplash } from '@/features/splash';
 import '@/i18n';
 
 void SplashScreen.preventAutoHideAsync();
@@ -44,7 +45,7 @@ export default function RootLayout() {
     const reason = `[TEŞHİS v2] db=${dbReason ?? 'yok'} | font=${fontReason ?? 'yok'}`;
     return <ErrorState body={reason} />;
   }
-  if (!ready || !fontsLoaded) return <LoadingState />;
+  if (!ready || !fontsLoaded) return <BrandedSplash />;
 
   return (
     <AuthProvider>

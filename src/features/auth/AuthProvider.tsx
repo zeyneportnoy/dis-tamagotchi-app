@@ -13,8 +13,8 @@ import { AppState } from 'react-native';
 
 import { getParentAuthUseCases, type ParentAuthUseCases } from '@/application/auth';
 import { retryPendingCloudSync } from '@/application/sync';
-import { LoadingState } from '@/design-system';
 import type { ParentSession } from '@/domain/auth';
+import { BrandedSplash } from '@/features/splash';
 
 type AuthContextValue = Readonly<{
   configured: boolean;
@@ -89,7 +89,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     () => ({ configured: Boolean(useCases), loading, session, useCases, refresh }),
     [loading, refresh, session, useCases],
   );
-  if (loading) return <LoadingState />;
+  if (loading) return <BrandedSplash />;
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

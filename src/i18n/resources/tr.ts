@@ -1,6 +1,7 @@
 export const tr = {
   translation: {
     common: {
+      appName: 'DentHero',
       loading: 'Hazırlanıyor…',
       continue: 'Devam et',
       cancel: 'Vazgeç',
@@ -108,6 +109,7 @@ export const tr = {
       nickname: {
         title: 'Sana nasıl seslenelim?',
         body: 'Tam adın yerine kısa bir takma ad seçebilirsin.',
+        greeting: 'Merhaba!',
         label: 'Çocuk takma adı',
         placeholder: 'Takma ad',
         error: '1–20 karakter arasında bir takma ad deneyelim.',
@@ -482,7 +484,7 @@ export const tr = {
               title: 'Gökçe',
             },
             samet: {
-              title: 'Samet',
+              title: 'Sam',
             },
             off: {
               title: 'Kapalı',

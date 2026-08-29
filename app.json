@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Diş Tamagotchi",
+    "name": "DentHero",
     "slug": "dis-tamagotchi",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -12,8 +12,9 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#F7F7F4",
-          "resizeMode": "contain"
+          "backgroundColor": "#DADAF7",
+          "image": "./assets/splash/denthero-splash.png",
+          "resizeMode": "cover"
         }
       ],
       "expo-audio",
@@ -21,7 +22,11 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.distamagotchi.app"
+      "bundleIdentifier": "com.distamagotchi.app",
+      "infoPlist": {
+        "CFBundleDisplayName": "DentHero",
+        "CFBundleName": "DentHero"
+      }
     },
     "android": {
       "package": "com.distamagotchi.app",

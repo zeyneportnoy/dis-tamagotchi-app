@@ -14,7 +14,6 @@ export {
   roomMaterialForKey,
   roomMaterialKeys,
   roomMaterialsForTheme,
-  roomMaterialUnlockXp,
   roomThemeKeys,
 } from './roomMaterials';
 export type {
