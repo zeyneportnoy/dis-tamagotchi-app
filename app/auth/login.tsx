@@ -19,51 +19,7 @@ import { useAuth } from '@/features/auth';
 
 const ICON = '#B4A7E6';
 
-// Real glossy 3D DentHero tooth renders (assets/characters/generated) — a plain
-// molar as the protective parent and a winking one as the child. Not any of the
-// 8 Welcome-screen characters.
-const parentTooth = require('../../assets/characters/generated/molar-01-v2.png');
-const childTooth = require('../../assets/characters/generated/molar-02.png');
-
-/**
- * "Veli girişi" hero: one large parent tooth + one smaller child tooth beside
- * it in a warm, protective side-by-side pose, with a soft lilac sash on the
- * parent as the integrated safety cue. No separate lock/shield badge.
- */
-function ParentChildHero() {
-  return (
-    <View style={styles.scene}>
-      <View style={styles.pedestal} />
-
-      <View style={styles.sceneHeart}>
-        <View style={[styles.heartLobe, styles.heartLobeLeft]} />
-        <View style={[styles.heartLobe, styles.heartLobeRight]} />
-        <View style={styles.heartTip} />
-      </View>
-      <View style={[styles.sceneSparkle, styles.sceneSparkleA]} />
-      <View style={[styles.sceneSparkle, styles.sceneSparkleB]} />
-
-      <View style={styles.pair}>
-        <View style={styles.parentWrap}>
-          <Image
-            accessibilityIgnoresInvertColors
-            resizeMode="contain"
-            source={parentTooth}
-            style={styles.parentImg}
-          />
-          <View style={styles.sash} />
-          <View style={styles.sashKnot} />
-        </View>
-        <Image
-          accessibilityIgnoresInvertColors
-          resizeMode="contain"
-          source={childTooth}
-          style={styles.childImg}
-        />
-      </View>
-    </View>
-  );
-}
+const parentLoginHero = require('../../assets/auth/parent-login-hero.png');
 
 function IconMail() {
   return (
@@ -174,14 +130,12 @@ export default function LoginScreen() {
           </View>
 
           <View style={[styles.hero, { height: heroHeight }]}>
-            <View pointerEvents="none" style={styles.heroBlobs}>
-              <View style={styles.heroGlowPink} />
-              <View style={styles.heroGlowBlue} />
-              <View style={styles.heroGlowWarm} />
-              <View style={[styles.heroSparkle, styles.heroSparkleOne]} />
-              <View style={[styles.heroSparkle, styles.heroSparkleTwo]} />
-            </View>
-            <ParentChildHero />
+            <Image
+              accessibilityIgnoresInvertColors
+              resizeMode="cover"
+              source={parentLoginHero}
+              style={styles.heroImage}
+            />
           </View>
 
           <View style={styles.copy}>
@@ -387,44 +341,7 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     width: '100%',
   },
-  heroBlobs: { ...StyleSheet.absoluteFillObject },
-  heroGlowBlue: {
-    backgroundColor: 'rgba(171, 220, 255, 0.6)',
-    borderRadius: radii.pill,
-    height: 200,
-    position: 'absolute',
-    right: -56,
-    top: -48,
-    width: 200,
-  },
-  heroGlowPink: {
-    backgroundColor: 'rgba(255, 190, 220, 0.55)',
-    borderRadius: radii.pill,
-    height: 190,
-    left: -52,
-    position: 'absolute',
-    top: -44,
-    width: 190,
-  },
-  heroGlowWarm: {
-    backgroundColor: 'rgba(255, 235, 168, 0.45)',
-    borderRadius: radii.pill,
-    bottom: -70,
-    height: 200,
-    left: '24%',
-    position: 'absolute',
-    width: 200,
-  },
-  heroSparkle: {
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
-    borderRadius: 2,
-    height: 9,
-    position: 'absolute',
-    transform: [{ rotate: '45deg' }],
-    width: 9,
-  },
-  heroSparkleOne: { left: '10%', top: '16%' },
-  heroSparkleTwo: { right: '11%', top: '40%' },
+  heroImage: { height: '100%', width: '100%' },
   input: {
     color: colors.navy,
     flex: 1,
@@ -446,79 +363,5 @@ const styles = StyleSheet.create({
   notice: { color: colors.brandSecondary, textAlign: 'center' },
   pageBlobs: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
   screen: { backgroundColor: '#FBFAFF', gap: 0, padding: 0 },
-  childImg: { height: 118, marginBottom: 6, marginLeft: -14, width: 108, zIndex: 1 },
-  heartLobe: {
-    backgroundColor: '#FF9DB6',
-    borderRadius: 6,
-    height: 12,
-    position: 'absolute',
-    top: 0,
-    width: 12,
-  },
-  heartLobeLeft: { left: 0 },
-  heartLobeRight: { right: 0 },
-  heartTip: {
-    backgroundColor: '#FF9DB6',
-    height: 12,
-    left: 4,
-    position: 'absolute',
-    top: 4,
-    transform: [{ rotate: '45deg' }],
-    width: 12,
-  },
-  pair: {
-    alignItems: 'flex-end',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    paddingBottom: 6,
-  },
-  parentImg: { height: 168, width: 168 },
-  parentWrap: { alignItems: 'center', zIndex: 2 },
-  pedestal: {
-    alignSelf: 'center',
-    backgroundColor: 'rgba(150, 128, 214, 0.16)',
-    borderRadius: radii.pill,
-    bottom: 14,
-    height: 30,
-    position: 'absolute',
-    width: 200,
-  },
-  sash: {
-    backgroundColor: 'rgba(124, 104, 220, 0.9)',
-    borderRadius: 8,
-    height: 15,
-    position: 'absolute',
-    top: '52%',
-    transform: [{ rotate: '-6deg' }],
-    width: 132,
-  },
-  sashKnot: {
-    backgroundColor: 'rgba(108, 88, 200, 0.95)',
-    borderRadius: 5,
-    height: 15,
-    position: 'absolute',
-    right: 22,
-    top: '55%',
-    transform: [{ rotate: '45deg' }],
-    width: 15,
-  },
-  scene: {
-    alignItems: 'center',
-    flex: 1,
-    justifyContent: 'flex-end',
-    paddingBottom: 14,
-    position: 'relative',
-  },
-  sceneHeart: { height: 18, left: '19%', position: 'absolute', top: 20, width: 20 },
-  sceneSparkle: {
-    backgroundColor: 'rgba(180, 158, 240, 0.85)',
-    borderRadius: 2,
-    height: 8,
-    position: 'absolute',
-    transform: [{ rotate: '45deg' }],
-    width: 8,
-  },
-  sceneSparkleA: { right: '20%', top: 32 },
-  sceneSparkleB: { right: '13%', top: '50%' },
   title: { color: colors.textPrimary, textAlign: 'center' },
 });

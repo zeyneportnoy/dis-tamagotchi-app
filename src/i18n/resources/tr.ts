@@ -17,7 +17,7 @@ export const tr = {
     },
     welcome: {
       title: 'Diş arkadaşınla tanış!',
-      body: 'Çocuğunuzun fırçalama yolculuğunu güvenle başlatalım.',
+      body: 'Çocuğunuzun diş fırçalama yolculuğunu güvenle başlatalım.',
       createAccount: 'Hesap Oluştur',
       signIn: 'Giriş Yap',
     },

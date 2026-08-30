@@ -19,8 +19,7 @@ import { BackButton, Button, Screen, Text, colors, radii, spacing } from '@/desi
 import { Acknowledgement, useAuth } from '@/features/auth';
 
 const ICON = '#B4A7E6';
-const bigTooth = require('../../assets/characters/moods/inci/developed/happy.png');
-const smallTooth = require('../../assets/characters/moods/piril/developed/happy.png');
+const parentSignupHero = require('../../assets/auth/parent-signup-hero.png');
 
 function IconUser() {
   return (
@@ -170,34 +169,13 @@ export default function SignUpScreen() {
             <BackButton fallbackHref="/onboarding" testID="auth-back-button" />
           </View>
 
-          <View style={[styles.hero, { height: heroHeight }]}>
-            <View pointerEvents="none" style={styles.heroBlobs}>
-              <View style={styles.heroGlowPink} />
-              <View style={styles.heroGlowBlue} />
-              <View style={styles.heroGlowWarm} />
-              <View style={[styles.heroSparkle, styles.heroSparkleOne]} />
-              <View style={[styles.heroSparkle, styles.heroSparkleTwo]} />
-            </View>
-            <View style={styles.heroRow}>
-              <Image
-                accessibilityIgnoresInvertColors
-                resizeMode="contain"
-                source={bigTooth}
-                style={styles.bigTooth}
-              />
-              <Image
-                accessibilityIgnoresInvertColors
-                resizeMode="contain"
-                source={smallTooth}
-                style={styles.smallTooth}
-              />
-            </View>
-            <View style={styles.shieldSignup}>
-              <View style={styles.shieldLock}>
-                <View style={styles.shieldLockShackle} />
-                <View style={styles.shieldLockBody} />
-              </View>
-            </View>
+          <View style={[styles.hero, { height: heroHeight }]}> 
+            <Image
+              accessibilityIgnoresInvertColors
+              resizeMode="cover"
+              source={parentSignupHero}
+              style={styles.heroImage}
+            />
           </View>
 
           <View style={styles.copy}>
@@ -386,7 +364,6 @@ const iconStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   actions: { gap: spacing.sm, width: '100%' },
   backRow: { alignSelf: 'flex-start', paddingTop: spacing.xs },
-  bigTooth: { height: '92%', width: 138 },
   blobBlue: {
     backgroundColor: 'rgba(177, 220, 255, 0.36)',
     borderRadius: radii.pill,
@@ -471,51 +448,7 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     width: '100%',
   },
-  heroBlobs: { ...StyleSheet.absoluteFillObject },
-  heroGlowBlue: {
-    backgroundColor: 'rgba(171, 220, 255, 0.6)',
-    borderRadius: radii.pill,
-    height: 200,
-    position: 'absolute',
-    right: -56,
-    top: -48,
-    width: 200,
-  },
-  heroGlowPink: {
-    backgroundColor: 'rgba(255, 190, 220, 0.55)',
-    borderRadius: radii.pill,
-    height: 190,
-    left: -52,
-    position: 'absolute',
-    top: -44,
-    width: 190,
-  },
-  heroGlowWarm: {
-    backgroundColor: 'rgba(255, 235, 168, 0.45)',
-    borderRadius: radii.pill,
-    bottom: -70,
-    height: 200,
-    left: '24%',
-    position: 'absolute',
-    width: 200,
-  },
-  heroRow: {
-    alignItems: 'flex-end',
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    paddingBottom: spacing.md,
-  },
-  heroSparkle: {
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
-    borderRadius: 2,
-    height: 9,
-    position: 'absolute',
-    transform: [{ rotate: '45deg' }],
-    width: 9,
-  },
-  heroSparkleOne: { left: '10%', top: '16%' },
-  heroSparkleTwo: { right: '11%', top: '40%' },
+  heroImage: { height: '100%', width: '100%' },
   input: {
     color: colors.navy,
     flex: 1,
@@ -537,44 +470,5 @@ const styles = StyleSheet.create({
   notice: { color: colors.brandSecondary, textAlign: 'center' },
   pageBlobs: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
   screen: { backgroundColor: '#FBFAFF', gap: 0, padding: 0 },
-  shieldLock: { alignItems: 'center', height: 22, justifyContent: 'flex-end', width: 22 },
-  shieldLockBody: {
-    backgroundColor: colors.white,
-    borderRadius: 3,
-    height: 13,
-    marginTop: 7,
-    width: 18,
-  },
-  shieldLockShackle: {
-    borderBottomWidth: 0,
-    borderColor: colors.white,
-    borderTopLeftRadius: 7,
-    borderTopRightRadius: 7,
-    borderWidth: 2.4,
-    height: 9,
-    position: 'absolute',
-    top: 0,
-    width: 12,
-  },
-  shieldSignup: {
-    alignItems: 'center',
-    backgroundColor: '#8C7BE8',
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
-    borderColor: colors.white,
-    borderRadius: 18,
-    borderWidth: 3,
-    bottom: '20%',
-    height: 68,
-    justifyContent: 'center',
-    left: '15%',
-    position: 'absolute',
-    shadowColor: '#5B4BB0',
-    shadowOffset: { height: 6, width: 0 },
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
-    width: 60,
-  },
-  smallTooth: { height: '66%', marginLeft: -16, width: 92 },
   title: { color: colors.textPrimary, textAlign: 'center' },
 });
