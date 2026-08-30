@@ -6,48 +6,16 @@ import { Button, Screen, Text, colors, radii, spacing } from '@/design-system';
 
 const characterRows = [
   [
-    {
-      key: 'inci',
-      source: require('../../assets/characters/moods/inci/developed/happy.png'),
-      offsetY: 5,
-    },
-    {
-      key: 'piril',
-      source: require('../../assets/characters/moods/piril/developed/happy.png'),
-      offsetY: -3,
-    },
-    {
-      key: 'kaan',
-      source: require('../../assets/characters/moods/kaan/developed/happy.png'),
-      offsetY: 3,
-    },
-    {
-      key: 'milo',
-      source: require('../../assets/characters/moods/milo/developed/happy.png'),
-      offsetY: -2,
-    },
+    { key: 'inci', source: require('../../assets/characters/moods/inci/developed/happy.png') },
+    { key: 'piril', source: require('../../assets/characters/moods/piril/developed/happy.png') },
+    { key: 'kaan', source: require('../../assets/characters/moods/kaan/developed/happy.png') },
+    { key: 'milo', source: require('../../assets/characters/moods/milo/developed/happy.png') },
   ],
   [
-    {
-      key: 'zipzip',
-      source: require('../../assets/characters/moods/zipzip/developed/happy.png'),
-      offsetY: -4,
-    },
-    {
-      key: 'topi',
-      source: require('../../assets/characters/moods/topi/developed/happy.png'),
-      offsetY: 4,
-    },
-    {
-      key: 'akil',
-      source: require('../../assets/characters/moods/akil/developed/happy.png'),
-      offsetY: -3,
-    },
-    {
-      key: 'uyku',
-      source: require('../../assets/characters/moods/uyku/developed/happy.png'),
-      offsetY: 5,
-    },
+    { key: 'zipzip', source: require('../../assets/characters/moods/zipzip/developed/happy.png') },
+    { key: 'topi', source: require('../../assets/characters/moods/topi/developed/happy.png') },
+    { key: 'akil', source: require('../../assets/characters/moods/akil/developed/happy.png') },
+    { key: 'uyku', source: require('../../assets/characters/moods/uyku/developed/happy.png') },
   ],
 ] as const;
 
@@ -88,18 +56,8 @@ export default function WelcomeScreen() {
           <View style={styles.characterFamily}>
             {characterRows.map((row, rowIndex) => (
               <View key={`row-${rowIndex}`} style={styles.characterRow}>
-                {row.map((character, characterIndex) => (
-                  <View
-                    key={character.key}
-                    style={[
-                      styles.characterCell,
-                      { transform: [{ translateY: character.offsetY }] },
-                      characterIndex % 2 === 0
-                        ? styles.characterCellForward
-                        : styles.characterCellBack,
-                    ]}
-                  >
-                    <View style={styles.characterHalo} />
+                {row.map((character) => (
+                  <View key={character.key} style={styles.characterCell}>
                     <Image
                       accessibilityIgnoresInvertColors
                       resizeMode="contain"
@@ -148,27 +106,19 @@ const styles = StyleSheet.create({
     flex: 1,
     height: '100%',
     justifyContent: 'center',
-    marginHorizontal: -4,
-    position: 'relative',
+    paddingHorizontal: spacing.xs,
   },
-  characterCellBack: { zIndex: 1 },
-  characterCellForward: { zIndex: 2 },
   characterFamily: {
     flex: 1,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.md,
     width: '100%',
   },
-  characterHalo: {
-    backgroundColor: 'rgba(255, 255, 255, 0.42)',
-    borderRadius: radii.pill,
-    height: '68%',
-    position: 'absolute',
-    width: '82%',
-  },
   characterImage: {
-    height: '112%',
-    width: '116%',
+    height: '100%',
+    width: '100%',
   },
   characterRow: {
     alignItems: 'center',
