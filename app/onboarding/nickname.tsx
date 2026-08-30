@@ -1,13 +1,15 @@
 import { router, Stack } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { getFamilyUseCases } from '@/application/family';
 import { Button, Input, Screen, Text, colors, radii, spacing } from '@/design-system';
 import { nicknameSchema } from '@/domain/family';
-import { CharacterAvatar, CharacterSceneDecor, characterSafeViewport } from '@/features/character';
+import { characterSafeViewport } from '@/features/character';
 import { useOnboardingDraft } from '@/features/onboarding/OnboardingDraftContext';
+
+const nicknameRoomHero = require('../../assets/onboarding/nickname-room-hero.png');
 
 export default function NicknameScreen() {
   const { t } = useTranslation();
@@ -45,22 +47,12 @@ export default function NicknameScreen() {
         <View style={styles.skySpace} />
         <View style={styles.body}>
           <View style={styles.hero}>
-            <CharacterSceneDecor density="playful" tone="yellow" />
-            <View pointerEvents="none" style={styles.heroGlow} />
-            <View pointerEvents="none" style={styles.heroGround} />
-            <View style={styles.heroCharacter}>
-              <CharacterAvatar
-                characterKey="inci"
-                growthStage={2}
-                mood="happy"
-                size="large"
-                surface="plain"
-              />
-            </View>
-            <View style={styles.speech}>
-              <Text style={styles.speechText}>{t('onboarding.nickname.greeting')}</Text>
-              <View style={styles.speechTail} />
-            </View>
+            <Image
+              accessibilityIgnoresInvertColors
+              resizeMode="cover"
+              source={nicknameRoomHero}
+              style={styles.heroImage}
+            />
           </View>
           <View style={styles.copy}>
             <Text style={styles.center} variant="title">
@@ -112,7 +104,7 @@ const styles = StyleSheet.create({
   copy: { gap: spacing.xs },
   hero: {
     alignItems: 'center',
-    backgroundColor: '#FFF0C9',
+    backgroundColor: '#EAF5FF',
     borderColor: colors.white,
     borderRadius: radii.lg,
     borderWidth: 2,
@@ -122,28 +114,7 @@ const styles = StyleSheet.create({
     minHeight: characterSafeViewport.small.height + spacing.xl + spacing.xl,
     overflow: 'hidden',
   },
-  heroCharacter: {
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    transform: [{ scale: 1.12 }, { translateY: spacing.sm }],
-    zIndex: 1,
-  },
-  heroGlow: {
-    backgroundColor: 'rgba(255,255,255,0.32)',
-    borderRadius: radii.pill,
-    bottom: spacing.md,
-    height: '72%',
-    position: 'absolute',
-    width: '82%',
-  },
-  heroGround: {
-    backgroundColor: 'rgba(255,209,102,0.28)',
-    borderRadius: radii.pill,
-    bottom: spacing.sm,
-    height: spacing.lg,
-    position: 'absolute',
-    width: '78%',
-  },
+  heroImage: { height: '100%', width: '100%' },
   inputCard: { gap: spacing.xs },
   nicknameInput: {
     borderColor: colors.brandPrimary,
@@ -157,28 +128,4 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   skySpace: { height: spacing.xs },
-  speech: {
-    backgroundColor: colors.white,
-    borderRadius: radii.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    position: 'absolute',
-    right: spacing.lg,
-    shadowColor: colors.brandPrimary,
-    shadowOffset: { height: spacing.xs, width: 0 },
-    shadowOpacity: 0.12,
-    shadowRadius: spacing.sm,
-    top: spacing.md,
-    zIndex: 2,
-  },
-  speechText: { color: colors.brandSecondary, fontWeight: '800' },
-  speechTail: {
-    backgroundColor: colors.white,
-    bottom: -spacing.xs,
-    height: spacing.sm,
-    left: spacing.lg,
-    position: 'absolute',
-    transform: [{ rotate: '45deg' }],
-    width: spacing.sm,
-  },
 });
