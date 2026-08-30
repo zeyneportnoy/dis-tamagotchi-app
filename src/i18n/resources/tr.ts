@@ -634,6 +634,7 @@ export const tr = {
       title: 'Veli alanı',
       placeholder: 'Güvenli veli araçları sonraki adımlarda eklenecek.',
       addProfile: 'Çocuk profili ekle',
+      goToChildProfile: 'Çocuğun profiline geç',
       accountTitle: 'Veli Hesabı',
       verified: 'E-posta doğrulandı ✓',
       unverified: 'E-posta doğrulaması bekleniyor',

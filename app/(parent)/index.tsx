@@ -42,10 +42,19 @@ export default function ParentAccountScreen() {
     });
   }, []);
 
+  // Tapping a child row now only selects that child; navigation happens via the
+  // "Çocuğun profiline geç" button below the list.
   const selectProfile = async (profile: ChildProfileViewModel): Promise<void> => {
     const family = await getFamilyUseCases();
     await family.selectActiveProfile(profile.id);
     setActiveProfileId(profile.id);
+  };
+
+  const goToSelectedChildProfile = async (): Promise<void> => {
+    const profile = profiles.find((candidate) => candidate.id === activeProfileId);
+    if (!profile) return;
+    const family = await getFamilyUseCases();
+    await family.selectActiveProfile(profile.id);
 
     const nickname = profile.nickname?.trim();
     const dateOfBirth = profile.dateOfBirth;
@@ -190,6 +199,12 @@ export default function ParentAccountScreen() {
             );
           })}
         </View>
+        <Button
+          disabled={!activeProfileId}
+          label={t('parent.goToChildProfile')}
+          onPress={() => void goToSelectedChildProfile()}
+          testID="go-to-child-profile-button"
+        />
         <Button
           label={t('parent.settings.open')}
           onPress={() => router.push('/(parent)/settings')}
