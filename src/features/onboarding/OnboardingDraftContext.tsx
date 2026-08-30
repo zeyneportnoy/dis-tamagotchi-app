@@ -13,6 +13,9 @@ type Draft = {
   remindersEnabled: boolean;
   morningReminderTime: string;
   eveningReminderTime: string;
+  // Optional last dentist visit ('YYYY-MM-DD') entered in onboarding; the
+  // 6-month routine reminder is scheduled per-child on the summary screen.
+  dentistLastVisitDate: string | null;
 };
 
 type DraftContextValue = Draft & {
@@ -25,6 +28,7 @@ type DraftContextValue = Draft & {
     morningTime?: string;
     eveningTime?: string;
   }) => void;
+  setDentistLastVisit: (dentistLastVisitDate: string | null) => void;
   beginExistingProfile: (profile: {
     id: string;
     nickname?: string | null;
@@ -44,6 +48,7 @@ const initialDraft: Draft = {
   remindersEnabled: false,
   morningReminderTime: '08:00',
   eveningReminderTime: '20:30',
+  dentistLastVisitDate: null,
 };
 const DraftContext = createContext<DraftContextValue | null>(null);
 
@@ -63,6 +68,8 @@ export function OnboardingDraftProvider({ children }: PropsWithChildren) {
           morningReminderTime: choice.morningTime ?? current.morningReminderTime,
           eveningReminderTime: choice.eveningTime ?? current.eveningReminderTime,
         })),
+      setDentistLastVisit: (dentistLastVisitDate) =>
+        setDraft((current) => ({ ...current, dentistLastVisitDate })),
       beginExistingProfile: (profile) =>
         setDraft({
           ...initialDraft,

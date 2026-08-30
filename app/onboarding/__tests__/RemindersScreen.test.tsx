@@ -25,7 +25,7 @@ describe('onboarding reminder choice', () => {
     await fireEvent.press(view.getByTestId('skip-onboarding-reminders'));
 
     expect(mockSetReminderChoice).toHaveBeenCalledWith({ enabled: false });
-    expect(router.push).toHaveBeenCalledWith('/onboarding/summary');
+    expect(router.push).toHaveBeenCalledWith('/onboarding/dentist-visit');
   });
 
   it('records the selected times on the draft and defers scheduling to the summary screen', async () => {
@@ -41,6 +41,6 @@ describe('onboarding reminder choice', () => {
       morningTime: '08:15',
       eveningTime: '20:30',
     });
-    expect(router.push).toHaveBeenCalledWith('/onboarding/summary');
+    expect(router.push).toHaveBeenCalledWith('/onboarding/dentist-visit');
   });
 });

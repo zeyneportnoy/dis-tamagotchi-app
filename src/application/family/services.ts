@@ -3,6 +3,8 @@ import { getDatabase } from '@/data/db';
 import { SQLiteChildProfileRepository, SQLiteFamilyRepository } from '@/data/repositories';
 import { getParentAuthUseCases } from '@/application/auth';
 import { pushPendingChildProfiles } from '@/application/sync';
+import { birthdayReminderService } from '@/features/reminders/birthdayReminder';
+import { syncGroupedBrushingReminders } from '@/features/reminders/scheduledBrushingReminders';
 
 import { FamilyUseCases } from './useCases';
 import type { ChildProfileViewModel } from './viewModels';
@@ -19,6 +21,7 @@ class CloudAwareFamilyUseCases extends FamilyUseCases {
   ): Promise<ChildProfileViewModel> {
     const profile = await super.createProfile(input);
     void pushPendingChildProfiles();
+    void this.reconcileChildNotifications(profile);
     return profile;
   }
 
@@ -28,7 +31,49 @@ class CloudAwareFamilyUseCases extends FamilyUseCases {
   ): Promise<ChildProfileViewModel> {
     const profile = await super.updateProfile(profileId, input);
     void pushPendingChildProfiles();
+    void this.reconcileChildNotifications(profile);
     return profile;
+  }
+
+  override async archiveProfile(profileId: string): Promise<void> {
+    await super.archiveProfile(profileId);
+    void birthdayReminderService.cancelForProfile(profileId);
+    void this.reconcileGroupedBrushingReminders();
+  }
+
+  override async deleteProfile(profileId: string): Promise<void> {
+    await super.deleteProfile(profileId);
+    void birthdayReminderService.cancelForProfile(profileId);
+    void this.reconcileGroupedBrushingReminders();
+  }
+
+  /**
+   * Keeps this child's own yearly birthday notification in step with its saved
+   * birth date and nickname, then rebuilds the device's grouped brushing
+   * schedule so every title names the right children. Fire-and-forget: notify
+   * failures never affect local profile data.
+   */
+  private async reconcileChildNotifications(profile: ChildProfileViewModel): Promise<void> {
+    void birthdayReminderService.scheduleForProfile({
+      id: profile.id,
+      nickname: profile.nickname,
+      dateOfBirth: profile.dateOfBirth,
+    });
+    await this.reconcileGroupedBrushingReminders();
+  }
+
+  private async reconcileGroupedBrushingReminders(): Promise<void> {
+    try {
+      const parentId = (await getParentAuthUseCases()?.getSession())?.userId;
+      if (!parentId) return;
+      const children = await this.listProfiles();
+      await syncGroupedBrushingReminders(
+        parentId,
+        children.map((child) => ({ id: child.id, nickname: child.nickname })),
+      );
+    } catch {
+      // grouping is best-effort; each child's stored settings are untouched
+    }
   }
 }
 

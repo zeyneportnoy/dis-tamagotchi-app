@@ -50,7 +50,7 @@ export default function OnboardingRemindersScreen() {
       morningTime: times.morning,
       eveningTime: times.evening,
     });
-    router.push('/onboarding/summary');
+    router.push('/onboarding/dentist-visit');
   };
 
   return (
@@ -74,7 +74,7 @@ export default function OnboardingRemindersScreen() {
             onPress={() => {
               setChoice('skip');
               draft.setReminderChoice({ enabled: false });
-              router.push('/onboarding/summary');
+              router.push('/onboarding/dentist-visit');
             }}
             selected={choice === 'skip'}
             testID="skip-onboarding-reminders"

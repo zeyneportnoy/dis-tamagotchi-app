@@ -19,6 +19,7 @@ import { useAuth } from '@/features/auth';
 import {
   defaultReminderSettings,
   reminderSettingsService,
+  syncGroupedBrushingReminders,
   type BrushingReminderSettings,
   type ReminderSlot,
 } from '@/features/reminders';
@@ -61,17 +62,30 @@ export default function BrushingRemindersScreen() {
     change: Readonly<{ enabled?: boolean; time?: string }>,
   ): Promise<void> => {
     if (!session?.userId || !childProfileId || busy) return;
+    const parentUserId = session.userId;
     setBusy(slot);
     setError(null);
     try {
       const result = await reminderSettingsService.update(
-        session.userId,
+        parentUserId,
         childProfileId,
         slot,
         change,
       );
       setSettings(result.settings);
       void syncAllChildPreferences();
+      // Rebuild the device's grouped brushing schedule: children sharing a time
+      // collapse into one notification, others stay separate — each child's
+      // stored settings above are untouched.
+      void getFamilyUseCases()
+        .then((useCases) => useCases.listProfiles())
+        .then((profiles) =>
+          syncGroupedBrushingReminders(
+            parentUserId,
+            profiles.map((profile) => ({ id: profile.id, nickname: profile.nickname })),
+          ),
+        )
+        .catch(() => undefined);
       if (result.permissionDenied) setError(t('parent.reminders.permissionRequired'));
     } catch {
       setError(t('parent.reminders.updateError'));

@@ -111,7 +111,7 @@ const dentistNotificationGateway: DentistNotificationGateway = {
         body: i18n.t('parent.dentistReminder.notificationBody', { nickname }),
         data: { childProfileId, dentistReminderOccurrence: occurrence },
         sound: 'default',
-        title: i18n.t('parent.dentistReminder.notificationTitle'),
+        title: i18n.t('parent.dentistReminder.notificationTitle', { nickname }),
       },
       trigger: {
         channelId: Platform.OS === 'android' ? 'dentist-reminders' : undefined,

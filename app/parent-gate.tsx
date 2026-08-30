@@ -11,7 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
-import { BackButton, Button, Input, Screen, Text, colors, radii, spacing } from '@/design-system';
+import { BackButton, Input, Screen, Text, colors, radii, spacing } from '@/design-system';
 import { createParentChallenge } from '@/features/parent-gate/challenge';
 
 export default function ParentGateScreen() {
@@ -28,12 +28,6 @@ export default function ParentGateScreen() {
     advancing.current = true;
     Keyboard.dismiss();
     router.replace(next === 'reminders' ? '/(parent)/reminders' : '/(parent)');
-  };
-
-  const submit = () => {
-    if (Number(answer) === challenge.answer) return advance();
-    setIncorrect(true);
-    setAnswer('');
   };
 
   return (
@@ -79,7 +73,6 @@ export default function ParentGateScreen() {
               value={answer}
             />
             {incorrect ? <Text>{t('parentGate.incorrect')}</Text> : null}
-            <Button label={t('parentGate.submit')} onPress={submit} />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

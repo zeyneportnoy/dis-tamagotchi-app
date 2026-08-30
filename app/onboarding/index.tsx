@@ -4,18 +4,53 @@ import { useTranslation } from 'react-i18next';
 
 import { Button, Screen, Text, colors, radii, spacing } from '@/design-system';
 
+// Two rows of four real developed/happy assets, sized large and packed tight to
+// match the approved Welcome screenshot. `offsetY` (px) is only a small playful
+// nudge per character — the raw PNGs are never edited.
 const characterRows = [
   [
-    { key: 'inci', source: require('../../assets/characters/moods/inci/developed/happy.png') },
-    { key: 'piril', source: require('../../assets/characters/moods/piril/developed/happy.png') },
-    { key: 'kaan', source: require('../../assets/characters/moods/kaan/developed/happy.png') },
-    { key: 'milo', source: require('../../assets/characters/moods/milo/developed/happy.png') },
+    {
+      key: 'inci',
+      source: require('../../assets/characters/moods/inci/developed/happy.png'),
+      offsetY: 5,
+    },
+    {
+      key: 'piril',
+      source: require('../../assets/characters/moods/piril/developed/happy.png'),
+      offsetY: -3,
+    },
+    {
+      key: 'kaan',
+      source: require('../../assets/characters/moods/kaan/developed/happy.png'),
+      offsetY: 3,
+    },
+    {
+      key: 'milo',
+      source: require('../../assets/characters/moods/milo/developed/happy.png'),
+      offsetY: -2,
+    },
   ],
   [
-    { key: 'zipzip', source: require('../../assets/characters/moods/zipzip/developed/happy.png') },
-    { key: 'topi', source: require('../../assets/characters/moods/topi/developed/happy.png') },
-    { key: 'akil', source: require('../../assets/characters/moods/akil/developed/happy.png') },
-    { key: 'uyku', source: require('../../assets/characters/moods/uyku/developed/happy.png') },
+    {
+      key: 'zipzip',
+      source: require('../../assets/characters/moods/zipzip/developed/happy.png'),
+      offsetY: -4,
+    },
+    {
+      key: 'topi',
+      source: require('../../assets/characters/moods/topi/developed/happy.png'),
+      offsetY: 4,
+    },
+    {
+      key: 'akil',
+      source: require('../../assets/characters/moods/akil/developed/happy.png'),
+      offsetY: -3,
+    },
+    {
+      key: 'uyku',
+      source: require('../../assets/characters/moods/uyku/developed/happy.png'),
+      offsetY: 5,
+    },
   ],
 ] as const;
 
@@ -62,7 +97,10 @@ export default function WelcomeScreen() {
                       accessibilityIgnoresInvertColors
                       resizeMode="contain"
                       source={character.source}
-                      style={styles.characterImage}
+                      style={[
+                        styles.characterImage,
+                        { transform: [{ translateY: character.offsetY }] },
+                      ]}
                     />
                   </View>
                 ))}
@@ -105,26 +143,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
     height: '100%',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xs,
+    justifyContent: 'flex-end',
+    marginHorizontal: -2,
+    overflow: 'visible',
   },
   characterFamily: {
     flex: 1,
     gap: spacing.sm,
     justifyContent: 'center',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.sm,
     width: '100%',
   },
   characterImage: {
-    height: '100%',
-    width: '100%',
+    height: '118%',
+    width: '118%',
   },
   characterRow: {
-    alignItems: 'center',
+    alignItems: 'flex-end',
     flex: 1,
     flexDirection: 'row',
     justifyContent: 'center',
+    overflow: 'visible',
     width: '100%',
   },
   cloud: {

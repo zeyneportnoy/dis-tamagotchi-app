@@ -417,4 +417,17 @@ export const migrations: readonly Migration[] = [
       );`,
     ],
   },
+  {
+    version: 20,
+    name: 'add_dentist_visit_dates',
+    statements: [
+      // Per-child dentist-visit reminders driven by parent-entered dates:
+      // last_visit_date -> one routine check-up reminder 6 calendar months later,
+      // next_appointment_date -> one reminder the calendar day before.
+      `ALTER TABLE dentist_reminders ADD COLUMN last_visit_date TEXT;`,
+      `ALTER TABLE dentist_reminders ADD COLUMN routine_notification_id TEXT;`,
+      `ALTER TABLE dentist_reminders ADD COLUMN next_appointment_date TEXT;`,
+      `ALTER TABLE dentist_reminders ADD COLUMN appointment_notification_id TEXT;`,
+    ],
+  },
 ];

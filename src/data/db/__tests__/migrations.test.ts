@@ -67,6 +67,7 @@ describe('database migrations', () => {
       { version: 17 },
       { version: 18 },
       { version: 19 },
+      { version: 20 },
     ]);
     database.close();
   });
@@ -148,6 +149,7 @@ describe('database migrations', () => {
       { version: 17 },
       { version: 18 },
       { version: 19 },
+      { version: 20 },
     ]);
     await expect(
       database.getFirstAsync<{

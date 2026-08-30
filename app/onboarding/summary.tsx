@@ -16,7 +16,12 @@ import {
 import { CharacterAvatar } from '@/features/character';
 import { useOnboardingDraft } from '@/features/onboarding/OnboardingDraftContext';
 import { useAuth } from '@/features/auth';
-import { dentistReminderService, reminderSettingsService } from '@/features/reminders';
+import {
+  dentistReminderService,
+  dentistVisitService,
+  reminderSettingsService,
+  syncGroupedBrushingReminders,
+} from '@/features/reminders';
 
 export default function SummaryScreen() {
   const { t } = useTranslation();
@@ -58,7 +63,29 @@ export default function SummaryScreen() {
             .catch(() => undefined);
         }
       }
-      await dentistReminderService.ensureScheduledForProfile(profile).catch(() => undefined);
+      // Fold this child's brushing reminders into the device's grouped schedule
+      // alongside any siblings that already have reminders at the same time.
+      await useCases
+        .listProfiles()
+        .then((profiles) =>
+          syncGroupedBrushingReminders(
+            parentUserId,
+            profiles.map((child) => ({ id: child.id, nickname: child.nickname })),
+          ),
+        )
+        .catch(() => undefined);
+      if (draft.dentistLastVisitDate) {
+        // Parent entered a real last-visit date: schedule the single 6-month
+        // routine reminder from it instead of the placeholder auto reminder.
+        await dentistVisitService
+          .setLastVisitDate(
+            { id: profile.id, nickname: profile.nickname },
+            draft.dentistLastVisitDate,
+          )
+          .catch(() => undefined);
+      } else {
+        await dentistReminderService.ensureScheduledForProfile(profile).catch(() => undefined);
+      }
       draft.reset();
       router.replace('/(child)');
       void getProfileSyncUseCases()

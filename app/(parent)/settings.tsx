@@ -120,6 +120,14 @@ export default function ParentSettingsScreen() {
           />
         </View>
         <View style={styles.section}>
+          <Button
+            label={t('parent.dentistVisits.settingsItem')}
+            onPress={() => router.push('/(parent)/dentist-visits')}
+            testID="open-dentist-visits"
+            variant="secondary"
+          />
+        </View>
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('parent.settings.voiceGuide.title')}</Text>
           <Text style={styles.sectionBody}>{t('parent.settings.voiceGuide.body')}</Text>
           <View accessibilityRole="radiogroup" style={styles.voiceOptions}>

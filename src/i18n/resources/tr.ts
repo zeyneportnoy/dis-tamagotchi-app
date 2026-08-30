@@ -340,6 +340,16 @@ export const tr = {
           'Bildirim izni kapalı olduğu için saatler etkinleşmedi. Daha sonra Ayarlar’dan açabilirsin.',
         error: 'Hatırlatıcılar kaydedilemedi. Yeniden deneyebilir veya şimdilik geçebilirsin.',
       },
+      dentistVisit: {
+        title: 'Son diş hekimi ziyaretini eklemek ister misin? 🦷',
+        body: 'Son ziyaret tarihini eklersen, 6 ay sonra rutin diş hekimi kontrolünü hatırlatabiliriz.',
+        add: 'Evet, tarih ekle',
+        skip: 'Şimdilik hayır',
+        pickerTitle: 'Son diş hekimi ziyareti',
+        nextCheckLabel: 'Bir sonraki rutin kontrol',
+        nextCheckExplainer: 'Son ziyaret tarihinden 6 ay sonra sana hatırlatma göndereceğiz.',
+        continue: 'Devam et',
+      },
       voice: {
         title: 'Fırçalarken sana kim eşlik etsin?',
         body: 'Bu seçimi daha sonra Ayarlar’dan değiştirebilirsin.',
@@ -658,7 +668,7 @@ export const tr = {
         },
         voiceGuide: {
           title: 'Sesli Rehber',
-          body: 'Fırçalama sırasında duyulacak rehber sesini seçin.',
+          body: 'Fırçalama sırasında duyacağınız rehber sesinizi seçin.',
           listen: 'Dinle',
           listenTo: '{{name}} sesini dinle',
           options: {
@@ -692,6 +702,7 @@ export const tr = {
         updateError: 'Hatırlatıcı güncellenemedi. Bir kez daha deneyin.',
         channelName: 'Fırçalama hatırlatıcıları',
         notificationTitle: 'Fırçalama zamanı',
+        notificationTitleGrouped: '{{names}} fırçalama zamanı 🪥',
         testNotification: 'Test bildirimi gönder',
         testNotificationBody: 'Bu bir geliştirme testi. Fırçalama hatırlatıcıları çalışıyor.',
         testNotificationError: 'Test bildirimi planlanamadı. Bir kez daha deneyin.',
@@ -712,8 +723,47 @@ export const tr = {
       },
       dentistReminder: {
         channelName: 'Diş hekimi kontrol hatırlatıcıları',
-        notificationTitle: '🦷 Diş hekimi kontrol zamanı',
-        notificationBody: '{{nickname}} için 6 aylık diş hekimi kontrolü zamanı geldi.',
+        notificationTitle: '{{nickname}}’nin diş hekimi kontrol zamanı 🦷',
+        notificationBody:
+          'Son diş hekimi ziyaretinin üzerinden 6 ay geçti. Yeni bir kontrol planlamayı unutmayın.',
+      },
+      birthday: {
+        channelName: 'Doğum günü kutlamaları',
+        title: 'İyi ki doğdun, {{childName}}! 🎂🎉',
+        body: 'DentHero ailesi sana bol gülümsemeli, harika bir yaş diliyor! 🦷💜',
+      },
+      dentistVisits: {
+        settingsItem: '🦷 Diş Hekimi Ziyaretleri',
+        title: 'Diş Hekimi Ziyaretleri',
+        routine: {
+          title: 'Rutin kontrol',
+          lastVisitLabel: 'Son diş hekimi ziyareti',
+          nextCheckLabel: 'Bir sonraki rutin kontrol',
+          explainer: 'Son ziyaret tarihinden 6 ay sonra otomatik olarak hatırlatılır.',
+          change: 'Son ziyaret tarihini değiştir',
+          add: 'Son ziyaret tarihini ekle',
+          pickerTitle: 'Son diş hekimi ziyareti',
+        },
+        appointment: {
+          title: 'Bir sonraki randevum',
+          add: 'Bir sonraki ziyaretimi hatırlat',
+          visitLabel: 'Bir sonraki ziyaret',
+          reminderLabel: 'Hatırlatma',
+          explainer: 'Randevudan 1 gün önce hatırlatma gönderilir.',
+          change: 'Tarihi değiştir',
+          remove: 'Randevuyu kaldır',
+          pickerTitle: 'Bir sonraki diş hekimi randevusu',
+        },
+        permissionDenied:
+          'Bildirim izni kapalı. Tarih kaydedildi ama hatırlatma gönderilemez. İzni cihaz ayarlarından açabilirsiniz.',
+        error: 'Kaydedilemedi. Bağlantıyı kontrol edip yeniden deneyin.',
+        notifications: {
+          routineTitle: '{{childName}}’nin diş hekimi kontrol zamanı 🦷',
+          routineBody:
+            'Son diş hekimi ziyaretinin üzerinden 6 ay geçti. Yeni bir kontrol planlamayı unutmayın.',
+          appointmentTitle: '{{childName}}’nin yarın diş hekimi randevusu var 🦷',
+          appointmentBody: 'Yarınki diş hekimi ziyaretini unutmayın.',
+        },
       },
       moodLab: {
         open: 'Character Preview / Mood Lab',
