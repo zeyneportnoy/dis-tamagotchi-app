@@ -616,6 +616,13 @@ export const tr = {
       equipNow: 'Şimdi tak',
       equipped: 'Takıldı ✓',
       openCollection: 'Koleksiyona ekle',
+      collectionUnlock: {
+        titleOne: 'Yeni koleksiyon öğesi açıldı! ✨',
+        titleMany: 'Yeni koleksiyon öğeleri açıldı! ✨',
+        leadOne: 'Şunu kazandın:',
+        leadMany: 'Şunları kazandın:',
+        footer: 'Koleksiyon ekranında görebilirsin.',
+      },
       levelUp: 'Seviye atladın! ✨',
       growthUp: 'Diş arkadaşın büyüdü! ✨',
       growthSteady: 'Harika gidiyorsun! Biraz daha fırçala, yeni evreye yaklaş!',

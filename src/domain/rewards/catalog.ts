@@ -119,6 +119,36 @@ export function newlyUnlockedReward(previousXp: number, nextXp: number): RewardI
 }
 
 /**
+ * Score-gated Collection slots the post-brushing unlock card celebrates:
+ * Fırça / Arka Plan / Efekt. Decor room materials and wearables are not part of
+ * that card.
+ */
+export const COLLECTION_UNLOCK_SLOTS = ['brush', 'background', 'effect'] as const;
+
+/**
+ * Collection items newly unlocked when the child's TOTAL Mine Puan rises from
+ * `previousScore` to `nextScore` — those whose `rewardCatalog` threshold falls
+ * in the half-open range `(previousScore, nextScore]`. Already-unlocked items
+ * (threshold at or below `previousScore`) and still-locked items (threshold
+ * above `nextScore`) are excluded. `rewardCatalog` is the single source shared
+ * with the Collection screen, so the two always agree on names and thresholds.
+ */
+export function newlyUnlockedCollectionRewards(
+  previousScore: number,
+  nextScore: number,
+): RewardItemKey[] {
+  const from = Math.max(0, previousScore);
+  return rewardCatalog
+    .filter(
+      (item) =>
+        (COLLECTION_UNLOCK_SLOTS as readonly AccessorySlot[]).includes(item.slot) &&
+        item.unlockXp > from &&
+        item.unlockXp <= nextScore,
+    )
+    .map((item) => item.key);
+}
+
+/**
  * Score-gated Collection slots. A reward in one of these slots is unlocked only
  * while the child's CURRENT Mine Puan balance is at or above its `unlockXp`
  * threshold in `rewardCatalog` — nothing is remembered, so a reward re-locks the

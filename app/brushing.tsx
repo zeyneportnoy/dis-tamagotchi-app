@@ -44,6 +44,7 @@ import {
   CharacterAvatar,
   characterSafeViewport,
   evolutionSequence,
+  isCollectionBackgroundKey,
   sceneBackgroundForCharacter,
 } from '@/features/character';
 import { useAuth } from '@/features/auth';
@@ -72,6 +73,8 @@ import {
   effectiveBrushKey,
   growthProgressForXp,
   growthStageForXp,
+  newlyUnlockedCollectionRewards,
+  rewardItemForKey,
   type BrushingRewardResult,
 } from '@/domain/rewards';
 import { loadCustomizationState } from '@/features/customization';
@@ -655,7 +658,6 @@ export default function BrushingScreen() {
   const [exitConfirmation, setExitConfirmation] = useState(false);
   const [exitSaving, setExitSaving] = useState(false);
   const [result, setResult] = useState<BrushingRewardResult | null>(null);
-  const [rewardEquipped, setRewardEquipped] = useState(false);
   const [completionMessageKey, setCompletionMessageKey] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [voiceProfile, setVoiceProfile] = useState<BrushingVoiceProfile | null>(null);
@@ -1070,6 +1072,17 @@ export default function BrushingScreen() {
       result.session.period,
       result.xpGranted,
     );
+    // Real Collection unlocks: items whose Mine Puan threshold the child crossed
+    // with THIS session's reward (total AFTER the reward was added). Same
+    // rewardCatalog data + Collection background filter the Collection screen
+    // uses, so both screens always agree.
+    const previousMineScore = Math.max(0, result.progress.totalXp - result.xpGranted);
+    const unlockedCollectionKeys = newlyUnlockedCollectionRewards(
+      previousMineScore,
+      result.progress.totalXp,
+    ).filter(
+      (key) => rewardItemForKey(key).slot !== 'background' || isCollectionBackgroundKey(key),
+    );
     return (
       <Screen
         style={[
@@ -1125,31 +1138,28 @@ export default function BrushingScreen() {
                 {t('brushing.streakResult', { count: result.dailyProgress.streakAfterDay })}
               </Text>
             ) : null}
-            {result.unlockedItemKey ? (
-              <View style={styles.unlockCard}>
-                <Text style={styles.unlockResult}>{t('brushing.newReward')}</Text>
-                <Text style={styles.rewardItemName}>
-                  {t(`rewards.items.${result.unlockedItemKey}`)}
+            {unlockedCollectionKeys.length > 0 ? (
+              <View style={styles.unlockCard} testID="brushing-collection-unlock-card">
+                <Text style={styles.unlockResult}>
+                  {t(
+                    unlockedCollectionKeys.length > 1
+                      ? 'brushing.collectionUnlock.titleMany'
+                      : 'brushing.collectionUnlock.titleOne',
+                  )}
                 </Text>
-                <View style={styles.rewardActions}>
-                  <Button
-                    disabled={rewardEquipped}
-                    label={t(rewardEquipped ? 'brushing.equipped' : 'brushing.equipNow')}
-                    onPress={() => {
-                      void getChildExperienceUseCases()
-                        .then((useCases) => useCases.equipItem(profile.id, result.unlockedItemKey!))
-                        .then(() => setRewardEquipped(true));
-                    }}
-                  />
-                  <Button
-                    label={t('brushing.openCollection')}
-                    onPress={() => {
-                      allowExit.current = true;
-                      router.replace('/(child)/collection');
-                    }}
-                    variant="secondary"
-                  />
-                </View>
+                <Text style={styles.centerText}>
+                  {t(
+                    unlockedCollectionKeys.length > 1
+                      ? 'brushing.collectionUnlock.leadMany'
+                      : 'brushing.collectionUnlock.leadOne',
+                  )}
+                </Text>
+                {unlockedCollectionKeys.map((key) => (
+                  <Text key={key} style={styles.rewardItemName} testID={`brushing-unlock-${key}`}>
+                    {t(`rewards.items.${key}`)}
+                  </Text>
+                ))}
+                <Text style={styles.centerText}>{t('brushing.collectionUnlock.footer')}</Text>
               </View>
             ) : null}
           </View>
@@ -1664,7 +1674,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.md,
   },
-  rewardActions: { gap: spacing.sm },
   rewardItemName: {
     color: colors.textPrimary,
     fontFamily: typography.family.display,

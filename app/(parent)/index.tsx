@@ -13,7 +13,17 @@ import {
 
 import { getFamilyUseCases, type ChildProfileViewModel } from '@/application/family';
 import { resetSessionSyncState, wipeLocalAccountData } from '@/application/sync';
-import { Button, Screen, ScreenHeader, Text, colors, radii, spacing } from '@/design-system';
+import {
+  Button,
+  Screen,
+  ScreenHeader,
+  Text,
+  colors,
+  minimumTouchTarget,
+  radii,
+  spacing,
+  typography,
+} from '@/design-system';
 import { useAuth } from '@/features/auth';
 import { deleteCustomizationState } from '@/features/customization';
 import { starterAvatarKeys } from '@/domain/family';
@@ -220,12 +230,18 @@ export default function ParentAccountScreen() {
           variant="secondary"
         />
         <Button label={t('parent.signOut')} onPress={() => void signOut()} variant="secondary" />
-        <Button
-          label={t('parent.deleteAccount')}
+        <Pressable
+          accessibilityLabel={t('parent.deleteAccount')}
+          accessibilityRole="button"
           onPress={() => setDeleteAccountOpen(true)}
+          style={({ pressed }) => [
+            styles.deleteAccountButton,
+            pressed && styles.deleteAccountButtonPressed,
+          ]}
           testID="delete-account-button"
-          variant="secondary"
-        />
+        >
+          <Text style={styles.deleteAccountLabel}>{t('parent.deleteAccount')}</Text>
+        </Pressable>
       </ScrollView>
       <Modal
         animationType="fade"
@@ -307,6 +323,25 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   content: { gap: spacing.md, paddingBottom: spacing.xl },
+  deleteAccountButton: {
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderColor: colors.brandSecondary,
+    borderRadius: radii.md,
+    borderWidth: 2,
+    justifyContent: 'center',
+    marginTop: spacing.md,
+    minHeight: minimumTouchTarget,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  deleteAccountButtonPressed: { opacity: 0.8 },
+  deleteAccountLabel: {
+    color: colors.brandSecondary,
+    fontFamily: typography.family.display,
+    fontSize: typography.button,
+    fontWeight: '700',
+  },
   deleteError: { color: colors.brandSecondary, fontWeight: '800' },
   modalAction: { flex: 1 },
   modalActions: { flexDirection: 'row', gap: spacing.sm },
