@@ -1,17 +1,6 @@
 import { useFocusEffect } from 'expo-router';
-import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react';
-import {
-  Animated,
-  Image,
-  PanResponder,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-  type ImageSourcePropType,
-  type StyleProp,
-  type ViewStyle,
-} from 'react-native';
+import { useCallback, useState } from 'react';
+import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { getChildExperienceUseCases } from '@/application/child';
@@ -118,118 +107,6 @@ type ScoreGatedSlot = keyof typeof scoreGatedSlots;
 
 const isScoreGatedSlot = (slot: AccessorySlot): slot is ScoreGatedSlot => slot in scoreGatedSlots;
 
-type DragPoint = Readonly<{ pageX: number; pageY: number }>;
-type DragItem = Readonly<{
-  dimensions: Readonly<{ height: number; width: number }>;
-  key: CustomizationItemKey;
-  scale: number;
-  source?: ImageSourcePropType;
-}>;
-type ActiveDragItem = DragItem & DragPoint & Readonly<{ surfaceX: number; surfaceY: number }>;
-type WindowFrame = Readonly<{ height: number; width: number; x: number; y: number }>;
-
-function DraggableCollectionCard({
-  accessibilityLabel,
-  children,
-  enabled,
-  onDragCancel,
-  onDragEnd,
-  onDragMove,
-  onDragStart,
-  onPress,
-  style,
-}: Readonly<{
-  accessibilityLabel: string;
-  children: ReactNode;
-  enabled: boolean;
-  onDragCancel(): void;
-  onDragEnd(point: DragPoint): void;
-  onDragMove(point: DragPoint): void;
-  onDragStart(point: DragPoint): void;
-  onPress(): void;
-  style: StyleProp<ViewStyle> | ((state: Readonly<{ pressed: boolean }>) => StyleProp<ViewStyle>);
-}>) {
-  const activeDragRef = useRef(false);
-  const lastPointerRef = useRef<DragPoint | null>(null);
-  const movedRef = useRef(false);
-
-  const grantDrag = useCallback(
-    (pageX: number, pageY: number): void => {
-      if (!enabled) return;
-      const point = { pageX, pageY };
-      activeDragRef.current = true;
-      lastPointerRef.current = point;
-      movedRef.current = false;
-      onDragStart(point);
-    },
-    [enabled, onDragStart],
-  );
-
-  const updateDrag = useCallback(
-    (pageX: number, pageY: number, dx: number, dy: number): void => {
-      if (!activeDragRef.current) return;
-      const point = { pageX, pageY };
-      lastPointerRef.current = point;
-      if (Math.abs(dx) + Math.abs(dy) > 4) movedRef.current = true;
-      onDragMove(point);
-    },
-    [onDragMove],
-  );
-
-  const finalizeDrop = useCallback((): void => {
-    const point = lastPointerRef.current;
-    const moved = movedRef.current;
-    activeDragRef.current = false;
-    lastPointerRef.current = null;
-    movedRef.current = false;
-    if (enabled && moved && point) {
-      onDragEnd(point);
-      return;
-    }
-    onDragCancel();
-    if (!moved) onPress();
-  }, [enabled, onDragCancel, onDragEnd, onPress]);
-
-  const allowTermination = useCallback((): boolean => !activeDragRef.current, []);
-
-  const panResponder = useMemo(
-    () =>
-      // PanResponder invokes these callbacks after render; refs hold the latest pointer synchronously.
-      // eslint-disable-next-line react-hooks/refs
-      PanResponder.create({
-        onMoveShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponderCapture: () => true,
-        onPanResponderGrant: (event) => grantDrag(event.nativeEvent.pageX, event.nativeEvent.pageY),
-        onPanResponderMove: (event, gesture) => {
-          updateDrag(
-            gesture.moveX || event.nativeEvent.pageX,
-            gesture.moveY || event.nativeEvent.pageY,
-            gesture.dx,
-            gesture.dy,
-          );
-        },
-        onPanResponderRelease: finalizeDrop,
-        onPanResponderTerminate: finalizeDrop,
-        onPanResponderTerminationRequest: allowTermination,
-        onStartShouldSetPanResponder: () => true,
-        onStartShouldSetPanResponderCapture: () => true,
-      }),
-    [allowTermination, finalizeDrop, grantDrag, updateDrag],
-  );
-
-  return (
-    <View
-      accessible
-      accessibilityLabel={accessibilityLabel}
-      accessibilityRole="button"
-      style={typeof style === 'function' ? style({ pressed: false }) : style}
-      {...panResponder.panHandlers}
-    >
-      {children}
-    </View>
-  );
-}
-
 export default function CollectionScreen() {
   const { t } = useTranslation();
   const [profile, setProfile] = useState<ChildProfileViewModel | null>(null);
@@ -241,13 +118,6 @@ export default function CollectionScreen() {
   const [sceneSize, setSceneSize] = useState<SceneSize>({ height: 0, width: 0 });
   const [lockedMessage, setLockedMessage] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [draggedItem, setDraggedItem] = useState<ActiveDragItem | null>(null);
-  const [dragGhostPosition] = useState(() => new Animated.ValueXY());
-  const dragSurfaceRef = useRef<View>(null);
-  const sceneRef = useRef<View>(null);
-  const dragSurfaceFrame = useRef<WindowFrame | null>(null);
-  const sceneFrame = useRef<WindowFrame | null>(null);
-  const draggedItemRef = useRef<ActiveDragItem | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -425,62 +295,23 @@ export default function CollectionScreen() {
     pushPreferences();
   };
 
-  const measureDropFrames = (): void => {
-    dragSurfaceRef.current?.measureInWindow((x, y, width, height) => {
-      dragSurfaceFrame.current = { height, width, x, y };
-    });
-    sceneRef.current?.measureInWindow((x, y, width, height) => {
-      sceneFrame.current = { height, width, x, y };
-    });
-  };
-
-  const beginDrag = (item: DragItem, point: DragPoint): void => {
-    measureDropFrames();
-    const surface = dragSurfaceFrame.current;
-    const next = { ...item, ...point, surfaceX: surface?.x ?? 0, surfaceY: surface?.y ?? 0 };
-    draggedItemRef.current = next;
-    dragGhostPosition.setValue({
-      x: next.pageX - next.surfaceX - next.dimensions.width / 2,
-      y: next.pageY - next.surfaceY - next.dimensions.height / 2,
-    });
-    setDraggedItem(next);
-  };
-
-  const moveDrag = (point: DragPoint): void => {
-    const current = draggedItemRef.current;
-    if (!current) return;
-    const next = { ...current, ...point };
-    draggedItemRef.current = next;
-    dragGhostPosition.setValue({
-      x: next.pageX - next.surfaceX - next.dimensions.width / 2,
-      y: next.pageY - next.surfaceY - next.dimensions.height / 2,
-    });
-  };
-
-  const cancelDrag = (): void => {
-    draggedItemRef.current = null;
-    setDraggedItem(null);
-  };
-
-  const finishDrag = (point: DragPoint, place: (placement: ItemPlacement) => void): void => {
-    const current = draggedItemRef.current;
-    draggedItemRef.current = null;
-    setDraggedItem(null);
-    if (!current) return;
-    sceneRef.current?.measureInWindow((x, y, width, height) => {
-      const frame = { height, width, x, y };
-      sceneFrame.current = frame;
-      const placement = placementAfterBoundedDrag(
-        { scale: current.scale, x: 0.5, y: 0.5 },
-        {
-          x: point.pageX - frame.x - frame.width / 2,
-          y: point.pageY - frame.y - frame.height / 2,
-        },
-        { height: frame.height, width: frame.width },
-        current.dimensions,
-      );
-      place(placement);
-    });
+  const pressRoomMaterial = (material: RoomMaterial): void => {
+    if (!isRoomMaterialUnlocked(material, currentMineScore)) {
+      setLockedMessage(true);
+      return;
+    }
+    setLockedMessage(false);
+    if (customization.selectedRoomMaterials.includes(material.key)) {
+      void selectRoomMaterial(material);
+      return;
+    }
+    const initialPlacement = placementAfterBoundedDrag(
+      defaultPlacementForRoomMaterial(material.key),
+      { x: 0, y: 0 },
+      sceneSize,
+      material.dimensions,
+    );
+    void placeRoomMaterial(material, initialPlacement);
   };
 
   if (failed) return <ErrorState />;
@@ -513,13 +344,8 @@ export default function CollectionScreen() {
       style={[styles.screen, { backgroundColor: sceneBackgroundForCharacter(profile.avatarId) }]}
       testID="collection-screen"
     >
-      <View pointerEvents="none" ref={dragSurfaceRef} style={styles.dragOrigin} />
       <CharacterScreenBackdrop characterKey={profile.avatarId} />
-      <ScrollView
-        contentContainerStyle={styles.content}
-        scrollEnabled={!draggedItem}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.heading} variant="title">
           {t('collection.title')}
         </Text>
@@ -529,9 +355,7 @@ export default function CollectionScreen() {
         <View
           onLayout={(event) => {
             setSceneSize(event.nativeEvent.layout);
-            measureDropFrames();
           }}
-          ref={sceneRef}
           style={[styles.hero, { backgroundColor: visualPalette.hero }]}
           testID="collection-preview-scene"
         >
@@ -654,7 +478,7 @@ export default function CollectionScreen() {
                 const unlocked = isRoomMaterialUnlocked(material, currentMineScore);
                 const selected = customization.selectedRoomMaterials.includes(material.key);
                 return (
-                  <DraggableCollectionCard
+                  <Pressable
                     accessibilityLabel={`${t(`collection.roomMaterials.${material.key}`)}. ${t(
                       selected
                         ? 'collection.equipped'
@@ -662,33 +486,9 @@ export default function CollectionScreen() {
                           ? 'collection.unlocked'
                           : 'collection.locked',
                     )}`}
-                    enabled={unlocked}
+                    accessibilityRole="button"
                     key={material.key}
-                    onDragCancel={cancelDrag}
-                    onDragEnd={(point) =>
-                      finishDrag(point, (placement) => void placeRoomMaterial(material, placement))
-                    }
-                    onDragMove={moveDrag}
-                    onDragStart={(point) =>
-                      beginDrag(
-                        {
-                          dimensions: material.dimensions,
-                          key: material.key,
-                          scale:
-                            customization.placements[material.key]?.scale ??
-                            material.defaultPlacement.scale,
-                          source: material.source,
-                        },
-                        point,
-                      )
-                    }
-                    onPress={() => {
-                      if (!unlocked) {
-                        setLockedMessage(true);
-                      } else if (selected) {
-                        void selectRoomMaterial(material);
-                      }
-                    }}
+                    onPress={() => pressRoomMaterial(material)}
                     style={({ pressed }) => [
                       styles.itemCard,
                       { backgroundColor: visualPalette.card },
@@ -723,11 +523,11 @@ export default function CollectionScreen() {
                         selected
                           ? 'collection.equipped'
                           : unlocked
-                            ? 'collection.dragToPlace'
+                            ? 'collection.tapToPlace'
                             : 'collection.lockedHint',
                       )}
                     </Text>
-                  </DraggableCollectionCard>
+                  </Pressable>
                 );
               })
             : null}
@@ -802,30 +602,6 @@ export default function CollectionScreen() {
           })}
         </View>
       </ScrollView>
-      {draggedItem ? (
-        <View pointerEvents="none" style={styles.dragGhostLayer}>
-          <Animated.View
-            style={[
-              styles.dragGhost,
-              draggedItem.dimensions,
-              {
-                left: dragGhostPosition.x,
-                top: dragGhostPosition.y,
-                transform: [{ scale: draggedItem.scale }],
-              },
-            ]}
-            testID={`collection-drag-preview-${draggedItem.key}`}
-          >
-            {draggedItem.source ? (
-              <Image
-                resizeMode="contain"
-                source={draggedItem.source}
-                style={styles.rewardIconFill}
-              />
-            ) : null}
-          </Animated.View>
-        </View>
-      ) : null}
     </Screen>
   );
 }
@@ -855,9 +631,6 @@ const styles = StyleSheet.create({
   categoryLabel: { fontSize: 11, fontWeight: '700', textAlign: 'center' },
   categoryLabelActive: { color: colors.brandPrimary, fontWeight: '900' },
   content: { gap: spacing.md, paddingBottom: spacing.xl },
-  dragGhost: { opacity: 0.9, position: 'absolute', zIndex: 20 },
-  dragGhostLayer: { bottom: 0, left: 0, position: 'absolute', right: 0, top: 0, zIndex: 20 },
-  dragOrigin: { height: 1, left: 0, position: 'absolute', top: 0, width: 1 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   heading: { textAlign: 'center' },
   hero: {
@@ -958,7 +731,6 @@ const styles = StyleSheet.create({
   },
   brushRewardIcon: { height: 112, width: 70 },
   rewardIcon: { height: 52, width: 52 },
-  rewardIconFill: { height: '100%', width: '100%' },
   lockedMessage: { color: colors.brandSecondary, fontWeight: '800', textAlign: 'center' },
   pressed: { opacity: 0.75 },
   remove: {

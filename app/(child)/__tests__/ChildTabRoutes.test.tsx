@@ -2,7 +2,7 @@ import { fireEvent, render, waitFor, within } from '@testing-library/react-nativ
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StyleSheet } from 'react-native';
 
-import { customizationStorageKey } from '@/features/customization';
+import { customizationStorageKey, loadCustomizationState } from '@/features/customization';
 
 import CollectionScreen from '../collection';
 import ProfileScreen from '../profile';
@@ -10,6 +10,15 @@ import TasksScreen from '../tasks';
 
 const mockEquipItem = jest.fn();
 const mockUnequipAccessorySlot = jest.fn();
+
+async function waitForSelectedRoomMaterials(expected: readonly string[]): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const state = await loadCustomizationState('profile-1');
+    if (JSON.stringify(state.selectedRoomMaterials) === JSON.stringify(expected)) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error(`Selected room materials were not persisted: ${expected.join(', ')}`);
+}
 
 jest.mock('expo-router', () => {
   const React = jest.requireActual<typeof import('react')>('react');
@@ -194,5 +203,35 @@ describe('Child tab routes', () => {
     expect(within(view.getByTestId('collection-item-grid')).queryByText('Fırça')).toBeNull();
     await waitFor(() => expect(view.getByText('Seçimi kaldır')).toBeTruthy());
     expect(mockUnequipAccessorySlot).not.toHaveBeenCalled();
+  });
+
+  it('adds an unlocked room material on tap and removes it on a second tap', async () => {
+    const view = await render(<CollectionScreen />);
+    fireEvent.press(await view.findByText('Oda'));
+    await waitFor(() => expect(view.getByText('Yıldız Lamba')).toBeTruthy());
+
+    fireEvent(view.getByTestId('collection-preview-scene'), 'layout', {
+      nativeEvent: { layout: { height: 386, width: 360, x: 0, y: 0 } },
+    });
+    expect(
+      view.getByText('İstediğin öğeyi seç, ardından odanın içinde istediğin yere sürükle.'),
+    ).toBeTruthy();
+
+    fireEvent.press(view.getByRole('button', { name: 'Yıldız Lamba. Kazanıldı' }));
+
+    await waitFor(() =>
+      expect(view.getByTestId('collection-preview-room-material-pastel-star-lamp')).toBeTruthy(),
+    );
+    await waitForSelectedRoomMaterials(['pastel-star-lamp']);
+    await expect(loadCustomizationState('profile-1')).resolves.toMatchObject({
+      placements: {
+        'pastel-star-lamp': { scale: 0.8, x: 0.76, y: 0.72 },
+      },
+    });
+    expect(view.queryByTestId('collection-drag-preview-pastel-star-lamp')).toBeNull();
+
+    fireEvent.press(view.getByRole('button', { name: 'Yıldız Lamba. Seçili' }));
+
+    await waitForSelectedRoomMaterials([]);
   });
 });

@@ -153,13 +153,10 @@ describe('Child Home route', () => {
     expect(router.push).toHaveBeenCalledWith('/brushing');
   });
 
-  it('keeps room items fixed until the explicit edit mode is opened', async () => {
+  it('keeps room items fixed without exposing an edit control on Home', async () => {
     const view = await render(<ChildHomeScreen />);
-    const edit = await view.findByRole('button', { name: 'Odamı Düzenle' });
-    await fireEvent.press(edit);
-    expect(view.getByRole('button', { name: 'Düzenlemeyi Bitir' })).toBeTruthy();
-    await fireEvent.press(view.getByRole('button', { name: 'Düzenlemeyi Bitir' }));
-    expect(view.getByRole('button', { name: 'Odamı Düzenle' })).toBeTruthy();
+    await view.findByTestId('home-character-scene');
+    expect(view.queryByRole('button', { name: 'Odamı Düzenle' })).toBeNull();
   });
 
   it('renders the selected background as the full character scene backdrop', async () => {

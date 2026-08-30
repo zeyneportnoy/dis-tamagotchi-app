@@ -262,18 +262,6 @@ export default function ChildHomeScreen() {
           growthStage={growthStage}
           mood={deriveHomeCharacterMood(progress)}
           onPlacementChange={updatePlacement}
-          overlay={
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setEditMode((current) => !current)}
-              style={[styles.editRoomButton, editMode && styles.editRoomButtonActive]}
-              testID="room-edit-mode-toggle"
-            >
-              <Text style={styles.editRoomButtonText}>
-                {t(editMode ? 'collection.finishEditing' : 'collection.editRoom')}
-              </Text>
-            </Pressable>
-          }
           placements={customization.placements}
           roomMaterials={selectedRoomMaterials}
           roomMaterialTestID={(itemKey) => `home-room-material-${itemKey}`}
