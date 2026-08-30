@@ -14,7 +14,7 @@
         {
           "backgroundColor": "#DADAF7",
           "image": "./assets/splash/denthero-splash.png",
-          "resizeMode": "cover"
+          "resizeMode": "contain"
         }
       ],
       "expo-audio",

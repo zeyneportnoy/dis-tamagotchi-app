@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
 import {
+  Image,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -32,6 +33,13 @@ export default function ParentGateScreen() {
 
   return (
     <Screen style={styles.screen} testID="parent-gate-screen">
+      <View pointerEvents="none" style={styles.backgroundGlowLeft} />
+      <View pointerEvents="none" style={styles.backgroundGlowRight} />
+      <View pointerEvents="none" style={styles.backgroundBlobBottomLeft} />
+      <View pointerEvents="none" style={styles.backgroundBlobBottomRight} />
+      <View pointerEvents="none" style={styles.backgroundDotOne} />
+      <View pointerEvents="none" style={styles.backgroundDotTwo} />
+      <View pointerEvents="none" style={styles.backgroundDotThree} />
       <View
         style={[styles.back, { top: insets.top + spacing.sm }]}
         testID="parent-gate-back-safe-area"
@@ -51,11 +59,12 @@ export default function ParentGateScreen() {
           testID="parent-gate-scroll"
         >
           <View style={styles.hero}>
-            <Text style={styles.sparkleLeft}>✦</Text>
-            <Text style={styles.sparkleRight}>★</Text>
-            <View style={styles.lockBubble}>
-              <Text style={styles.lock}>🔒</Text>
-            </View>
+            <Image
+              accessibilityIgnoresInvertColors
+              resizeMode="contain"
+              source={require('../assets/onboarding/parent-gate-hero.png')}
+              style={styles.heroImage}
+            />
           </View>
           <Text style={styles.title} variant="title">
             {t('parentGate.title')}
@@ -70,6 +79,7 @@ export default function ParentGateScreen() {
                 setIncorrect(false);
                 if (value.trim() && Number(value) === challenge.answer) advance();
               }}
+              style={styles.answerInput}
               value={answer}
             />
             {incorrect ? <Text>{t('parentGate.incorrect')}</Text> : null}
@@ -81,55 +91,129 @@ export default function ParentGateScreen() {
 }
 
 const styles = StyleSheet.create({
+  answerInput: {
+    borderColor: colors.teal,
+    borderRadius: radii.pill,
+    borderWidth: 2,
+    fontSize: 28,
+    minHeight: 72,
+    paddingHorizontal: spacing.lg,
+  },
   back: { left: spacing.lg, position: 'absolute', zIndex: 2 },
+  backgroundBlobBottomLeft: {
+    backgroundColor: '#E9DEFF',
+    borderRadius: 120,
+    bottom: -85,
+    height: 210,
+    left: -70,
+    opacity: 0.78,
+    position: 'absolute',
+    transform: [{ rotate: '18deg' }],
+    width: 220,
+  },
+  backgroundBlobBottomRight: {
+    backgroundColor: '#D9F5F0',
+    borderRadius: 130,
+    bottom: -105,
+    height: 250,
+    opacity: 0.82,
+    position: 'absolute',
+    right: -95,
+    transform: [{ rotate: '-20deg' }],
+    width: 240,
+  },
+  backgroundDotOne: {
+    backgroundColor: '#F8DDE8',
+    borderRadius: radii.pill,
+    bottom: 66,
+    height: 13,
+    left: '20%',
+    position: 'absolute',
+    width: 13,
+  },
+  backgroundDotThree: {
+    backgroundColor: '#FFE4A8',
+    borderRadius: radii.pill,
+    bottom: 38,
+    height: 9,
+    left: '52%',
+    position: 'absolute',
+    width: 9,
+  },
+  backgroundDotTwo: {
+    backgroundColor: '#CBEFEA',
+    borderRadius: radii.pill,
+    bottom: 58,
+    height: 10,
+    position: 'absolute',
+    right: '22%',
+    width: 10,
+  },
+  backgroundGlowLeft: {
+    backgroundColor: '#EEE7FF',
+    borderRadius: radii.pill,
+    height: 230,
+    left: -130,
+    opacity: 0.55,
+    position: 'absolute',
+    top: 70,
+    width: 230,
+  },
+  backgroundGlowRight: {
+    backgroundColor: '#F4EEFF',
+    borderRadius: radii.pill,
+    height: 190,
+    opacity: 0.7,
+    position: 'absolute',
+    right: -105,
+    top: 24,
+    width: 190,
+  },
   card: {
     backgroundColor: colors.white,
     borderRadius: radii.lg,
-    gap: spacing.md,
-    padding: spacing.lg,
+    gap: spacing.lg,
+    padding: spacing.xl,
+    shadowColor: '#6D55B5',
+    shadowOffset: { height: 12, width: 0 },
+    shadowOpacity: 0.1,
+    shadowRadius: 24,
     width: '100%',
   },
   content: {
     alignItems: 'center',
     flexGrow: 1,
     gap: spacing.md,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingBottom: spacing.lg,
+    paddingTop: spacing.xl + spacing.lg,
   },
   flex: { flex: 1, width: '100%' },
   hero: {
     alignItems: 'center',
+    aspectRatio: 1,
     backgroundColor: '#D8D0FF',
-    borderRadius: 34,
-    height: 190,
+    borderRadius: radii.lg,
     justifyContent: 'center',
     overflow: 'hidden',
     width: '100%',
   },
-  lock: { fontSize: 64, lineHeight: 78 },
-  lockBubble: {
+  heroImage: {
+    height: '100%',
+    width: '100%',
+  },
+  question: {
+    color: '#2E226D',
+    fontFamily: 'Baloo2',
+    fontSize: 30,
+    fontWeight: '700',
+    lineHeight: 38,
+    textAlign: 'center',
+  },
+  screen: {
     alignItems: 'center',
-    backgroundColor: colors.white,
-    borderRadius: radii.pill,
-    height: 120,
-    justifyContent: 'center',
-    width: 120,
+    backgroundColor: '#FCFAFF',
+    justifyContent: 'flex-start',
   },
-  question: { fontSize: 24, fontWeight: '900', textAlign: 'center' },
-  screen: { alignItems: 'center', justifyContent: 'flex-start' },
-  sparkleLeft: {
-    color: colors.brandHighlight,
-    fontSize: 28,
-    left: spacing.lg,
-    position: 'absolute',
-    top: spacing.lg,
-  },
-  sparkleRight: {
-    color: colors.brandSecondary,
-    fontSize: 26,
-    position: 'absolute',
-    right: spacing.lg,
-    top: 52,
-  },
-  title: { textAlign: 'center' },
+  title: { color: '#181824', textAlign: 'center' },
 });

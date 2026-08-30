@@ -15,7 +15,7 @@ export function BrandedSplash() {
     >
       <Image
         accessibilityIgnoresInvertColors
-        resizeMode="cover"
+        resizeMode="contain"
         source={splashSource}
         style={styles.image}
       />

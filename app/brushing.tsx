@@ -1,6 +1,6 @@
 import { router, useNavigation } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
-import { useAudioPlayer } from 'expo-audio';
+import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import { useKeepAwake } from 'expo-keep-awake';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -670,7 +670,11 @@ export default function BrushingScreen() {
     Partial<Record<PersonalizedVoiceCueIndex, string>>
   >({});
   const [completionJingleIndex] = useState(chooseCompletionJingleIndex);
-  const completionJingle = useAudioPlayer(completionJingles[completionJingleIndex]?.source);
+  const completionJingle = useAudioPlayer(completionJingles[completionJingleIndex]?.source, {
+    downloadFirst: true,
+    keepAudioSessionActive: true,
+  });
+  const completionJingleStatus = useAudioPlayerStatus(completionJingle);
   const timerTickA = useAudioPlayer(require('../assets/audio/soft-timer-tick.wav'));
   const timerTickB = useAudioPlayer(require('../assets/audio/soft-timer-tick.wav'));
   const gokceRightUpperVoice = useAudioPlayer(brushingVoiceCues.gokce[0].source);
@@ -1029,7 +1033,7 @@ export default function BrushingScreen() {
   }, [completionMessageKey, profile, result]);
 
   useEffect(() => {
-    if (!result || completionJinglePlayed.current) return;
+    if (!result || !completionJingleStatus.isLoaded || completionJinglePlayed.current) return;
     completionJinglePlayed.current = true;
     timerTickA.pause();
     timerTickB.pause();
@@ -1043,10 +1047,11 @@ export default function BrushingScreen() {
     sametLeftLowerVoice.pause();
     personalizedVoice.pause();
     voiceSpeaking.current = false;
-    void completionJingle.seekTo(0).then(() => completionJingle.play());
+    completionJingle.play();
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
   }, [
     completionJingle,
+    completionJingleStatus.isLoaded,
     gokceLeftLowerVoice,
     gokceLeftUpperVoice,
     gokceRightLowerVoice,
