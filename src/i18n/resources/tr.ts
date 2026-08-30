@@ -637,6 +637,12 @@ export const tr = {
       sevenEleven: '7–11 yaş',
       error: 'Kaydederken küçük bir sorun oldu. Yeniden deneyebiliriz.',
     },
+    selectChild: {
+      title: 'Kiminle devam etmek istersin? ✨',
+      subtitle: 'Devam etmek için bir çocuk profili seç.',
+      listTitle: 'Çocuk profilleri',
+      error: 'Profiller yüklenemedi. Yeniden deneyebiliriz.',
+    },
     parent: {
       title: 'Veli alanı',
       placeholder: 'Güvenli veli araçları sonraki adımlarda eklenecek.',

@@ -16,13 +16,34 @@ import { useAuth } from '@/features/auth';
 import { BrandedSplash } from '@/features/splash';
 
 type Destination =
-  'age-band-update' | 'child' | 'onboarding' | 'profile-onboarding' | 'claim-local' | 'error';
+  | 'age-band-update'
+  | 'child'
+  | 'child-select'
+  | 'onboarding'
+  | 'profile-onboarding'
+  | 'claim-local'
+  | 'error';
 
 const routeForProfile = (profile: {
   dateOfBirth: string | null;
   ageBand: string;
 }): Extract<Destination, 'age-band-update' | 'child'> =>
   !profile.dateOfBirth || isLegacyAgeBand(profile.ageBand) ? 'age-band-update' : 'child';
+
+/**
+ * When the active child would route to the child home, a family with 2+ child
+ * profiles first sees the post-login picker (`/select-child`); a single-child
+ * family keeps going straight to the child home exactly as before.
+ */
+async function routeForActiveChild(
+  family: Awaited<ReturnType<typeof getFamilyUseCases>>,
+  profile: { dateOfBirth: string | null; ageBand: string },
+): Promise<Extract<Destination, 'age-band-update' | 'child' | 'child-select'>> {
+  const base = routeForProfile(profile);
+  if (base !== 'child') return base;
+  const profiles = await family.listProfiles();
+  return profiles.length > 1 ? 'child-select' : 'child';
+}
 
 /**
  * Cloud hydration is deferred and fire-and-forget: it must never block the first
@@ -99,9 +120,10 @@ export default function Index() {
 
         if (localProfile) {
           // Usable local state exists → route immediately, hydrate from cloud after.
+          const localRoute = await routeForActiveChild(family, localProfile);
           if (!cancelled) {
             perfSince('bootstrap:route-decided(local)', 'bootstrap:start');
-            tag(routeForProfile(localProfile));
+            tag(localRoute);
           }
           deferCloudRecovery();
           return;
@@ -121,9 +143,12 @@ export default function Index() {
         void retryPendingCloudSync();
 
         const recovered = await family.getActiveProfile();
+        const coldRoute: Destination = recovered
+          ? await routeForActiveChild(family, recovered)
+          : 'profile-onboarding';
         if (!cancelled) {
           perfSince('bootstrap:route-decided(cold)', 'bootstrap:start');
-          tag(recovered ? routeForProfile(recovered) : 'profile-onboarding');
+          tag(coldRoute);
         }
       } catch (error) {
         console.error('index: profile bootstrap failed', error);
@@ -145,12 +170,14 @@ export default function Index() {
   const href =
     destination === 'child'
       ? '/(child)'
-      : destination === 'age-band-update'
-        ? '/age-band-update'
-        : destination === 'claim-local'
-          ? '/auth/claim-local'
-          : destination === 'profile-onboarding'
-            ? '/onboarding/nickname'
-            : '/onboarding';
+      : destination === 'child-select'
+        ? '/select-child'
+        : destination === 'age-band-update'
+          ? '/age-band-update'
+          : destination === 'claim-local'
+            ? '/auth/claim-local'
+            : destination === 'profile-onboarding'
+              ? '/onboarding/nickname'
+              : '/onboarding';
   return <Redirect href={href as Href} />;
 }
