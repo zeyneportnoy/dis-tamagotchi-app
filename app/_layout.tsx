@@ -3,6 +3,7 @@ import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 
+import { perfMark, perfStep } from '@/config/perf';
 import { ErrorState } from '@/design-system';
 import { initializeDatabase } from '@/data/db';
 import { AuthProvider } from '@/features/auth';
@@ -11,6 +12,7 @@ import { configureNotificationPresentation } from '@/features/reminders/configur
 import { BrandedSplash } from '@/features/splash';
 import '@/i18n';
 
+perfMark('js:root-module-eval');
 void SplashScreen.preventAutoHideAsync();
 configureNotificationPresentation();
 
@@ -23,8 +25,11 @@ export default function RootLayout() {
   const [failed, setFailed] = useState(false);
   const [failureReason, setFailureReason] = useState<string | undefined>(undefined);
 
+  perfMark('layout:render');
+
   useEffect(() => {
-    void initializeDatabase()
+    perfMark('layout:mount');
+    void perfStep('layout:initializeDatabase', () => initializeDatabase())
       .then(() => setReady(true))
       .catch((error: unknown) => {
         console.error('initializeDatabase failed', error);
@@ -34,7 +39,10 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if ((ready && fontsLoaded) || failed || fontError) void SplashScreen.hideAsync();
+    if ((ready && fontsLoaded) || failed || fontError) {
+      perfMark('layout:splash-hide');
+      void SplashScreen.hideAsync();
+    }
   }, [failed, fontError, fontsLoaded, ready]);
 
   if (failed || fontError) {

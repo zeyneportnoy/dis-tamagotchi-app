@@ -1,6 +1,7 @@
 import { useFocusEffect } from 'expo-router';
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   Image,
   PanResponder,
   Pressable,
@@ -16,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { getChildExperienceUseCases } from '@/application/child';
 import { getFamilyUseCases, type ChildProfileViewModel } from '@/application/family';
 import { syncChildPreferences } from '@/application/sync';
+import { perfMark, perfStep } from '@/config/perf';
 import {
   ErrorState,
   LoadingState,
@@ -240,6 +242,7 @@ export default function CollectionScreen() {
   const [lockedMessage, setLockedMessage] = useState(false);
   const [failed, setFailed] = useState(false);
   const [draggedItem, setDraggedItem] = useState<ActiveDragItem | null>(null);
+  const [dragGhostPosition] = useState(() => new Animated.ValueXY());
   const dragSurfaceRef = useRef<View>(null);
   const sceneRef = useRef<View>(null);
   const dragSurfaceFrame = useRef<WindowFrame | null>(null);
@@ -249,16 +252,21 @@ export default function CollectionScreen() {
   useFocusEffect(
     useCallback(() => {
       let mounted = true;
+      perfMark('collection:focus');
       void getFamilyUseCases()
         .then((family) => family.getActiveProfile())
         .then(async (activeProfile) => {
           if (!activeProfile) throw new Error('PROFILE_NOT_FOUND');
           const child = await getChildExperienceUseCases();
-          const [inventory, progress, savedCustomization] = await Promise.all([
-            child.listInventory(activeProfile.id),
-            child.getProgress(activeProfile.id),
-            loadCustomizationState(activeProfile.id),
-          ]);
+          const [inventory, progress, savedCustomization] = await perfStep(
+            'collection:hydrate(local)',
+            () =>
+              Promise.all([
+                child.listInventory(activeProfile.id),
+                child.getProgress(activeProfile.id),
+                loadCustomizationState(activeProfile.id),
+              ]),
+          );
           if (!mounted) return;
           const mineScore = Math.max(0, progress.totalXp ?? 0);
           let presented = presentCustomizationInventory(inventory, savedCustomization, __DEV__);
@@ -298,6 +306,7 @@ export default function CollectionScreen() {
           setItems(presented);
           setCurrentMineScore(mineScore);
           setGrowthStage(growthStageForXp(progress.totalXp));
+          perfMark('collection:data-ready');
         })
         .catch(() => {
           if (mounted) setFailed(true);
@@ -309,12 +318,13 @@ export default function CollectionScreen() {
   );
 
   // Best-effort: mirror the child's selected brush/background/effect + room
-  // configuration to Supabase after any local customization change. Local write
-  // is the source of truth; a cloud failure never rolls the selection back.
-  useEffect(() => {
-    if (!profile) return;
-    void syncChildPreferences(profile.id);
-  }, [customization, profile]);
+  // configuration to Supabase. Called only from the mutation sites below, after
+  // an actual persisted local change — never on mount / hydration, so opening
+  // Collection does not trigger a cloud write. Local write is the source of
+  // truth; a cloud failure never rolls the selection back.
+  const pushPreferences = useCallback((): void => {
+    if (profile) void syncChildPreferences(profile.id);
+  }, [profile]);
 
   const select = async (itemKey: RewardItemKey, unlocked: boolean): Promise<void> => {
     if (!profile || !unlocked) {
@@ -337,12 +347,14 @@ export default function CollectionScreen() {
     if (__DEV__) {
       const saved = await saveDeveloperEquippedItem(profile.id, activeSlot, itemKey);
       setCustomization(saved);
+      pushPreferences();
       return;
     }
     await child.equipItem(profile.id, itemKey);
     setItems(
       presentCustomizationInventory(await child.listInventory(profile.id), customization, false),
     );
+    pushPreferences();
   };
 
   const remove = async (slot: AccessorySlot = activeSlot): Promise<void> => {
@@ -353,6 +365,7 @@ export default function CollectionScreen() {
       const nextKeys = customization.selectedRoomMaterials.filter((key) => !themeKeys.has(key));
       setCustomization((current) => ({ ...current, selectedRoomMaterials: nextKeys }));
       await saveSelectedRoomMaterials(profile.id, nextKeys);
+      pushPreferences();
       return;
     }
     setItems(
@@ -362,10 +375,12 @@ export default function CollectionScreen() {
     if (__DEV__) {
       const saved = await saveDeveloperEquippedItem(profile.id, slot, null);
       setCustomization(saved);
+      pushPreferences();
       return;
     }
     const child = await getChildExperienceUseCases();
     await child.unequipAccessorySlot(profile.id, slot);
+    pushPreferences();
   };
 
   const updatePlacement = (itemKey: CustomizationItemKey, placement: ItemPlacement): void => {
@@ -374,7 +389,7 @@ export default function CollectionScreen() {
       ...current,
       placements: { ...current.placements, [itemKey]: placement },
     }));
-    void saveItemPlacement(profile.id, itemKey, placement).then(setCustomization);
+    void saveItemPlacement(profile.id, itemKey, placement).then(() => pushPreferences());
   };
 
   const selectRoomMaterial = async (material: RoomMaterial): Promise<void> => {
@@ -389,6 +404,7 @@ export default function CollectionScreen() {
       : [...customization.selectedRoomMaterials, material.key];
     setCustomization((current) => ({ ...current, selectedRoomMaterials: nextKeys }));
     await saveSelectedRoomMaterials(profile.id, nextKeys);
+    pushPreferences();
   };
 
   const placeRoomMaterial = async (
@@ -405,7 +421,8 @@ export default function CollectionScreen() {
       selectedRoomMaterials: nextKeys,
     }));
     await saveItemPlacement(profile.id, material.key, placement);
-    setCustomization(await saveSelectedRoomMaterials(profile.id, nextKeys));
+    await saveSelectedRoomMaterials(profile.id, nextKeys);
+    pushPreferences();
   };
 
   const measureDropFrames = (): void => {
@@ -422,14 +439,22 @@ export default function CollectionScreen() {
     const surface = dragSurfaceFrame.current;
     const next = { ...item, ...point, surfaceX: surface?.x ?? 0, surfaceY: surface?.y ?? 0 };
     draggedItemRef.current = next;
+    dragGhostPosition.setValue({
+      x: next.pageX - next.surfaceX - next.dimensions.width / 2,
+      y: next.pageY - next.surfaceY - next.dimensions.height / 2,
+    });
     setDraggedItem(next);
   };
 
   const moveDrag = (point: DragPoint): void => {
     const current = draggedItemRef.current;
-    const next = current ? { ...current, ...point } : null;
+    if (!current) return;
+    const next = { ...current, ...point };
     draggedItemRef.current = next;
-    setDraggedItem(next);
+    dragGhostPosition.setValue({
+      x: next.pageX - next.surfaceX - next.dimensions.width / 2,
+      y: next.pageY - next.surfaceY - next.dimensions.height / 2,
+    });
   };
 
   const cancelDrag = (): void => {
@@ -779,13 +804,13 @@ export default function CollectionScreen() {
       </ScrollView>
       {draggedItem ? (
         <View pointerEvents="none" style={styles.dragGhostLayer}>
-          <View
+          <Animated.View
             style={[
               styles.dragGhost,
               draggedItem.dimensions,
               {
-                left: draggedItem.pageX - draggedItem.surfaceX - draggedItem.dimensions.width / 2,
-                top: draggedItem.pageY - draggedItem.surfaceY - draggedItem.dimensions.height / 2,
+                left: dragGhostPosition.x,
+                top: dragGhostPosition.y,
                 transform: [{ scale: draggedItem.scale }],
               },
             ]}
@@ -798,7 +823,7 @@ export default function CollectionScreen() {
                 style={styles.rewardIconFill}
               />
             ) : null}
-          </View>
+          </Animated.View>
         </View>
       ) : null}
     </Screen>

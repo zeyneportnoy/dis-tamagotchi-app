@@ -1,11 +1,12 @@
 import { router, type Href, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { getChildExperienceUseCases } from '@/application/child';
 import { getFamilyUseCases, type ChildProfileViewModel } from '@/application/family';
 import { syncChildPreferences } from '@/application/sync';
+import { perfMark, perfStep } from '@/config/perf';
 import {
   Button,
   ErrorState,
@@ -32,16 +33,11 @@ import {
 } from '@/domain/rewards';
 import {
   CharacterAvatar,
-  CharacterSceneDecor,
   CharacterScreenBackdrop,
-  premiumRewardSource,
   sceneBackgroundForCharacter,
-  sceneToneForCharacter,
 } from '@/features/character';
 import {
-  CharacterSceneEffect,
-  RoomMaterialItem,
-  defaultPlacementForRoomMaterial,
+  CharacterRoomScene,
   emptyCustomizationState,
   isCharacterSceneEffectKey,
   loadCustomizationState,
@@ -51,7 +47,6 @@ import {
   type CustomizationItemKey,
   type CustomizationState,
   type ItemPlacement,
-  type SceneSize,
 } from '@/features/customization';
 
 type TaskCardProps = {
@@ -150,7 +145,6 @@ export default function ChildHomeScreen() {
   const [equipped, setEquipped] = useState<readonly InventoryItem[]>([]);
   const [customization, setCustomization] = useState<CustomizationState>(emptyCustomizationState);
   const [editMode, setEditMode] = useState(false);
-  const [sceneSize, setSceneSize] = useState<SceneSize>({ height: 0, width: 0 });
   const [pickerVisible, setPickerVisible] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -177,12 +171,14 @@ export default function ChildHomeScreen() {
   useFocusEffect(
     useCallback(() => {
       let mounted = true;
-      void readHomeData()
+      perfMark('childHome:focus');
+      void perfStep('childHome:readHomeData', readHomeData)
         .then((data) => {
           if (!mounted) return;
           if (data === 'onboarding') return router.replace('/onboarding');
           if (data === 'age-band-update') return router.replace('/age-band-update' as Href);
           applyData(data);
+          perfMark('childHome:data-ready');
         })
         .catch(() => {
           if (mounted) setFailed(true);
@@ -192,13 +188,6 @@ export default function ChildHomeScreen() {
       };
     }, []),
   );
-
-  // Best-effort: mirror room-material placement changes to Supabase after the
-  // local write. Never blocks the UI and never rolls back the local layout.
-  useEffect(() => {
-    if (!active) return;
-    void syncChildPreferences(active.id);
-  }, [active, customization]);
 
   if (failed) return <ErrorState />;
   if (!active || !progress) return <LoadingState />;
@@ -232,7 +221,12 @@ export default function ChildHomeScreen() {
       ...current,
       placements: { ...current.placements, [itemKey]: placement },
     }));
-    void saveItemPlacement(active.id, itemKey, placement).then(setCustomization);
+    // Persist locally first (source of truth), then mirror to Supabase. Fired
+    // here — an actual placement commit — not on mount / hydration.
+    void saveItemPlacement(active.id, itemKey, placement).then((next) => {
+      setCustomization(next);
+      void syncChildPreferences(active.id);
+    });
   };
 
   return (
@@ -258,96 +252,33 @@ export default function ChildHomeScreen() {
           </Pressable>
         </View>
 
-        <View
-          onLayout={(event) => setSceneSize(event.nativeEvent.layout)}
-          style={styles.characterStage}
+        <CharacterRoomScene
+          backgroundKey={roomBackground?.key}
+          backgroundTestID={roomBackground ? `home-background-${roomBackground.key}` : undefined}
+          characterKey={active.avatarId}
+          editable={editMode}
+          effectKey={roomEffectKey}
+          effectTestID="home-character-effect"
+          growthStage={growthStage}
+          mood={deriveHomeCharacterMood(progress)}
+          onPlacementChange={updatePlacement}
+          overlay={
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setEditMode((current) => !current)}
+              style={[styles.editRoomButton, editMode && styles.editRoomButtonActive]}
+              testID="room-edit-mode-toggle"
+            >
+              <Text style={styles.editRoomButtonText}>
+                {t(editMode ? 'collection.finishEditing' : 'collection.editRoom')}
+              </Text>
+            </Pressable>
+          }
+          placements={customization.placements}
+          roomMaterials={selectedRoomMaterials}
+          roomMaterialTestID={(itemKey) => `home-room-material-${itemKey}`}
           testID="home-character-scene"
-        >
-          {roomBackground ? (
-            <Image
-              resizeMode="cover"
-              source={premiumRewardSource(roomBackground.key)}
-              style={styles.selectedRoomBackground}
-              testID={`home-background-${roomBackground.key}`}
-            />
-          ) : (
-            <>
-              <CharacterSceneDecor tone={sceneToneForCharacter(active.avatarId)} />
-              <View style={styles.window}>
-                <View style={styles.windowVertical} />
-                <View style={styles.windowHorizontal} />
-                <View style={styles.cloudOne} />
-                <View style={styles.cloudTwo} />
-                <View style={styles.windowHill} />
-              </View>
-              <View style={styles.pictureFrame}>
-                <View style={styles.pictureSky}>
-                  <Text style={styles.pictureIcon}>✦</Text>
-                </View>
-              </View>
-              <View style={styles.floor}>
-                <View style={[styles.floorLine, styles.floorLineOne]} />
-                <View style={[styles.floorLine, styles.floorLineTwo]} />
-                <View style={[styles.floorLine, styles.floorLineThree]} />
-              </View>
-              <View style={[styles.plant, styles.plantLeft]}>
-                <View style={[styles.leaf, styles.leafLeft]} />
-                <View style={[styles.leaf, styles.leafRight]} />
-                <View style={styles.pot} />
-              </View>
-              <View style={[styles.plant, styles.plantRight]}>
-                <View style={[styles.leaf, styles.leafLeft]} />
-                <View style={[styles.leaf, styles.leafRight]} />
-                <View style={styles.pot} />
-              </View>
-              <View style={styles.rug} />
-            </>
-          )}
-          {selectedRoomMaterials.map((material) => (
-            <RoomMaterialItem
-              accessibilityLabel={t(`collection.roomMaterials.${material.key}`)}
-              editable={editMode}
-              key={`${active.id}:${material.key}`}
-              materialKey={material.key}
-              onPlacementChange={(placement) => updatePlacement(material.key, placement)}
-              placement={
-                customization.placements[material.key] ??
-                defaultPlacementForRoomMaterial(material.key)
-              }
-              sceneSize={sceneSize}
-              testID={`home-room-material-${material.key}`}
-              zIndex={2}
-            />
-          ))}
-          <Text style={[styles.sceneSparkle, styles.sceneSparkleLeft]}>✦</Text>
-          <Text style={[styles.sceneSparkle, styles.sceneSparkleRight]}>✦</Text>
-          <View pointerEvents="none" style={styles.heroCharacter}>
-            {roomEffectKey ? (
-              <CharacterSceneEffect
-                animated={process.env.NODE_ENV !== 'test'}
-                effectKey={roomEffectKey}
-                testID="home-character-effect"
-              />
-            ) : null}
-            <CharacterAvatar
-              characterKey={active.avatarId}
-              growthStage={growthStage}
-              mood={deriveHomeCharacterMood(progress)}
-              size="hero"
-              surface="plain"
-            />
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setEditMode((current) => !current)}
-            style={[styles.editRoomButton, editMode && styles.editRoomButtonActive]}
-            testID="room-edit-mode-toggle"
-          >
-            <Text style={styles.editRoomButtonText}>
-              {t(editMode ? 'collection.finishEditing' : 'collection.editRoom')}
-            </Text>
-          </Pressable>
-        </View>
+        />
 
         <View style={styles.growthCard}>
           <View style={styles.growthCopy}>

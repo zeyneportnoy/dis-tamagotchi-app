@@ -9,6 +9,7 @@ import {
   recoverChildPreferences,
   retryPendingCloudSync,
 } from '@/application/sync';
+import { perfMark, perfSince, perfStep } from '@/config/perf';
 import { ErrorState } from '@/design-system';
 import { isLegacyAgeBand } from '@/domain/family';
 import { useAuth } from '@/features/auth';
@@ -16,6 +17,37 @@ import { BrandedSplash } from '@/features/splash';
 
 type Destination =
   'age-band-update' | 'child' | 'onboarding' | 'profile-onboarding' | 'claim-local' | 'error';
+
+const routeForProfile = (profile: {
+  dateOfBirth: string | null;
+  ageBand: string;
+}): Extract<Destination, 'age-band-update' | 'child'> =>
+  !profile.dateOfBirth || isLegacyAgeBand(profile.ageBand) ? 'age-band-update' : 'child';
+
+/**
+ * Cloud hydration is deferred and fire-and-forget: it must never block the first
+ * usable screen when local state already answers the routing question, and its
+ * failures must not affect navigation. Runs once per bootstrap.
+ */
+function deferCloudRecovery(): void {
+  void (async () => {
+    try {
+      const sync = await getProfileSyncUseCases();
+      if (sync) {
+        await perfStep('bootstrap:recoverFromCloud(deferred)', () => sync.recoverFromCloud());
+      }
+      await perfStep('bootstrap:recoverChildCloudProgress(deferred)', recoverChildCloudProgress);
+      await perfStep(
+        'bootstrap:recoverChildBrushingHistory(deferred)',
+        recoverChildBrushingHistory,
+      );
+      await perfStep('bootstrap:recoverChildPreferences(deferred)', recoverChildPreferences);
+      void retryPendingCloudSync();
+    } catch (error) {
+      console.warn('index: deferred cloud recovery failed (non-blocking)', error);
+    }
+  })();
+}
 
 export default function Index() {
   const { configured, loading: authLoading, session } = useAuth();
@@ -32,44 +64,76 @@ export default function Index() {
 
   useEffect(() => {
     if (authLoading || !configured || !session || !session.emailVerified) return;
+    const boundUserId = session.userId;
     const tag = (value: Destination) =>
       setResolved((prev) =>
-        prev.userId === session.userId && prev.destination === value
+        prev.userId === boundUserId && prev.destination === value
           ? prev
-          : { userId: session.userId, destination: value },
+          : { userId: boundUserId, destination: value },
       );
-    void getProfileSyncUseCases()
-      .then(async (sync) => {
-        if (sync && (await sync.countLegacyProfiles(session.userId)) > 0)
-          return 'claim-local' as const;
-        if (sync) await sync.recoverFromCloud();
-        // Child profiles exist locally now. Recover Mine Puan (multi-device
-        // conflict-aware) and — before any getProgress()/reconcile runs —
-        // brushing + slot-evaluation history, so hydrated evaluations block a
-        // second -10. Then per-child preferences.
-        await recoverChildCloudProgress();
-        await recoverChildBrushingHistory();
-        await recoverChildPreferences();
-        // Flush anything this device changed while offline (never blocks routing).
-        void retryPendingCloudSync();
-        const useCases = await getFamilyUseCases();
-        return useCases.getActiveProfile();
-      })
-      .then((result) => {
-        if (result === 'claim-local') return tag('claim-local');
-        const profile = result;
-        tag(
-          profile
-            ? !profile.dateOfBirth || isLegacyAgeBand(profile.ageBand)
-              ? 'age-band-update'
-              : 'child'
-            : 'profile-onboarding',
+
+    let cancelled = false;
+    perfMark('bootstrap:start');
+    void (async () => {
+      try {
+        const sync = await getProfileSyncUseCases();
+
+        // Local + fast: an unclaimed on-device profile takes priority over any route.
+        if (
+          sync &&
+          (await perfStep('bootstrap:countLegacyProfiles', () =>
+            sync.countLegacyProfiles(boundUserId),
+          )) > 0
+        ) {
+          if (!cancelled) {
+            perfSince('bootstrap:route-decided(claim-local)', 'bootstrap:start');
+            tag('claim-local');
+          }
+          return;
+        }
+
+        const family = await getFamilyUseCases();
+        const localProfile = await perfStep('bootstrap:getActiveProfile(local)', () =>
+          family.getActiveProfile(),
         );
-      })
-      .catch((error: unknown) => {
+
+        if (localProfile) {
+          // Usable local state exists → route immediately, hydrate from cloud after.
+          if (!cancelled) {
+            perfSince('bootstrap:route-decided(local)', 'bootstrap:start');
+            tag(routeForProfile(localProfile));
+          }
+          deferCloudRecovery();
+          return;
+        }
+
+        // No usable local state (fresh install / new device): the cloud is the
+        // only source of truth for whether this account has children, so this
+        // single recovery pass is allowed to block. Progress + brushing history
+        // (the second -10 penalty guard) are recovered here too, before any
+        // screen reads them.
+        if (sync) {
+          await perfStep('bootstrap:recoverFromCloud(cold)', () => sync.recoverFromCloud());
+        }
+        await perfStep('bootstrap:recoverChildCloudProgress(cold)', recoverChildCloudProgress);
+        await perfStep('bootstrap:recoverChildBrushingHistory(cold)', recoverChildBrushingHistory);
+        await perfStep('bootstrap:recoverChildPreferences(cold)', recoverChildPreferences);
+        void retryPendingCloudSync();
+
+        const recovered = await family.getActiveProfile();
+        if (!cancelled) {
+          perfSince('bootstrap:route-decided(cold)', 'bootstrap:start');
+          tag(recovered ? routeForProfile(recovered) : 'profile-onboarding');
+        }
+      } catch (error) {
         console.error('index: profile bootstrap failed', error);
-        tag('error');
-      });
+        if (!cancelled) tag('error');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [authLoading, configured, session]);
 
   if (authLoading) return <BrandedSplash />;
@@ -77,6 +141,7 @@ export default function Index() {
   if (!session.emailVerified) return <BrandedSplash />;
   if (destination === 'error') return <ErrorState />;
   if (!destination) return <BrandedSplash />;
+  perfMark('bootstrap:redirect');
   const href =
     destination === 'child'
       ? '/(child)'

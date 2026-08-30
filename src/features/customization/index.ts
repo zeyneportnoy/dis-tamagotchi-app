@@ -1,4 +1,5 @@
 export { RoomMaterialItem } from './RoomMaterialItem';
+export { CharacterRoomScene } from './CharacterRoomScene';
 export {
   CharacterSceneEffect,
   EffectCardPreview,

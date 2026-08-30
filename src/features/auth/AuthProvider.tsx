@@ -13,6 +13,7 @@ import { AppState } from 'react-native';
 
 import { getParentAuthUseCases, type ParentAuthUseCases } from '@/application/auth';
 import { retryPendingCloudSync } from '@/application/sync';
+import { perfMark, perfStep } from '@/config/perf';
 import type { ParentSession } from '@/domain/auth';
 import { BrandedSplash } from '@/features/splash';
 
@@ -44,10 +45,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     if (!useCases) return;
     let active = true;
-    void useCases
-      .getSession()
+    void perfStep('auth:getSession', () => useCases.getSession())
       .then((value) => active && setSession(value))
-      .finally(() => active && setLoading(false));
+      .finally(() => {
+        if (active) {
+          perfMark('auth:ready');
+          setLoading(false);
+        }
+      });
     const unsubscribe = useCases.subscribe((value) => {
       if (active) setSession(value);
     });

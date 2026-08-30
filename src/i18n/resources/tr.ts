@@ -520,8 +520,12 @@ export const tr = {
       },
     },
     profile: {
+      summaryTitle: 'Profil Özeti',
       nickname: 'Takma ad',
       ageBand: 'Yaş grubu',
+      toothStage: 'Mevcut diş evresi',
+      selectedItems: 'Seçili koleksiyon',
+      noSelectedItems: 'Henüz seçili öğe yok',
       changeProfile: 'Profil değiştir',
     },
     settings: {

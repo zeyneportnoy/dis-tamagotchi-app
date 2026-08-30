@@ -2,6 +2,7 @@ import { router, useNavigation } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { useAudioPlayer } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
+import { useKeepAwake } from 'expo-keep-awake';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -99,6 +100,11 @@ const defaultBrushingBrushSource: ImageSourcePropType = require('../assets/rewar
 
 function brushingBrushImageSource(brushKey: string | undefined): ImageSourcePropType {
   return (brushKey ? brushingBrushSources[brushKey] : undefined) ?? defaultBrushingBrushSource;
+}
+
+function ActiveBrushingKeepAwake() {
+  useKeepAwake('denthero-active-brushing-session');
+  return null;
 }
 
 function rotatePoint(
@@ -1214,6 +1220,7 @@ export default function BrushingScreen() {
       style={[styles.screen, { backgroundColor: sceneBackgroundForCharacter(profile.avatarId) }]}
       testID="brushing-session-screen"
     >
+      <ActiveBrushingKeepAwake />
       <Pressable
         accessibilityLabel={t('brushing.exit')}
         accessibilityRole="button"
