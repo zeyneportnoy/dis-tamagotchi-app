@@ -61,3 +61,10 @@ export function closedBrushingSlotsSince(profileCreatedAt: Date, now: Date): Bru
 
   return slots;
 }
+
+/** The next instant at which one of the two canonical brushing slots closes. */
+export function nextBrushingSlotCloseAfter(now: Date): Date {
+  const morningClose = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12);
+  if (now < morningClose) return morningClose;
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+}

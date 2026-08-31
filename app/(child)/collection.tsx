@@ -1,9 +1,9 @@
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import { getChildExperienceUseCases } from '@/application/child';
+import { getChildExperienceUseCases, subscribeToChildProgressChanges } from '@/application/child';
 import { getFamilyUseCases, type ChildProfileViewModel } from '@/application/family';
 import { syncChildPreferences } from '@/application/sync';
 import { perfMark, perfStep } from '@/config/perf';
@@ -186,6 +186,49 @@ export default function CollectionScreen() {
       };
     }, []),
   );
+
+  useEffect(() => {
+    let mounted = true;
+    const unsubscribe = subscribeToChildProgressChanges((progress) => {
+      if (progress.childProfileId !== profile?.id) return;
+      const mineScore = Math.max(0, progress.totalXp);
+      setCurrentMineScore(mineScore);
+      setGrowthStage(growthStageForXp(mineScore));
+      void Promise.all([
+        getChildExperienceUseCases().then((child) => child.listInventory(progress.childProfileId)),
+        loadCustomizationState(progress.childProfileId),
+      ])
+        .then(async ([inventory, savedCustomization]) => {
+          if (!mounted) return;
+          let nextCustomization = savedCustomization;
+          let presented = presentCustomizationInventory(inventory, nextCustomization, __DEV__);
+          if (__DEV__) {
+            for (const slot of Object.keys(scoreGatedSlots) as ScoreGatedSlot[]) {
+              const { defaultKey, isUnlocked } = scoreGatedSlots[slot];
+              const equipped = presented.find((item) => item.slot === slot && item.equipped);
+              if (equipped && !isUnlocked(equipped.key, mineScore)) {
+                nextCustomization = await saveDeveloperEquippedItem(
+                  progress.childProfileId,
+                  slot,
+                  defaultKey,
+                );
+                presented = presentCustomizationInventory(inventory, nextCustomization, true);
+              }
+            }
+          }
+          if (!mounted) return;
+          setCustomization(nextCustomization);
+          setItems(presented);
+        })
+        .catch(() => {
+          if (mounted) setFailed(true);
+        });
+    });
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, [profile?.id]);
 
   // Best-effort: mirror the child's selected brush/background/effect + room
   // configuration to Supabase. Called only from the mutation sites below, after

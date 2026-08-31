@@ -1,7 +1,9 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
+  isBackgroundUnlockedForScore,
   isBrushUnlockedForScore,
+  isEffectUnlockedForScore,
   rewardCatalog,
   rewardItemForKey,
   type AccessorySlot,
@@ -64,17 +66,24 @@ export class SQLiteInventoryRepository implements InventoryRepository {
         profileId,
         itemKey,
       );
-      // Brush availability is defined by the child's current Mine balance. Older
-      // profiles can legitimately satisfy that gate without having a matching
-      // inventory row (only one reward used to be materialized per threshold).
-      // Materialize the selected brush through the existing inventory source of
-      // truth before equipping it; a below-threshold brush is still rejected.
-      if (!unlocked && slot === 'brush') {
+      // Score-gated availability is defined by the child's current Mine balance,
+      // not by whether an inventory row was reached historically. Older profiles
+      // may also satisfy a gate without a materialized row, including the
+      // canonical default effect, so an allowed missing row is created here.
+      if (slot === 'brush' || slot === 'background' || slot === 'effect') {
         const progress = await this.database.getFirstAsync<{ total_xp: number }>(
           'SELECT total_xp FROM profile_progress WHERE child_profile_id = ?',
           profileId,
         );
-        if (isBrushUnlockedForScore(itemKey, Math.max(0, progress?.total_xp ?? 0))) {
+        const mineScore = Math.max(0, progress?.total_xp ?? 0);
+        const scoreAllowsItem =
+          slot === 'brush'
+            ? isBrushUnlockedForScore(itemKey, mineScore)
+            : slot === 'background'
+              ? isBackgroundUnlockedForScore(itemKey, mineScore)
+              : isEffectUnlockedForScore(itemKey, mineScore);
+        if (!scoreAllowsItem) throw new Error('ITEM_LOCKED');
+        if (!unlocked) {
           await this.database.runAsync(
             `INSERT OR IGNORE INTO inventory_items
               (child_profile_id, item_key, unlocked_at, equipped, slot)

@@ -1,9 +1,9 @@
 import { router, type Href, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import { getChildExperienceUseCases } from '@/application/child';
+import { getChildExperienceUseCases, subscribeToChildProgressChanges } from '@/application/child';
 import { getFamilyUseCases, type ChildProfileViewModel } from '@/application/family';
 import { syncChildPreferences } from '@/application/sync';
 import { perfMark, perfStep } from '@/config/perf';
@@ -148,11 +148,11 @@ export default function ChildHomeScreen() {
   const [pickerVisible, setPickerVisible] = useState(false);
   const [failed, setFailed] = useState(false);
 
-  const applyData = (data: HomeData): void => {
+  const applyData = (data: HomeData, resetEditMode = true): void => {
     setProgress(data.progress);
     setEquipped(data.equipped);
     setCustomization(data.customization);
-    setEditMode(false);
+    if (resetEditMode) setEditMode(false);
     setActive(data.active);
     setProfiles(data.profiles);
   };
@@ -188,6 +188,21 @@ export default function ChildHomeScreen() {
       };
     }, []),
   );
+
+  useEffect(() => {
+    let mounted = true;
+    const unsubscribe = subscribeToChildProgressChanges((nextProgress) => {
+      if (nextProgress.childProfileId !== active?.id) return;
+      void readHomeData().then((data) => {
+        if (!mounted || data === 'onboarding' || data === 'age-band-update') return;
+        applyData(data, false);
+      });
+    });
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, [active?.id]);
 
   if (failed) return <ErrorState />;
   if (!active || !progress) return <LoadingState />;

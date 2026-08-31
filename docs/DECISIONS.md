@@ -401,3 +401,16 @@ onboarding ve Mood Lab aynı render bileşenini kullanır.
 - Native splash yalnız fontlar ve yerel veritabanı hazır olduğunda kaldırılır. Auth restore ve ilk
   route çözülürken aynı yerel PNG React katmanında gösterilerek aradaki beyaz/loading-state karesi
   önlenir; auth ve navigation kararları değiştirilmez.
+
+# 2026-08-31 — Slot kapanışı reconciliation yaşam döngüsünden tetiklenir
+
+- Kalıcı ceza hesabının tek kaynağı profil/gün/slot birleşik anahtarlı mevcut SQLite reconciliation
+  işlemidir. Authenticated uygulama yaşam döngüsü, saat 12:00 ve 00:00 kapanışlarında tüm çocuklar
+  için bu işlemi çağırır; uygulama yeniden açıldığında veya foreground olduğunda kaçırılan kapanışlar
+  aynı yoldan tamamlanır.
+- Değerlendirme satırı skor mutasyonundan önce atomik idempotency claim olarak yazılır. Yeni bir
+  değerlendirme oluştuğunda açık ekranlar güncel yerel skoru yeniden okur; evre, ilerleme ve
+  Collection kilitleri tarihsel maksimum yerine güncel Mine Puan'dan türetilmeye devam eder.
+- Güncel skorun altına düşen brush/background/effect seçimi child-specific inventory kaydında ilgili
+  her zaman açık varsayılana döner. Ayrı unlock tablosu, yeni progression state'i veya yeni kalıcı
+  veri eklenmez.

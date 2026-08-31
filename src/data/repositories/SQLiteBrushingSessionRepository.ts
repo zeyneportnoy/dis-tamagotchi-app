@@ -245,17 +245,8 @@ export class SQLiteBrushingSessionRepository
         const outcome = completed ? 'completed' : 'missed';
         const penaltyAmount = completed ? 0 : -10;
 
-        if (!completed) {
-          await this.database.runAsync(
-            `UPDATE profile_progress SET total_xp = ?, level = ?
-             WHERE child_profile_id = ?`,
-            scoreAfter,
-            levelForXp(scoreAfter),
-            profileId,
-          );
-        }
-        await this.database.runAsync(
-          `INSERT INTO brushing_slot_evaluations
+        const inserted = await this.database.runAsync(
+          `INSERT OR IGNORE INTO brushing_slot_evaluations
             (child_profile_id, local_day_key, period, outcome, penalty_amount,
              score_before, score_after, evaluated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -268,6 +259,18 @@ export class SQLiteBrushingSessionRepository
           scoreAfter,
           nowIso,
         );
+        // The composite primary key is the durable idempotency claim. Only the
+        // transaction that inserted it may mutate the score.
+        if (inserted.changes === 0) continue;
+        if (!completed) {
+          await this.database.runAsync(
+            `UPDATE profile_progress SET total_xp = ?, level = ?
+             WHERE child_profile_id = ?`,
+            scoreAfter,
+            levelForXp(scoreAfter),
+            profileId,
+          );
+        }
         created.push({
           childProfileId: profileId,
           localDayKey: slot.localDayKey,

@@ -2,11 +2,15 @@ import { Stack } from 'expo-router';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 
+import { getChildExperienceUseCases } from '@/application/child';
+import { getFamilyUseCases } from '@/application/family';
 import { perfMark, perfStep } from '@/config/perf';
 import { ErrorState } from '@/design-system';
 import { initializeDatabase } from '@/data/db';
-import { AuthProvider } from '@/features/auth';
+import { nextBrushingSlotCloseAfter } from '@/domain/brushing';
+import { AuthProvider, useAuth } from '@/features/auth';
 import { OnboardingDraftProvider } from '@/features/onboarding/OnboardingDraftContext';
 import { configureNotificationPresentation } from '@/features/reminders/configureNotifications';
 import { BrandedSplash } from '@/features/splash';
@@ -15,6 +19,59 @@ import '@/i18n';
 perfMark('js:root-module-eval');
 void SplashScreen.preventAutoHideAsync();
 configureNotificationPresentation();
+
+function MissedSlotReconciler() {
+  const { loading, session } = useAuth();
+
+  useEffect(() => {
+    if (loading || !session?.emailVerified) return;
+    let disposed = false;
+    let boundaryTimer: ReturnType<typeof setTimeout> | undefined;
+    let reconciliation: Promise<void> | null = null;
+
+    const reconcileAllChildren = (): Promise<void> => {
+      reconciliation ??= (async () => {
+        const family = await getFamilyUseCases();
+        const child = await getChildExperienceUseCases();
+        for (const profile of await family.listProfiles()) {
+          await child.getProgress(profile.id);
+        }
+      })()
+        .catch(() => undefined)
+        .finally(() => {
+          reconciliation = null;
+        });
+      return reconciliation;
+    };
+
+    const scheduleNextBoundary = (): void => {
+      if (disposed || AppState.currentState !== 'active') return;
+      if (boundaryTimer) clearTimeout(boundaryTimer);
+      const now = new Date();
+      const delay = Math.max(0, nextBrushingSlotCloseAfter(now).getTime() - now.getTime() + 50);
+      boundaryTimer = setTimeout(() => {
+        void reconcileAllChildren().finally(scheduleNextBoundary);
+      }, delay);
+    };
+
+    void reconcileAllChildren().finally(scheduleNextBoundary);
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (boundaryTimer) {
+        clearTimeout(boundaryTimer);
+        boundaryTimer = undefined;
+      }
+      if (state === 'active') void reconcileAllChildren().finally(scheduleNextBoundary);
+    });
+
+    return () => {
+      disposed = true;
+      if (boundaryTimer) clearTimeout(boundaryTimer);
+      appStateSubscription.remove();
+    };
+  }, [loading, session?.emailVerified, session?.userId]);
+
+  return null;
+}
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -57,6 +114,7 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
+      <MissedSlotReconciler />
       <OnboardingDraftProvider>
         <Stack screenOptions={{ headerShown: false }} />
       </OnboardingDraftProvider>

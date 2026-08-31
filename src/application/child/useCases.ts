@@ -14,6 +14,9 @@ import type {
   RewardItemKey,
   RewardSessionRepository,
 } from '@/domain/rewards';
+import { effectiveBackgroundKey, effectiveBrushKey, effectiveEffectKey } from '@/domain/rewards';
+
+import { notifyChildProgressChanged } from './progressEvents';
 
 export class ChildExperienceUseCases {
   constructor(
@@ -23,8 +26,44 @@ export class ChildExperienceUseCases {
   ) {}
 
   async getProgress(profileId: string): Promise<ProfileProgress> {
-    await this.sessions.reconcileMissedSlots(profileId);
-    return this.progress.get(profileId);
+    const evaluations = await this.sessions.reconcileMissedSlots(profileId);
+    const progress = await this.progress.get(profileId);
+    await this.ensureEquippedItemsAreStillUnlocked(profileId, progress.totalXp);
+    if (evaluations.length > 0) notifyChildProgressChanged(progress);
+    return progress;
+  }
+
+  private async ensureEquippedItemsAreStillUnlocked(
+    profileId: string,
+    currentMineScore: number,
+  ): Promise<void> {
+    let equipped: readonly InventoryItem[];
+    try {
+      equipped = (await this.inventory.list(profileId)).filter((item) => item.equipped);
+    } catch {
+      // Progress reconciliation is authoritative even if preference access is
+      // temporarily unavailable (for example while auth ownership is loading).
+      return;
+    }
+    const selectedBrush = equipped.find((item) => item.slot === 'brush')?.key;
+    const selectedBackground = equipped.find((item) => item.slot === 'background')?.key;
+    const selectedEffect = equipped.find((item) => item.slot === 'effect')?.key;
+    const fallbacks = [
+      [selectedBrush, effectiveBrushKey(selectedBrush, currentMineScore)],
+      [selectedBackground, effectiveBackgroundKey(selectedBackground, currentMineScore)],
+      [selectedEffect, effectiveEffectKey(selectedEffect, currentMineScore)],
+    ] as const;
+
+    for (const [selectedKey, effectiveKey] of fallbacks) {
+      if (selectedKey && selectedKey !== effectiveKey) {
+        try {
+          await this.equipItem(profileId, effectiveKey as RewardItemKey);
+        } catch {
+          // Consuming screens also enforce the same effective-key guard. A
+          // later progress read retries this durable preference fallback.
+        }
+      }
+    }
   }
 
   beginBrushingSession(sessionId: string, profileId: string, startedAt: string): Promise<void> {

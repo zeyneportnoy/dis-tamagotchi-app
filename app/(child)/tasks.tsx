@@ -1,9 +1,9 @@
 import { router, type Href, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import { getChildExperienceUseCases } from '@/application/child';
+import { getChildExperienceUseCases, subscribeToChildProgressChanges } from '@/application/child';
 import { getFamilyUseCases } from '@/application/family';
 import { ErrorState, LoadingState, Screen, Text, colors, radii, spacing } from '@/design-system';
 import { toLocalDateKey } from '@/domain/brushing';
@@ -139,6 +139,16 @@ export default function TasksScreen() {
         mounted = false;
       };
     }, []),
+  );
+
+  useEffect(
+    () =>
+      subscribeToChildProgressChanges((nextProgress) => {
+        setProgress((current) =>
+          current?.childProfileId === nextProgress.childProfileId ? nextProgress : current,
+        );
+      }),
+    [],
   );
 
   const dailyMap = useMemo(() => buildDailyMap(sessions), [sessions]);

@@ -1,9 +1,9 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import { getChildExperienceUseCases } from '@/application/child';
+import { getChildExperienceUseCases, subscribeToChildProgressChanges } from '@/application/child';
 import { getFamilyUseCases, type ChildProfileViewModel } from '@/application/family';
 import { perfMark, perfStep } from '@/config/perf';
 import { deriveHomeCharacterMood } from '@/domain/character';
@@ -124,6 +124,20 @@ export default function ProfileScreen() {
       };
     }, []),
   );
+
+  useEffect(() => {
+    let mounted = true;
+    const unsubscribe = subscribeToChildProgressChanges((nextProgress) => {
+      if (nextProgress.childProfileId !== data?.profile.id) return;
+      void readProfileData().then((next) => {
+        if (mounted) setData(next);
+      });
+    });
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, [data?.profile.id]);
 
   if (failed) return <ErrorState />;
   if (!data) return <LoadingState />;
