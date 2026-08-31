@@ -18,7 +18,7 @@ import {
   readVoiceProfileSyncMeta,
   setBrushingVoiceProfile,
 } from '@/features/brushing';
-import { reminderSettingsService } from '@/features/reminders';
+import { reminderSettingsService, syncGroupedBrushingReminders } from '@/features/reminders';
 
 import { ChildDataSyncUseCases } from './ChildDataSyncUseCases';
 import {
@@ -289,6 +289,16 @@ export async function recoverChildPreferences(): Promise<void> {
   try {
     const sync = await getChildPreferencesSyncUseCases();
     await sync?.recover();
+    const session = await getParentAuthUseCases()?.getSession();
+    if (!session) return;
+    const database = await getDatabase();
+    const children = await database.getAllAsync<{ id: string; nickname: string }>(
+      `SELECT id, nickname FROM child_profiles
+       WHERE parent_auth_user_id = ? AND archived_at IS NULL
+       ORDER BY created_at`,
+      session.userId,
+    );
+    await syncGroupedBrushingReminders(session.userId, children);
   } catch {
     // Swallowed: local data (if any) stays intact.
   }

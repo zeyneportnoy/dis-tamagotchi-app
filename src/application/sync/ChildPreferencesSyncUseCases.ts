@@ -28,7 +28,7 @@ export type ChildPreferenceAccessors = Readonly<{
     childProfileId: string,
   ): Promise<Readonly<{ morning: CloudReminderPreference; evening: CloudReminderPreference }>>;
   hasStoredReminders(parentUserId: string, childProfileId: string): Promise<boolean>;
-  /** Persists recovered reminder values AND reschedules any enabled slot on device. */
+  /** Persists recovered reminder values; the grouped device schedule rebuilds afterward. */
   applyRecoveredReminders(
     parentUserId: string,
     childProfileId: string,
@@ -108,10 +108,10 @@ export class ChildPreferencesSyncUseCases {
    * Multi-device recovery. Customization is hydrated when local is missing, or
    * when local is clean (unchanged since the last push) and the cloud row is
    * newer than that push — local unpushed edits are never overwritten. Voice /
-   * reminder preferences hydrate only when nothing is stored locally yet;
-   * enabled reminders are rescheduled on device. Customization is written
-   * verbatim; the current-Mine-Puan unlock guards still decide what activates,
-   * so a locked cloud selection can never become active.
+   * reminder preferences hydrate only when nothing is stored locally yet; the
+   * caller rebuilds their canonical grouped device schedule after recovery.
+   * Customization is written verbatim; the current-Mine-Puan unlock guards still
+   * decide what activates, so a locked cloud selection can never become active.
    */
   async recover(): Promise<void> {
     for (const row of await this.cloud.listOwned()) {

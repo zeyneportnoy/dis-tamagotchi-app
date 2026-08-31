@@ -1,6 +1,7 @@
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -24,15 +25,15 @@ import {
   type ReminderSlot,
 } from '@/features/reminders';
 
-const minutesFromTime = (time: string): number => {
+const dateFromTime = (time: string): Date => {
   const [hours = '0', minutes = '0'] = time.split(':');
-  return Number(hours) * 60 + Number(minutes);
+  const value = new Date();
+  value.setHours(Number(hours), Number(minutes), 0, 0);
+  return value;
 };
 
-const timeFromMinutes = (minutes: number): string => {
-  const normalized = (minutes + 24 * 60) % (24 * 60);
-  return `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`;
-};
+const timeFromDate = (value: Date): string =>
+  `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`;
 
 export default function BrushingRemindersScreen() {
   const { t } = useTranslation();
@@ -43,6 +44,10 @@ export default function BrushingRemindersScreen() {
   const [testBusy, setTestBusy] = useState(false);
   const [testScheduled, setTestScheduled] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingSlot, setEditingSlot] = useState<ReminderSlot | null>(null);
+  const [pendingTime, setPendingTime] = useState(() =>
+    dateFromTime(defaultReminderSettings.morning.time),
+  );
 
   useEffect(() => {
     const userId = session?.userId;
@@ -77,15 +82,11 @@ export default function BrushingRemindersScreen() {
       // Rebuild the device's grouped brushing schedule: children sharing a time
       // collapse into one notification, others stay separate — each child's
       // stored settings above are untouched.
-      void getFamilyUseCases()
-        .then((useCases) => useCases.listProfiles())
-        .then((profiles) =>
-          syncGroupedBrushingReminders(
-            parentUserId,
-            profiles.map((profile) => ({ id: profile.id, nickname: profile.nickname })),
-          ),
-        )
-        .catch(() => undefined);
+      const profiles = await getFamilyUseCases().then((useCases) => useCases.listProfiles());
+      await syncGroupedBrushingReminders(
+        parentUserId,
+        profiles.map((profile) => ({ id: profile.id, nickname: profile.nickname })),
+      );
       if (result.permissionDenied) setError(t('parent.reminders.permissionRequired'));
     } catch {
       setError(t('parent.reminders.updateError'));
@@ -94,8 +95,24 @@ export default function BrushingRemindersScreen() {
     }
   };
 
-  const shiftTime = (slot: ReminderSlot, delta: number): void => {
-    const time = timeFromMinutes(minutesFromTime(settings[slot].time) + delta);
+  const openTimePicker = (slot: ReminderSlot): void => {
+    setPendingTime(dateFromTime(settings[slot].time));
+    setEditingSlot(slot);
+  };
+
+  const handleTimeChange = (event: DateTimePickerEvent, selectedTime?: Date): void => {
+    if (event.type === 'dismissed') {
+      setEditingSlot(null);
+      return;
+    }
+    if (selectedTime) setPendingTime(selectedTime);
+  };
+
+  const confirmTime = (): void => {
+    const slot = editingSlot;
+    if (!slot) return;
+    const time = timeFromDate(pendingTime);
+    setEditingSlot(null);
     void update(slot, { enabled: settings[slot].enabled, time });
   };
 
@@ -149,27 +166,17 @@ export default function BrushingRemindersScreen() {
             </View>
             <View style={styles.timePicker}>
               <Pressable
-                accessibilityLabel={t('parent.reminders.earlier', {
+                accessibilityLabel={t('parent.reminders.chooseTime', {
                   slot: t(`parent.reminders.${slot}`),
+                  time: settings[slot].time,
                 })}
                 accessibilityRole="button"
-                onPress={() => shiftTime(slot, -15)}
-                style={({ pressed }) => [styles.timeButton, pressed && styles.pressed]}
+                disabled={busy !== null}
+                onPress={() => openTimePicker(slot)}
+                style={({ pressed }) => [styles.timeValue, pressed && styles.pressed]}
+                testID={`${slot}-reminder-time-picker`}
               >
-                <Text style={styles.timeButtonLabel}>−</Text>
-              </Pressable>
-              <View style={styles.timeValue}>
                 <Text style={styles.time}>{settings[slot].time}</Text>
-              </View>
-              <Pressable
-                accessibilityLabel={t('parent.reminders.later', {
-                  slot: t(`parent.reminders.${slot}`),
-                })}
-                accessibilityRole="button"
-                onPress={() => shiftTime(slot, 15)}
-                style={({ pressed }) => [styles.timeButton, pressed && styles.pressed]}
-              >
-                <Text style={styles.timeButtonLabel}>+</Text>
               </Pressable>
             </View>
           </View>
@@ -196,6 +203,42 @@ export default function BrushingRemindersScreen() {
         ) : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setEditingSlot(null)}
+        transparent
+        visible={editingSlot !== null}
+      >
+        <View style={styles.pickerBackdrop}>
+          <View accessibilityViewIsModal style={styles.pickerCard}>
+            <Text style={styles.pickerTitle}>
+              {editingSlot ? t(`parent.reminders.${editingSlot}`) : ''}
+            </Text>
+            <DateTimePicker
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              is24Hour
+              locale="tr-TR"
+              minuteInterval={1}
+              mode="time"
+              onChange={handleTimeChange}
+              testID="brushing-reminder-native-time-picker"
+              value={pendingTime}
+            />
+            <View style={styles.pickerActions}>
+              <View style={styles.pickerAction}>
+                <Button
+                  label={t('common.cancel')}
+                  onPress={() => setEditingSlot(null)}
+                  variant="secondary"
+                />
+              </View>
+              <View style={styles.pickerAction}>
+                <Button label={t('common.done')} onPress={confirmTime} />
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -235,26 +278,36 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 42,
   },
-  timeButton: {
+  timePicker: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+  },
+  timeValue: {
     alignItems: 'center',
     backgroundColor: '#F0E9FF',
     borderRadius: radii.pill,
-    height: 48,
     justifyContent: 'center',
-    width: 48,
+    minHeight: 56,
+    minWidth: 150,
+    paddingHorizontal: spacing.lg,
   },
-  timeButtonLabel: {
-    color: colors.brandPrimary,
-    fontFamily: typography.family.display,
-    fontSize: 30,
-    fontWeight: '700',
-    lineHeight: 34,
-  },
-  timePicker: {
+  pickerAction: { flex: 1 },
+  pickerActions: { flexDirection: 'row', gap: spacing.sm },
+  pickerBackdrop: {
     alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.sm,
+    backgroundColor: 'rgba(38,50,56,0.42)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.lg,
   },
-  timeValue: { alignItems: 'center', minWidth: 116 },
+  pickerCard: {
+    backgroundColor: colors.white,
+    borderRadius: radii.lg,
+    gap: spacing.md,
+    maxWidth: 430,
+    padding: spacing.md,
+    width: '100%',
+  },
+  pickerTitle: { color: colors.textPrimary, fontSize: 22, fontWeight: '900' },
 });

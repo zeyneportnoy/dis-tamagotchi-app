@@ -3,8 +3,11 @@ import { getDatabase } from '@/data/db';
 import { SQLiteChildProfileRepository, SQLiteFamilyRepository } from '@/data/repositories';
 import { getParentAuthUseCases } from '@/application/auth';
 import { pushPendingChildProfiles } from '@/application/sync';
-import { birthdayReminderService } from '@/features/reminders/birthdayReminder';
-import { syncGroupedBrushingReminders } from '@/features/reminders/scheduledBrushingReminders';
+import {
+  birthdayReminderService,
+  reminderSettingsService,
+  syncGroupedBrushingReminders,
+} from '@/features/reminders';
 
 import { FamilyUseCases } from './useCases';
 import type { ChildProfileViewModel } from './viewModels';
@@ -36,12 +39,14 @@ class CloudAwareFamilyUseCases extends FamilyUseCases {
   }
 
   override async archiveProfile(profileId: string): Promise<void> {
+    await this.clearChildBrushingSchedule(profileId);
     await super.archiveProfile(profileId);
     void birthdayReminderService.cancelForProfile(profileId);
     void this.reconcileGroupedBrushingReminders();
   }
 
   override async deleteProfile(profileId: string): Promise<void> {
+    await this.clearChildBrushingSchedule(profileId);
     await super.deleteProfile(profileId);
     void birthdayReminderService.cancelForProfile(profileId);
     void this.reconcileGroupedBrushingReminders();
@@ -73,6 +78,16 @@ class CloudAwareFamilyUseCases extends FamilyUseCases {
       );
     } catch {
       // grouping is best-effort; each child's stored settings are untouched
+    }
+  }
+
+  private async clearChildBrushingSchedule(profileId: string): Promise<void> {
+    try {
+      const parentId = (await getParentAuthUseCases()?.getSession())?.userId;
+      if (!parentId) return;
+      await reminderSettingsService.clearScheduledNotificationIds(parentId, profileId);
+    } catch {
+      // The grouped rebuild still sweeps orphaned brushing requests by metadata.
     }
   }
 }

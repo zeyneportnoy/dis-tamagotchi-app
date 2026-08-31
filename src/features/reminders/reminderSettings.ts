@@ -120,11 +120,8 @@ export class ReminderSettingsService {
 
   /**
    * Cloud-recovery entry point: persist the recovered enabled/time values for a
-   * child AND actually (re)schedule any enabled slot using the existing
-   * notification gateway. Idempotent — recovery only calls this when nothing is
-   * stored locally, so it runs once per child and never duplicates a schedule.
-   * Permission is only used if already granted; a denied/undetermined state
-   * keeps `enabled` as recovered (no prompt, no crash) for a later UI `update()`.
+   * child. The device-level grouped scheduler runs once after all children have
+   * recovered, so this method must not create temporary per-child schedules.
    */
   async applyRecoveredPreferences(
     parentId: string,
@@ -157,24 +154,6 @@ export class ReminderSettingsService {
       },
     };
     await this.storage.setItem(key, JSON.stringify(settings));
-
-    const enabledSlots = (['morning', 'evening'] as const).filter((slot) => settings[slot].enabled);
-    if (enabledSlots.length === 0) return;
-    if ((await this.notifications.getPermission()) !== 'granted') return;
-
-    for (const slot of enabledSlots) {
-      try {
-        const notificationId = await this.notifications.schedule(
-          slot,
-          settings[slot].time,
-          i18n.t(`parent.reminders.messages.${slot}.0`),
-        );
-        settings[slot] = { ...settings[slot], notificationId };
-        await this.storage.setItem(key, JSON.stringify(settings));
-      } catch {
-        // Keep the recovered preference; a UI update() reschedules later.
-      }
-    }
   }
 
   async update(
@@ -195,16 +174,32 @@ export class ReminderSettingsService {
     }
 
     if (previous.notificationId) await this.notifications.cancel(previous.notificationId);
-    const notificationId = desired.enabled
-      ? await this.notifications.schedule(
-          slot,
-          desired.time,
-          i18n.t(`parent.reminders.messages.${slot}.0`),
-        )
-      : null;
-    const settings = { ...current, [slot]: { ...desired, notificationId } };
+    // Persist only the child-specific preference. The caller immediately
+    // rebuilds the single canonical grouped OS schedule across all children.
+    const settings = { ...current, [slot]: { ...desired, notificationId: null } };
     await this.storage.setItem(storageKey(parentId, childProfileId), JSON.stringify(settings));
     return { permissionDenied: false, settings };
+  }
+
+  /**
+   * Removes the device-local per-child schedule handles before the canonical
+   * grouped schedule is rebuilt. Enabled/time preferences remain untouched.
+   */
+  async clearScheduledNotificationIds(
+    parentId: string,
+    childProfileId: string,
+  ): Promise<BrushingReminderSettings> {
+    const current = await this.get(parentId, childProfileId);
+    for (const slot of ['morning', 'evening'] as const) {
+      const notificationId = current[slot].notificationId;
+      if (notificationId) await this.notifications.cancel(notificationId).catch(() => undefined);
+    }
+    const cleared: BrushingReminderSettings = {
+      morning: { ...current.morning, notificationId: null },
+      evening: { ...current.evening, notificationId: null },
+    };
+    await this.storage.setItem(storageKey(parentId, childProfileId), JSON.stringify(cleared));
+    return cleared;
   }
 
   async scheduleDevelopmentTest(): Promise<{ permissionDenied: boolean }> {

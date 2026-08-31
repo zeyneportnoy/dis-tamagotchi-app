@@ -16,25 +16,40 @@ export type BrushingReminderChild = Readonly<{ id: string; nickname: string }>;
 const groupStorageKey = (parentId: string): string =>
   `parent:${parentId}:brushing-reminder-groups:v1`;
 
-/** Beyond this many children at one time, drop names for a generic subject. */
-const MAX_NAMES_IN_TITLE = 3;
-
 const SLOTS: readonly ReminderSlot[] = ['morning', 'evening'];
+const rebuildQueues = new Map<string, Promise<void>>();
+
+const possessiveVowelForName = (name: string): 'ı' | 'i' | 'u' | 'ü' => {
+  const vowels = [...name.toLocaleLowerCase('tr-TR')].filter((character) =>
+    'aeıioöuü'.includes(character),
+  );
+  const lastVowel = vowels.at(-1);
+  if (lastVowel === 'a' || lastVowel === 'ı') return 'ı';
+  if (lastVowel === 'o' || lastVowel === 'u') return 'u';
+  if (lastVowel === 'ö' || lastVowel === 'ü') return 'ü';
+  return 'i';
+};
+
+const possessiveName = (name: string): string => {
+  const possessiveVowel = possessiveVowelForName(name);
+  const endsWithVowel = 'aeıioöuü'.includes(name.at(-1)?.toLocaleLowerCase('tr-TR') ?? '');
+  return `${name}’${endsWithVowel ? 'n' : ''}${possessiveVowel}n`;
+};
 
 /**
  * Turkish possessive subject for a grouped brushing notification title:
- *  - 1 name  → "Defne’nin"
- *  - 2 names → "Defne ve Ece’nin"
- *  - 3 names → "Defne, Ece ve Ali’nin"
- *  - 0 or >3 → "Çocukların"
+ *  - 1 name  → "Emrah’ın"
+ *  - 2 names → "Emrah ve Nazlı’nın"
+ *  - 3 names → "Emrah, Nazlı ve Zeynep’in"
  */
 export function groupedBrushingSubject(names: readonly string[]): string {
   const clean = names.map((name) => name.trim()).filter((name) => name.length > 0);
-  if (clean.length === 0 || clean.length > MAX_NAMES_IN_TITLE) return 'Çocukların';
+  if (clean.length === 0) return 'Çocukların';
   const last = clean[clean.length - 1];
   const head = clean.slice(0, -1);
-  const joined = head.length === 0 ? last : `${head.join(', ')} ve ${last}`;
-  return `${joined}’nin`;
+  return head.length === 0
+    ? possessiveName(last)
+    : `${head.join(', ')} ve ${possessiveName(last)}`;
 }
 
 async function readStoredGroupIds(parentId: string): Promise<string[]> {
@@ -55,43 +70,68 @@ async function ensureAndroidChannel(): Promise<void> {
   });
 }
 
+const isBrushingReminderRequest = (
+  request: Notifications.NotificationRequest,
+): boolean => {
+  const slot = request.content.data?.reminderSlot;
+  return slot === 'morning' || slot === 'evening';
+};
+
+/**
+ * Cancels brushing schedules by their notification metadata, not only by IDs
+ * still present in AsyncStorage. This catches orphaned legacy/per-child/grouped
+ * schedules left by deleted profiles, older implementations or interrupted
+ * settings writes while preserving dentist, birthday and test notifications.
+ */
+async function cancelAllScheduledBrushingReminders(): Promise<void> {
+  const requests = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+  for (const request of requests) {
+    if (!isBrushingReminderRequest(request)) continue;
+    await Notifications.cancelScheduledNotificationAsync(request.identifier).catch(
+      () => undefined,
+    );
+  }
+}
+
 /**
  * Device-level reconciliation of brushing reminders across *all* of a parent's
  * children. Each child keeps its own separate reminder settings (still owned by
  * `reminderSettingsService`); this only decides what the OS actually delivers:
- * exactly one notification per unique (slot, time), with every child sharing
- * that time named in the title — never one notification per child at the same
- * time. Children with different times still get separate notifications, each
- * with only their own name.
+ * exactly one notification per unique effective time, with every child sharing
+ * that time represented in the title — never one notification per child at the
+ * same time. Children with different times still get separate notifications,
+ * each with only their own name.
  *
  * Fully cancels and rebuilds the grouped schedule, so it is idempotent and safe
  * to call after any change to a child's reminder settings or to the roster
  * (add / rename / remove).
  */
-export async function syncGroupedBrushingReminders(
+async function rebuildGroupedBrushingReminders(
   parentId: string,
   children: readonly BrushingReminderChild[],
 ): Promise<void> {
-  if (!parentId) return;
-
   // 1. Drop the previous grouped notifications.
   for (const id of await readStoredGroupIds(parentId)) {
     await Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined);
   }
 
+  // IDs can be lost when a profile is removed, an old app version scheduled
+  // per-child notifications, or a write was interrupted. Sweep only requests
+  // carrying brushing-reminder metadata; dentist/birthday schedules are left
+  // completely untouched.
+  await cancelAllScheduledBrushingReminders();
+
   // 2. Drop any lingering per-child notifications scheduled by
-  //    reminderSettingsService — the grouped ones supersede them.
+  //    reminderSettingsService and clear their stale device-local IDs — the
+  //    grouped ones supersede them while enabled/time preferences stay intact.
   const settingsByChild = new Map<string, BrushingReminderSettings>();
   for (const child of children) {
     try {
-      const settings = await reminderSettingsService.get(parentId, child.id);
+      const settings = await reminderSettingsService.clearScheduledNotificationIds(
+        parentId,
+        child.id,
+      );
       settingsByChild.set(child.id, settings);
-      for (const slot of SLOTS) {
-        const perChildId = settings[slot].notificationId;
-        if (perChildId) {
-          await Notifications.cancelScheduledNotificationAsync(perChildId).catch(() => undefined);
-        }
-      }
     } catch {
       // an unreadable child simply won't be grouped
     }
@@ -109,18 +149,31 @@ export async function syncGroupedBrushingReminders(
     return;
   }
 
-  // 4. Bucket enabled reminders by (slot, HH:mm), preserving child order.
-  const buckets = new Map<string, { slot: ReminderSlot; time: string; names: string[] }>();
+  // 4. Bucket enabled reminders by the actual effective HH:mm, preserving child
+  //    order. Morning/evening preferences stay separate in storage, but two
+  //    enabled preferences resolving to the same delivery time produce one OS
+  //    notification, never two.
+  const buckets = new Map<
+    string,
+    { childIds: Set<string>; slot: ReminderSlot; time: string; names: string[] }
+  >();
   for (const child of children) {
     const settings = settingsByChild.get(child.id);
     if (!settings) continue;
     for (const slot of SLOTS) {
       if (!settings[slot].enabled) continue;
       const { time } = settings[slot];
-      const key = `${slot}@${time}`;
-      const bucket = buckets.get(key) ?? { slot, time, names: [] };
-      bucket.names.push(child.nickname);
-      buckets.set(key, bucket);
+      const bucket = buckets.get(time) ?? {
+        childIds: new Set<string>(),
+        slot,
+        time,
+        names: [],
+      };
+      if (!bucket.childIds.has(child.id)) {
+        bucket.childIds.add(child.id);
+        bucket.names.push(child.nickname);
+      }
+      buckets.set(time, bucket);
     }
   }
 
@@ -155,4 +208,26 @@ export async function syncGroupedBrushingReminders(
   await AsyncStorage.setItem(groupStorageKey(parentId), JSON.stringify(scheduledIds)).catch(
     () => undefined,
   );
+}
+
+/**
+ * Serializes rebuilds per parent. Settings/profile mutations can request a
+ * rebuild concurrently; without this queue both calls could cancel the same old
+ * IDs and then each create a replacement grouped notification.
+ */
+export async function syncGroupedBrushingReminders(
+  parentId: string,
+  children: readonly BrushingReminderChild[],
+): Promise<void> {
+  if (!parentId) return;
+  const previous = rebuildQueues.get(parentId) ?? Promise.resolve();
+  const pending = previous
+    .catch(() => undefined)
+    .then(() => rebuildGroupedBrushingReminders(parentId, children));
+  rebuildQueues.set(parentId, pending);
+  try {
+    await pending;
+  } finally {
+    if (rebuildQueues.get(parentId) === pending) rebuildQueues.delete(parentId);
+  }
 }
