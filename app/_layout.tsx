@@ -20,6 +20,9 @@ perfMark('js:root-module-eval');
 void SplashScreen.preventAutoHideAsync();
 configureNotificationPresentation();
 
+const SPLASH_MINIMUM_VISIBLE_MS = 2_000;
+const splashShownAt = Date.now();
+
 function MissedSlotReconciler() {
   const { loading, session } = useAuth();
 
@@ -79,6 +82,9 @@ export default function RootLayout() {
     Manrope: require('../assets/fonts/Manrope-Variable.ttf'),
   });
   const [ready, setReady] = useState(false);
+  const [minimumSplashElapsed, setMinimumSplashElapsed] = useState(
+    Date.now() - splashShownAt >= SPLASH_MINIMUM_VISIBLE_MS,
+  );
   const [failed, setFailed] = useState(false);
   const [failureReason, setFailureReason] = useState<string | undefined>(undefined);
 
@@ -96,11 +102,21 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if ((ready && fontsLoaded) || failed || fontError) {
+    const remaining = SPLASH_MINIMUM_VISIBLE_MS - (Date.now() - splashShownAt);
+    if (remaining <= 0) {
+      setMinimumSplashElapsed(true);
+      return;
+    }
+    const timer = setTimeout(() => setMinimumSplashElapsed(true), remaining);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (minimumSplashElapsed && ((ready && fontsLoaded) || failed || fontError)) {
       perfMark('layout:splash-hide');
       void SplashScreen.hideAsync();
     }
-  }, [failed, fontError, fontsLoaded, ready]);
+  }, [failed, fontError, fontsLoaded, minimumSplashElapsed, ready]);
 
   if (failed || fontError) {
     const dbReason = failureReason;

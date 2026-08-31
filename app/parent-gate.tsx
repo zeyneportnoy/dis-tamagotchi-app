@@ -53,6 +53,7 @@ export default function ParentGateScreen() {
       >
         <ScrollView
           contentContainerStyle={styles.content}
+          contentInsetAdjustmentBehavior="never"
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -95,9 +96,11 @@ const styles = StyleSheet.create({
     borderColor: colors.teal,
     borderRadius: radii.pill,
     borderWidth: 2,
-    fontSize: 28,
-    minHeight: 72,
-    paddingHorizontal: spacing.lg,
+    fontSize: 24,
+    height: 56,
+    minHeight: 56,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 0,
   },
   back: { left: spacing.lg, position: 'absolute', zIndex: 2 },
   backgroundBlobBottomLeft: {
@@ -172,8 +175,9 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.white,
     borderRadius: radii.lg,
-    gap: spacing.lg,
-    padding: spacing.xl,
+    gap: 12,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
     shadowColor: '#6D55B5',
     shadowOffset: { height: 12, width: 0 },
     shadowOpacity: 0.1,
@@ -185,8 +189,8 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     gap: spacing.md,
     justifyContent: 'flex-start',
-    paddingBottom: spacing.lg,
-    paddingTop: spacing.xl + spacing.lg,
+    paddingBottom: spacing.xl,
+    paddingTop: spacing.md,
   },
   flex: { flex: 1, width: '100%' },
   hero: {
@@ -205,9 +209,9 @@ const styles = StyleSheet.create({
   question: {
     color: '#2E226D',
     fontFamily: 'Baloo2',
-    fontSize: 30,
+    fontSize: 26,
     fontWeight: '700',
-    lineHeight: 38,
+    lineHeight: 32,
     textAlign: 'center',
   },
   screen: {
@@ -215,5 +219,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#FCFAFF',
     justifyContent: 'flex-start',
   },
-  title: { color: '#181824', textAlign: 'center' },
+  title: {
+    color: '#181824',
+    fontSize: 29,
+    lineHeight: 35,
+    textAlign: 'center',
+  },
 });

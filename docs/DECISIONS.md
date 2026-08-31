@@ -394,13 +394,15 @@ onboarding ve Mood Lab aynı render bileşenini kullanır.
   yerleşimler korunur; kullanılamayan kayıtlar sahnede render edilmez ve mevcut background fallback
   davranışı geçerli kalır.
 
-# 2026-08-29 — Native ve bootstrap splash aynı onaylı marka görselini kullanır
+# 2026-08-31 — Native ve bootstrap splash aynı minimal marka görselini kullanır
 
-- Expo native launch screen, onaylı sabit DentHero splash PNG’sini lavanta arka plan üzerinde
-  `cover` ile gösterir; spinner, loading noktası veya yapay minimum bekleme süresi içermez.
-- Native splash yalnız fontlar ve yerel veritabanı hazır olduğunda kaldırılır. Auth restore ve ilk
-  route çözülürken aynı yerel PNG React katmanında gösterilerek aradaki beyaz/loading-state karesi
-  önlenir; auth ve navigation kararları değiştirilmez.
+- Expo native launch screen ile mevcut bootstrap katmanı, yazı ve loading göstergesi içermeyen aynı
+  onaylı DentHero kahraman PNG’sini lavanta arka plan üzerinde `contain` ile gösterir. Source asset
+  ve iOS asset-catalog kopyası birebir eş tutulur; handoff sırasında eski raster gösterilmez.
+- Native splash en az iki saniye ve fontlar ile yerel veritabanı hazır olana kadar görünür kalır.
+  Hazırlık daha uzun sürerse erken kaldırılmaz; auth ve navigation kararları değiştirilmez.
+- iOS launch storyboard ve image-set kimlikleri DentHero'ya özel tutulur; böylece sistemin eski
+  launch snapshot'ını aynı `SplashScreen` adı üzerinden yeniden göstermesi engellenir.
 
 # 2026-08-31 — Slot kapanışı reconciliation yaşam döngüsünden tetiklenir
 
