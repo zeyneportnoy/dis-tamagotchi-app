@@ -198,7 +198,15 @@ export class ReminderSettingsService {
       morning: { ...current.morning, notificationId: null },
       evening: { ...current.evening, notificationId: null },
     };
-    await this.storage.setItem(storageKey(parentId, childProfileId), JSON.stringify(cleared));
+    // Only rewrite a child that actually has a stored record (a real saved
+    // preference, or one just seeded from the legacy parent-level record by
+    // get()). A child that has never saved a reminder must NOT get a fabricated
+    // defaults record persisted here: that would flip hasStoredSettings() to
+    // true and expose the child to cloud-recovery overwrites, and would also
+    // push 08:00 / 20:30 to the cloud as if it were a real preference.
+    if (await this.hasStoredSettings(parentId, childProfileId)) {
+      await this.storage.setItem(storageKey(parentId, childProfileId), JSON.stringify(cleared));
+    }
     return cleared;
   }
 
