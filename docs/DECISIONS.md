@@ -403,6 +403,8 @@ onboarding ve Mood Lab aynı render bileşenini kullanır.
   Hazırlık daha uzun sürerse erken kaldırılmaz; auth ve navigation kararları değiştirilmez.
 - iOS launch storyboard ve image-set kimlikleri DentHero'ya özel tutulur; böylece sistemin eski
   launch snapshot'ını aynı `SplashScreen` adı üzerinden yeniden göstermesi engellenir.
+- Native launch, Expo splash ve bootstrap arka planı, onaylı PNG'nin dış kenarındaki baskın
+  `#D9D3F6` rengine eşitlenir; `contain` boşluklarında safe-area renk bandı oluşmaz.
 
 # 2026-08-31 — Slot kapanışı reconciliation yaşam döngüsünden tetiklenir
 

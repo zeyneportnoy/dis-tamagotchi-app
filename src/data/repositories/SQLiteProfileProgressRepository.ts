@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { toLocalDateKey } from '@/domain/brushing';
 import type { BrushingPeriod, ProfileProgress, ProfileProgressRepository } from '@/domain/family';
+import { previousLocalDayKey } from '@/domain/rewards';
 
 type ProgressRow = {
   child_profile_id: string;
@@ -64,6 +65,26 @@ export class SQLiteProfileProgressRepository implements ProfileProgressRepositor
       profileId,
       today,
       profileId,
+    );
+    // A streak is only alive while the last full-day-completed day is today or
+    // yesterday. If a whole calendar day has since ended without both brushings,
+    // the streak is broken and must read as 0 (the next full day restarts it at
+    // 1 via previousLocalDayKey in the brushing repository). Only applied when
+    // this child has local full-day history, so a cloud-recovered streak with no
+    // local daily_progress rows yet is left untouched.
+    await this.database.runAsync(
+      `UPDATE profile_progress SET current_streak = 0
+       WHERE child_profile_id = ?
+         AND current_streak > 0
+         AND EXISTS (SELECT 1 FROM daily_progress
+                     WHERE child_profile_id = ? AND full_day_completed = 1)
+         AND NOT EXISTS (SELECT 1 FROM daily_progress
+                         WHERE child_profile_id = ? AND full_day_completed = 1
+                           AND local_day_key >= ?)`,
+      profileId,
+      profileId,
+      profileId,
+      previousLocalDayKey(today),
     );
   }
 
