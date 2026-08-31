@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
+  isBrushUnlockedForScore,
   rewardCatalog,
   rewardItemForKey,
   type AccessorySlot,
@@ -57,12 +58,35 @@ export class SQLiteInventoryRepository implements InventoryRepository {
     await this.assertOwned(profileId);
     const slot = rewardItemForKey(itemKey).slot;
     await this.database.withTransactionAsync(async () => {
-      const unlocked = await this.database.getFirstAsync<{ item_key: string }>(
+      let unlocked = await this.database.getFirstAsync<{ item_key: string }>(
         `SELECT item_key FROM inventory_items
          WHERE child_profile_id = ? AND item_key = ?`,
         profileId,
         itemKey,
       );
+      // Brush availability is defined by the child's current Mine balance. Older
+      // profiles can legitimately satisfy that gate without having a matching
+      // inventory row (only one reward used to be materialized per threshold).
+      // Materialize the selected brush through the existing inventory source of
+      // truth before equipping it; a below-threshold brush is still rejected.
+      if (!unlocked && slot === 'brush') {
+        const progress = await this.database.getFirstAsync<{ total_xp: number }>(
+          'SELECT total_xp FROM profile_progress WHERE child_profile_id = ?',
+          profileId,
+        );
+        if (isBrushUnlockedForScore(itemKey, Math.max(0, progress?.total_xp ?? 0))) {
+          await this.database.runAsync(
+            `INSERT OR IGNORE INTO inventory_items
+              (child_profile_id, item_key, unlocked_at, equipped, slot)
+             VALUES (?, ?, ?, 0, ?)`,
+            profileId,
+            itemKey,
+            new Date().toISOString(),
+            slot,
+          );
+          unlocked = { item_key: itemKey };
+        }
+      }
       if (!unlocked) throw new Error('ITEM_LOCKED');
       await this.database.runAsync(
         'UPDATE inventory_items SET equipped = 0 WHERE child_profile_id = ? AND slot = ?',

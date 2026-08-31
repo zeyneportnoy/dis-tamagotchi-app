@@ -82,7 +82,11 @@ import {
   rewardItemForKey,
   type BrushingRewardResult,
 } from '@/domain/rewards';
-import { loadCustomizationState } from '@/features/customization';
+import {
+  loadCustomizationState,
+  presentCustomizationInventory,
+  saveDeveloperEquippedItem,
+} from '@/features/customization';
 import type { ProfileProgress } from '@/domain/family';
 
 const regionKeys = ['rightUpper', 'leftUpper', 'rightLower', 'leftLower'] as const;
@@ -1225,20 +1229,32 @@ export default function BrushingScreen() {
       .then(async (activeProfile) => {
         if (!activeProfile) return router.replace('/onboarding');
         const childUseCases = await getChildExperienceUseCases();
-        const [progress, equippedItems, customization] = await Promise.all([
+        const [progress, inventory, customization] = await Promise.all([
           childUseCases.getProgress(activeProfile.id),
-          childUseCases.getEquippedItems(activeProfile.id),
-          __DEV__ ? loadCustomizationState(activeProfile.id) : Promise.resolve(null),
+          childUseCases.listInventory(activeProfile.id),
+          loadCustomizationState(activeProfile.id),
         ]);
         setProfile(activeProfile);
         setInitialProgress(progress);
-        const equippedBrush = equippedItems.find((item) => item.slot === 'brush')?.key;
-        // In DEV, Collection writes the chosen brush to the developer-equipped override
-        // (AsyncStorage) rather than the inventory table, so honor it here too.
-        const devBrush = customization?.developerEquipped.brush ?? undefined;
-        // If a Mine Puan drop has re-locked the selected brush, use the always-open
-        // classic brush instead of an invalid selection.
-        setEquippedBrushKey(effectiveBrushKey(devBrush ?? equippedBrush, progress.totalXp));
+        // Resolve the equipped brush through the same per-child inventory
+        // presentation used by Collection instead of maintaining a separate
+        // brushing-screen selection path.
+        const selectedBrush = presentCustomizationInventory(
+          inventory,
+          customization,
+          __DEV__,
+        ).find((item) => item.slot === 'brush' && item.equipped)?.key;
+        const brushKey = effectiveBrushKey(selectedBrush, progress.totalXp);
+        // Persist the existing safe fallback when a Mine drop re-locks the
+        // selection, so a locked brush never remains equipped after restart.
+        if (selectedBrush && brushKey !== selectedBrush) {
+          if (__DEV__) {
+            await saveDeveloperEquippedItem(activeProfile.id, 'brush', brushKey);
+          } else {
+            await childUseCases.equipItem(activeProfile.id, brushKey);
+          }
+        }
+        setEquippedBrushKey(brushKey);
       })
       .catch(() => setFailed(true));
   }, []);
