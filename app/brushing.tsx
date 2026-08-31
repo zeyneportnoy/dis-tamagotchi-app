@@ -1,6 +1,11 @@
 import { router, useNavigation } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
-import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import {
+  setAudioModeAsync,
+  setIsAudioActiveAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+} from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import { useKeepAwake } from 'expo-keep-awake';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -82,6 +87,21 @@ import type { ProfileProgress } from '@/domain/family';
 
 const regionKeys = ['rightUpper', 'leftUpper', 'rightLower', 'leftLower'] as const;
 type BrushingRegion = (typeof regionKeys)[number];
+
+const brushingAudioPlayerOptions = {
+  downloadFirst: true,
+  keepAudioSessionActive: true,
+} as const;
+
+async function activateBrushingAudioSession(): Promise<void> {
+  await setAudioModeAsync({
+    allowsRecording: false,
+    interruptionMode: 'doNotMix',
+    playsInSilentMode: true,
+    shouldPlayInBackground: false,
+  });
+  await setIsAudioActiveAsync(true);
+}
 
 const brushImageCentre = { x: 36, y: 64 } as const;
 const brushImageBristlePoint = { x: 29.5, y: 19 } as const;
@@ -643,6 +663,7 @@ export default function BrushingScreen() {
   const sessionId = useRef(randomUUID());
   const completionStarted = useRef(false);
   const completionJinglePlayed = useRef(false);
+  const audioResumeInProgress = useRef(false);
   const allowExit = useRef(false);
   const exitPromptOpen = useRef(false);
   const exitInProgress = useRef(false);
@@ -660,6 +681,8 @@ export default function BrushingScreen() {
   const [result, setResult] = useState<BrushingRewardResult | null>(null);
   const [completionMessageKey, setCompletionMessageKey] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const [appStateStatus, setAppStateStatus] = useState(AppState.currentState);
+  const [audioSessionReady, setAudioSessionReady] = useState(false);
   const [voiceProfile, setVoiceProfile] = useState<BrushingVoiceProfile | null>(null);
   const [characterZoneLayout, setCharacterZoneLayout] = useState<LayoutRectangle | null>(null);
   const [characterArtworkLayout, setCharacterArtworkLayout] = useState<LayoutRectangle | null>(
@@ -669,23 +692,92 @@ export default function BrushingScreen() {
   const [personalizedCueUris, setPersonalizedCueUris] = useState<
     Partial<Record<PersonalizedVoiceCueIndex, string>>
   >({});
+  const [personalizedCueLookupComplete, setPersonalizedCueLookupComplete] = useState(false);
   const [completionJingleIndex] = useState(chooseCompletionJingleIndex);
-  const completionJingle = useAudioPlayer(completionJingles[completionJingleIndex]?.source, {
-    downloadFirst: true,
-    keepAudioSessionActive: true,
-  });
+  const completionJingle = useAudioPlayer(
+    completionJingles[completionJingleIndex]?.source,
+    brushingAudioPlayerOptions,
+  );
   const completionJingleStatus = useAudioPlayerStatus(completionJingle);
-  const timerTickA = useAudioPlayer(require('../assets/audio/soft-timer-tick.wav'));
-  const timerTickB = useAudioPlayer(require('../assets/audio/soft-timer-tick.wav'));
-  const gokceRightUpperVoice = useAudioPlayer(brushingVoiceCues.gokce[0].source);
-  const gokceLeftUpperVoice = useAudioPlayer(brushingVoiceCues.gokce[1].source);
-  const gokceRightLowerVoice = useAudioPlayer(brushingVoiceCues.gokce[2].source);
-  const gokceLeftLowerVoice = useAudioPlayer(brushingVoiceCues.gokce[3].source);
-  const sametRightUpperVoice = useAudioPlayer(brushingVoiceCues.samet[0].source);
-  const sametLeftUpperVoice = useAudioPlayer(brushingVoiceCues.samet[1].source);
-  const sametRightLowerVoice = useAudioPlayer(brushingVoiceCues.samet[2].source);
-  const sametLeftLowerVoice = useAudioPlayer(brushingVoiceCues.samet[3].source);
-  const personalizedVoice = useAudioPlayer(null);
+  const timerTickA = useAudioPlayer(
+    require('../assets/audio/soft-timer-tick.wav'),
+    brushingAudioPlayerOptions,
+  );
+  const timerTickB = useAudioPlayer(
+    require('../assets/audio/soft-timer-tick.wav'),
+    brushingAudioPlayerOptions,
+  );
+  const gokceRightUpperVoice = useAudioPlayer(
+    brushingVoiceCues.gokce[0].source,
+    brushingAudioPlayerOptions,
+  );
+  const gokceLeftUpperVoice = useAudioPlayer(
+    brushingVoiceCues.gokce[1].source,
+    brushingAudioPlayerOptions,
+  );
+  const gokceRightLowerVoice = useAudioPlayer(
+    brushingVoiceCues.gokce[2].source,
+    brushingAudioPlayerOptions,
+  );
+  const gokceLeftLowerVoice = useAudioPlayer(
+    brushingVoiceCues.gokce[3].source,
+    brushingAudioPlayerOptions,
+  );
+  const sametRightUpperVoice = useAudioPlayer(
+    brushingVoiceCues.samet[0].source,
+    brushingAudioPlayerOptions,
+  );
+  const sametLeftUpperVoice = useAudioPlayer(
+    brushingVoiceCues.samet[1].source,
+    brushingAudioPlayerOptions,
+  );
+  const sametRightLowerVoice = useAudioPlayer(
+    brushingVoiceCues.samet[2].source,
+    brushingAudioPlayerOptions,
+  );
+  const sametLeftLowerVoice = useAudioPlayer(
+    brushingVoiceCues.samet[3].source,
+    brushingAudioPlayerOptions,
+  );
+  const personalizedRightUpperVoice = useAudioPlayer(
+    personalizedCueUris[0] ?? null,
+    brushingAudioPlayerOptions,
+  );
+  const personalizedRightLowerVoice = useAudioPlayer(
+    personalizedCueUris[2] ?? null,
+    brushingAudioPlayerOptions,
+  );
+  const gokceRightUpperVoiceStatus = useAudioPlayerStatus(gokceRightUpperVoice);
+  const gokceLeftUpperVoiceStatus = useAudioPlayerStatus(gokceLeftUpperVoice);
+  const gokceRightLowerVoiceStatus = useAudioPlayerStatus(gokceRightLowerVoice);
+  const gokceLeftLowerVoiceStatus = useAudioPlayerStatus(gokceLeftLowerVoice);
+  const sametRightUpperVoiceStatus = useAudioPlayerStatus(sametRightUpperVoice);
+  const sametLeftUpperVoiceStatus = useAudioPlayerStatus(sametLeftUpperVoice);
+  const sametRightLowerVoiceStatus = useAudioPlayerStatus(sametRightLowerVoice);
+  const sametLeftLowerVoiceStatus = useAudioPlayerStatus(sametLeftLowerVoice);
+  const personalizedRightUpperVoiceStatus = useAudioPlayerStatus(personalizedRightUpperVoice);
+  const personalizedRightLowerVoiceStatus = useAudioPlayerStatus(personalizedRightLowerVoice);
+  const selectedStaticVoicePlayersReady =
+    voiceProfile === 'off'
+      ? true
+      : voiceProfile === 'gokce'
+        ? gokceRightUpperVoiceStatus.isLoaded &&
+          gokceLeftUpperVoiceStatus.isLoaded &&
+          gokceRightLowerVoiceStatus.isLoaded &&
+          gokceLeftLowerVoiceStatus.isLoaded
+        : voiceProfile === 'samet'
+          ? sametRightUpperVoiceStatus.isLoaded &&
+            sametLeftUpperVoiceStatus.isLoaded &&
+            sametRightLowerVoiceStatus.isLoaded &&
+            sametLeftLowerVoiceStatus.isLoaded
+          : false;
+  const selectedPersonalizedVoicePlayersReady =
+    voiceProfile !== 'gokce' ||
+    !nicknamePersonalization ||
+    ((!personalizedCueUris[0] || personalizedRightUpperVoiceStatus.isLoaded) &&
+      (!personalizedCueUris[2] || personalizedRightLowerVoiceStatus.isLoaded));
+  const sessionVoicePlayersReady =
+    selectedStaticVoicePlayersReady && selectedPersonalizedVoicePlayersReady;
   const snapshot = timer ? getBrushingTimerSnapshot(timer, nowMs) : null;
   const region = regionKeys[snapshot?.segmentIndex ?? 0] ?? regionKeys[0];
   const currentGrowthStage = growthStageForXp(initialProgress?.totalXp ?? 0);
@@ -717,14 +809,16 @@ export default function BrushingScreen() {
     sametLeftUpperVoice.pause();
     sametRightLowerVoice.pause();
     sametLeftLowerVoice.pause();
-    personalizedVoice.pause();
+    personalizedRightUpperVoice.pause();
+    personalizedRightLowerVoice.pause();
     voiceSpeaking.current = false;
   }, [
     gokceLeftLowerVoice,
     gokceLeftUpperVoice,
     gokceRightLowerVoice,
     gokceRightUpperVoice,
-    personalizedVoice,
+    personalizedRightLowerVoice,
+    personalizedRightUpperVoice,
     sametLeftLowerVoice,
     sametLeftUpperVoice,
     sametRightLowerVoice,
@@ -733,8 +827,92 @@ export default function BrushingScreen() {
     timerTickB,
   ]);
 
+  const pauseBrushingSession = useCallback((): void => {
+    const current = Date.now();
+    setTimer((state) => (state ? pauseBrushingTimer(state, current) : state));
+    setNowMs(current);
+    pauseSessionAudio();
+  }, [pauseSessionAudio]);
+
+  const resumeBrushingSession = useCallback((): void => {
+    if (audioResumeInProgress.current || AppState.currentState !== 'active') return;
+    audioResumeInProgress.current = true;
+    void activateBrushingAudioSession()
+      .then(() => {
+        if (AppState.currentState !== 'active') return;
+        const current = Date.now();
+        setAudioSessionReady(true);
+        setTimer((state) => (state ? resumeBrushingTimer(state, current) : state));
+        setNowMs(current);
+      })
+      .catch(() => setAudioSessionReady(false))
+      .finally(() => {
+        audioResumeInProgress.current = false;
+      });
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void activateBrushingAudioSession()
+      .then(() => {
+        if (active) setAudioSessionReady(true);
+      })
+      .catch(() => {
+        if (active) setAudioSessionReady(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   useEffect(() => {
     if (!session?.userId || !profile) return;
+    let active = true;
+    setVoiceProfile(null);
+    void getBrushingVoiceProfile(session.userId, profile.id)
+      .then((storedVoiceProfile) => {
+        if (active) setVoiceProfile(storedVoiceProfile);
+      })
+      .catch(() => {
+        if (active) setVoiceProfile('gokce');
+      });
+    return () => {
+      active = false;
+      voiceSpeaking.current = false;
+    };
+  }, [profile, session?.userId]);
+
+  useEffect(() => {
+    if (!session?.userId || !profile) return;
+    let active = true;
+    setNicknamePersonalization(null);
+    void getNicknamePersonalizationEnabled(session.userId, profile.id)
+      .then((enabled) => {
+        if (active) setNicknamePersonalization(enabled);
+      })
+      .catch(() => {
+        if (active) setNicknamePersonalization(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [profile, session?.userId]);
+
+  useEffect(() => {
+    setPersonalizedCueLookupComplete(false);
+    setPersonalizedCueUris({});
+    if (
+      !session?.userId ||
+      !profile ||
+      voiceProfile === null ||
+      nicknamePersonalization === null
+    ) {
+      return;
+    }
+    if (voiceProfile !== 'gokce' || !nicknamePersonalization) {
+      setPersonalizedCueLookupComplete(true);
+      return;
+    }
     let active = true;
     const cueInput = (cueIndex: PersonalizedVoiceCueIndex) => ({
       childProfileId: profile.id,
@@ -742,42 +920,35 @@ export default function BrushingScreen() {
       nickname: profile.nickname,
       profile: 'gokce' as const,
     });
-    void Promise.all([
-      getBrushingVoiceProfile(session.userId, profile.id),
-      getNicknamePersonalizationEnabled(session.userId, profile.id),
-      ...personalizedVoiceCueIndexes.map((cueIndex) =>
+    void Promise.all(
+      personalizedVoiceCueIndexes.map((cueIndex) =>
         getCachedPersonalizedVoiceCue(cueInput(cueIndex)),
       ),
-    ])
-      .then(([storedVoiceProfile, personalizationEnabled, rightUpperUri, rightLowerUri]) => {
+    )
+      .then(([rightUpperUri, rightLowerUri]) => {
         if (!active) return;
-        setVoiceProfile(storedVoiceProfile);
-        setNicknamePersonalization(personalizationEnabled);
         setPersonalizedCueUris({
           ...(rightUpperUri ? { 0: rightUpperUri } : {}),
           ...(rightLowerUri ? { 2: rightLowerUri } : {}),
         });
-        if (!personalizationEnabled || storedVoiceProfile !== 'gokce') return;
+        setPersonalizedCueLookupComplete(true);
         personalizedVoiceCueIndexes.forEach((cueIndex) => {
           void warmPersonalizedVoiceCue(cueInput(cueIndex))
             .then((uri) => {
-              if (active && uri)
+              if (active && uri && !startedAt.current) {
                 setPersonalizedCueUris((current) => ({ ...current, [cueIndex]: uri }));
+              }
             })
             .catch(() => undefined);
         });
       })
       .catch(() => {
-        if (active) {
-          setVoiceProfile('gokce');
-          setNicknamePersonalization(false);
-        }
+        if (active) setPersonalizedCueLookupComplete(true);
       });
     return () => {
       active = false;
-      voiceSpeaking.current = false;
     };
-  }, [profile, session?.userId]);
+  }, [nicknamePersonalization, profile, session?.userId, voiceProfile]);
 
   useEffect(() => {
     const voicePlayers = [
@@ -789,7 +960,8 @@ export default function BrushingScreen() {
       sametLeftUpperVoice,
       sametRightLowerVoice,
       sametLeftLowerVoice,
-      personalizedVoice,
+      personalizedRightUpperVoice,
+      personalizedRightLowerVoice,
     ];
     const subscriptions = voicePlayers.map((player, index) =>
       player.addListener('playbackStatusUpdate', (status) => {
@@ -811,7 +983,8 @@ export default function BrushingScreen() {
     sametLeftUpperVoice,
     sametRightLowerVoice,
     sametRightUpperVoice,
-    personalizedVoice,
+    personalizedRightLowerVoice,
+    personalizedRightUpperVoice,
   ]);
 
   useEffect(() => {
@@ -821,6 +994,10 @@ export default function BrushingScreen() {
       !profile ||
       !currentSnapshot ||
       segmentIndex === undefined ||
+      timer?.status !== 'running' ||
+      appStateStatus !== 'active' ||
+      !audioSessionReady ||
+      !sessionVoicePlayersReady ||
       voiceProfile === null ||
       !shouldPlayVoiceCue({
         completed: currentSnapshot.completed,
@@ -837,9 +1014,20 @@ export default function BrushingScreen() {
       (segmentIndex === 0 || segmentIndex === 2)
         ? personalizedCueUris[segmentIndex]
         : undefined;
-    const voicePlayer = personalizedUri
-      ? personalizedVoice
-      : voiceProfile === 'gokce'
+    const personalizedVoicePlayer =
+      segmentIndex === 0
+        ? personalizedRightUpperVoice
+        : segmentIndex === 2
+          ? personalizedRightLowerVoice
+          : undefined;
+    const personalizedVoicePlayerLoaded =
+      segmentIndex === 0
+        ? personalizedRightUpperVoiceStatus.isLoaded
+        : segmentIndex === 2
+          ? personalizedRightLowerVoiceStatus.isLoaded
+          : false;
+    const staticVoicePlayer =
+      voiceProfile === 'gokce'
         ? [gokceRightUpperVoice, gokceLeftUpperVoice, gokceRightLowerVoice, gokceLeftLowerVoice][
             segmentIndex
           ]
@@ -848,36 +1036,71 @@ export default function BrushingScreen() {
               segmentIndex
             ]
           : undefined;
-    if (!voicePlayer) return;
-    if (personalizedUri) personalizedVoice.replace(personalizedUri);
+    const staticVoicePlayerLoaded =
+      voiceProfile === 'gokce'
+        ? [
+            gokceRightUpperVoiceStatus.isLoaded,
+            gokceLeftUpperVoiceStatus.isLoaded,
+            gokceRightLowerVoiceStatus.isLoaded,
+            gokceLeftLowerVoiceStatus.isLoaded,
+          ][segmentIndex]
+        : voiceProfile === 'samet'
+          ? [
+              sametRightUpperVoiceStatus.isLoaded,
+              sametLeftUpperVoiceStatus.isLoaded,
+              sametRightLowerVoiceStatus.isLoaded,
+              sametLeftLowerVoiceStatus.isLoaded,
+            ][segmentIndex]
+          : false;
+    const voicePlayer = personalizedUri
+      ? personalizedVoicePlayer
+      : staticVoicePlayer;
+    const voicePlayerLoaded = personalizedUri
+      ? personalizedVoicePlayerLoaded
+      : staticVoicePlayerLoaded;
+    if (!voicePlayer || !voicePlayerLoaded) return;
+    pauseSessionAudio();
+    voicePlayer.play();
     lastAnnouncedSegment.current = segmentIndex;
     voiceSpeaking.current = true;
-    timerTickA.pause();
-    timerTickB.pause();
     if (__DEV__) {
       const cue = getBrushingVoiceCue(voiceProfile, segmentIndex);
       console.info(
         `[brushing-voice] play profile=${voiceProfile} region=${cue?.region ?? 'unknown'} boundary=${cue?.boundarySecond ?? 'unknown'} source=${personalizedUri ? 'personalized-cache' : (cue?.path ?? 'unknown')}`,
       );
     }
-    void voicePlayer.seekTo(0).then(() => voicePlayer.play());
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
   }, [
+    appStateStatus,
+    audioSessionReady,
     gokceLeftLowerVoice,
+    gokceLeftLowerVoiceStatus.isLoaded,
     gokceLeftUpperVoice,
+    gokceLeftUpperVoiceStatus.isLoaded,
     gokceRightLowerVoice,
+    gokceRightLowerVoiceStatus.isLoaded,
     gokceRightUpperVoice,
+    gokceRightUpperVoiceStatus.isLoaded,
     nicknamePersonalization,
+    pauseSessionAudio,
     personalizedCueUris,
-    personalizedVoice,
+    personalizedRightLowerVoice,
+    personalizedRightLowerVoiceStatus.isLoaded,
+    personalizedRightUpperVoice,
+    personalizedRightUpperVoiceStatus.isLoaded,
     profile,
     sametLeftLowerVoice,
+    sametLeftLowerVoiceStatus.isLoaded,
     sametLeftUpperVoice,
+    sametLeftUpperVoiceStatus.isLoaded,
     sametRightLowerVoice,
+    sametRightLowerVoiceStatus.isLoaded,
     sametRightUpperVoice,
-    snapshot,
-    timerTickA,
-    timerTickB,
+    sametRightUpperVoiceStatus.isLoaded,
+    sessionVoicePlayersReady,
+    snapshot?.completed,
+    snapshot?.segmentIndex,
+    timer?.status,
     voiceProfile,
   ]);
 
@@ -950,7 +1173,16 @@ export default function BrushingScreen() {
   }, [result, timer, timerTickA, timerTickB, voiceProfile]);
 
   useEffect(() => {
-    if (!profile || voiceProfile === null || nicknamePersonalization === null || startedAt.current)
+    if (
+      !profile ||
+      voiceProfile === null ||
+      nicknamePersonalization === null ||
+      !personalizedCueLookupComplete ||
+      !audioSessionReady ||
+      !sessionVoicePlayersReady ||
+      appStateStatus !== 'active' ||
+      startedAt.current
+    )
       return;
     const initialNow = Date.now();
     const sessionStartedAt = new Date(initialNow).toISOString();
@@ -964,7 +1196,15 @@ export default function BrushingScreen() {
         setNowMs(initialNow);
       })
       .catch(() => setFailed(true));
-  }, [nicknamePersonalization, profile, voiceProfile]);
+  }, [
+    appStateStatus,
+    audioSessionReady,
+    nicknamePersonalization,
+    personalizedCueLookupComplete,
+    profile,
+    sessionVoicePlayersReady,
+    voiceProfile,
+  ]);
 
   useEffect(
     () =>
@@ -973,13 +1213,10 @@ export default function BrushingScreen() {
         event.preventDefault();
         if (exitPromptOpen.current) return;
         exitPromptOpen.current = true;
-        const current = Date.now();
-        setTimer((state) => (state ? pauseBrushingTimer(state, current) : state));
-        setNowMs(current);
-        pauseSessionAudio();
+        pauseBrushingSession();
         setExitConfirmation(true);
       }),
-    [navigation, pauseSessionAudio, result],
+    [navigation, pauseBrushingSession, result],
   );
 
   useEffect(() => {
@@ -1007,13 +1244,22 @@ export default function BrushingScreen() {
   }, []);
 
   useEffect(() => {
-    const interval = setInterval(() => setNowMs(Date.now()), 250);
-    const subscription = AppState.addEventListener('change', () => setNowMs(Date.now()));
+    const interval = setInterval(() => {
+      if (AppState.currentState === 'active') setNowMs(Date.now());
+    }, 250);
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      setAppStateStatus(nextState);
+      if (nextState !== 'active') {
+        pauseBrushingSession();
+        return;
+      }
+      setNowMs(Date.now());
+    });
     return () => {
       clearInterval(interval);
       subscription.remove();
     };
-  }, []);
+  }, [pauseBrushingSession]);
 
   useEffect(() => {
     const sessionStartedAt = startedAt.current;
@@ -1033,37 +1279,25 @@ export default function BrushingScreen() {
   }, [completionMessageKey, profile, result]);
 
   useEffect(() => {
-    if (!result || !completionJingleStatus.isLoaded || completionJinglePlayed.current) return;
-    completionJinglePlayed.current = true;
-    timerTickA.pause();
-    timerTickB.pause();
-    gokceRightUpperVoice.pause();
-    gokceLeftUpperVoice.pause();
-    gokceRightLowerVoice.pause();
-    gokceLeftLowerVoice.pause();
-    sametRightUpperVoice.pause();
-    sametLeftUpperVoice.pause();
-    sametRightLowerVoice.pause();
-    sametLeftLowerVoice.pause();
-    personalizedVoice.pause();
-    voiceSpeaking.current = false;
+    if (
+      !result ||
+      appStateStatus !== 'active' ||
+      !audioSessionReady ||
+      !completionJingleStatus.isLoaded ||
+      completionJinglePlayed.current
+    )
+      return;
+    pauseSessionAudio();
     completionJingle.play();
+    completionJinglePlayed.current = true;
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
   }, [
+    appStateStatus,
+    audioSessionReady,
     completionJingle,
     completionJingleStatus.isLoaded,
-    gokceLeftLowerVoice,
-    gokceLeftUpperVoice,
-    gokceRightLowerVoice,
-    gokceRightUpperVoice,
-    personalizedVoice,
+    pauseSessionAudio,
     result,
-    sametLeftLowerVoice,
-    sametLeftUpperVoice,
-    sametRightLowerVoice,
-    sametRightUpperVoice,
-    timerTickA,
-    timerTickB,
   ]);
 
   if (failed) return <ErrorState body={t('brushing.saveError')} />;
@@ -1184,20 +1418,15 @@ export default function BrushingScreen() {
   const requestExit = (): void => {
     if (exitPromptOpen.current || exitInProgress.current) return;
     exitPromptOpen.current = true;
-    const current = Date.now();
-    setTimer((state) => (state ? pauseBrushingTimer(state, current) : state));
-    setNowMs(current);
-    pauseSessionAudio();
+    pauseBrushingSession();
     setExitConfirmation(true);
   };
 
   const continueBrushing = (): void => {
     if (exitInProgress.current) return;
-    const current = Date.now();
     exitPromptOpen.current = false;
     setExitConfirmation(false);
-    setTimer((state) => (state ? resumeBrushingTimer(state, current) : state));
-    setNowMs(current);
+    resumeBrushingSession();
   };
 
   const confirmExit = async (): Promise<void> => {
@@ -1331,11 +1560,7 @@ export default function BrushingScreen() {
           <View style={styles.controls} testID="pause-controls">
             <Button
               label={t('brushing.resume')}
-              onPress={() => {
-                const current = Date.now();
-                setTimer((state) => (state ? resumeBrushingTimer(state, current) : state));
-                setNowMs(current);
-              }}
+              onPress={resumeBrushingSession}
             />
             <Button
               label={t('brushing.finish')}
@@ -1346,11 +1571,7 @@ export default function BrushingScreen() {
         ) : (
           <Button
             label={t('brushing.pause')}
-            onPress={() => {
-              const current = Date.now();
-              setTimer((state) => (state ? pauseBrushingTimer(state, current) : state));
-              setNowMs(current);
-            }}
+            onPress={pauseBrushingSession}
             variant="secondary"
           />
         )}
