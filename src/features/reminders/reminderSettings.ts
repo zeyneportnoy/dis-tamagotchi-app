@@ -120,8 +120,10 @@ export class ReminderSettingsService {
 
   /**
    * Cloud-recovery entry point: persist the recovered enabled/time values for a
-   * child. The device-level grouped scheduler runs once after all children have
-   * recovered, so this method must not create temporary per-child schedules.
+   * child. Callers only invoke this for a child with no local record yet; a
+   * local record is authoritative and is never replaced from the cloud. The
+   * device-level grouped scheduler runs once after all children have recovered,
+   * so this method must not create temporary per-child schedules.
    */
   async applyRecoveredPreferences(
     parentId: string,
@@ -129,8 +131,8 @@ export class ReminderSettingsService {
     values: Readonly<Record<ReminderSlot, Readonly<{ enabled: boolean; time: string }>>>,
   ): Promise<void> {
     const key = storageKey(parentId, childProfileId);
-    // Cancel any schedule from a previous record so a cloud-newer refresh never
-    // leaves a duplicate notification behind.
+    // Cancel any schedule from a previous record so a refresh never leaves a
+    // duplicate notification behind.
     const existing = await this.storage.getItem(key);
     if (existing !== null) {
       const previous = parseSettings(existing);

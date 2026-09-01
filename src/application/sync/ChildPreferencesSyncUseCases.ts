@@ -144,29 +144,17 @@ export class ChildPreferencesSyncUseCases {
         }
       }
 
-      const recoveredReminders = {
-        morning: reminderValues(row.morningReminder, '08:00'),
-        evening: reminderValues(row.eveningReminder, '20:30'),
-      };
+      // Reminder times: the local per-child record is authoritative. The cloud
+      // only seeds a child that has NO saved reminder record yet on this device
+      // (a genuinely new child). Once a child has any saved record, recovery
+      // never touches it again — no stale / default / null / clock-skewed cloud
+      // value can revert a user's custom HH:mm hours after they set it.
       if (!(await this.prefs.hasStoredReminders(parentUserId, profileId))) {
-        // No saved preference yet for this child: safe to hydrate from the cloud
-        // (the 08:00 / 20:30 fallback only applies here — a child that truly has
-        // nothing saved).
-        await this.prefs.applyRecoveredReminders(parentUserId, profileId, recoveredReminders);
+        await this.prefs.applyRecoveredReminders(parentUserId, profileId, {
+          morning: reminderValues(row.morningReminder, '08:00'),
+          evening: reminderValues(row.eveningReminder, '20:30'),
+        });
         await this.prefs.markRemindersSynced(parentUserId, profileId);
-      } else if (
-        typeof row.morningReminder.time === 'string' &&
-        typeof row.eveningReminder.time === 'string'
-      ) {
-        // A child that already has a saved reminder preference is only
-        // re-hydrated from a cloud row carrying concrete HH:mm times. A row with
-        // null/unknown times is not a trustworthy source and must never replace
-        // a saved custom time with the 08:00 / 20:30 fallback.
-        const meta = await this.prefs.readRemindersSyncMeta(parentUserId, profileId);
-        if (!meta.dirty && cloudRowNewerThan(row.updatedAt, meta.syncedAt)) {
-          await this.prefs.applyRecoveredReminders(parentUserId, profileId, recoveredReminders);
-          await this.prefs.markRemindersSynced(parentUserId, profileId);
-        }
       }
     }
   }

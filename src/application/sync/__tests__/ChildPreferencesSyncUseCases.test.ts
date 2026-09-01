@@ -211,33 +211,25 @@ describe('ChildPreferencesSyncUseCases', () => {
       expect(dirty.writeVoice).not.toHaveBeenCalled();
     });
 
-    it('refreshes clean-but-stale child reminders when the cloud row is newer, keeps a dirty one', async () => {
+    it('never overwrites a child that already has locally stored reminders, even when the cloud row is newer, has concrete times and sync meta is clean', async () => {
       const localRepo = local({ hasLocalCustomization: jest.fn().mockResolvedValue(true) });
+      // Newer cloud row, both reminder times concrete strings (see cloudRow).
       const newerRow = { ...cloudRow, updatedAt: '2026-08-25T00:00:00.000Z' };
 
-      const clean = prefs({
+      const stored = prefs({
         hasStoredVoice: jest.fn().mockResolvedValue(true),
         hasStoredReminders: jest.fn().mockResolvedValue(true),
         readRemindersSyncMeta: jest
           .fn()
           .mockResolvedValue({ syncedAt: '2026-08-20T00:00:00.000Z', dirty: false }),
       });
-      await new ChildPreferencesSyncUseCases(localRepo, cloud([newerRow]), clean).recover();
-      expect(clean.applyRecoveredReminders).toHaveBeenCalledWith('parent-1', 'profile-1', {
-        morning: { enabled: true, time: '07:15' },
-        evening: { enabled: true, time: '21:00' },
-      });
-      expect(clean.markRemindersSynced).toHaveBeenCalledWith('parent-1', 'profile-1');
+      await new ChildPreferencesSyncUseCases(localRepo, cloud([newerRow]), stored).recover();
 
-      const dirty = prefs({
-        hasStoredVoice: jest.fn().mockResolvedValue(true),
-        hasStoredReminders: jest.fn().mockResolvedValue(true),
-        readRemindersSyncMeta: jest
-          .fn()
-          .mockResolvedValue({ syncedAt: '2026-08-20T00:00:00.000Z', dirty: true }),
-      });
-      await new ChildPreferencesSyncUseCases(localRepo, cloud([newerRow]), dirty).recover();
-      expect(dirty.applyRecoveredReminders).not.toHaveBeenCalled();
+      // Local per-child reminder settings are authoritative: recover() must not
+      // touch a child that already has a stored record, so the user's custom
+      // times can never be reverted to the cloud / default values.
+      expect(stored.applyRecoveredReminders).not.toHaveBeenCalled();
+      expect(stored.markRemindersSynced).not.toHaveBeenCalled();
     });
   });
 
