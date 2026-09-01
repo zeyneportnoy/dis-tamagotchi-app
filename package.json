@@ -16,6 +16,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
+    "postinstall": "node ./scripts/pod-install.mjs",
+    "pod-install": "node ./scripts/pod-install.mjs",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
     "db:migrate": "jest --runInBand src/data/db/__tests__/migrations.test.ts",
