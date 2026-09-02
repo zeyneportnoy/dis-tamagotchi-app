@@ -227,7 +227,6 @@ export default function ProfileScreen() {
                       style={styles.chip}
                       testID={`profile-item-chip-${chip.key}`}
                     >
-                      {chip.icon ? <Text style={styles.chipIcon}>{chip.icon}</Text> : null}
                       <Text style={styles.chipLabel}>{chip.label}</Text>
                     </View>
                   ))
