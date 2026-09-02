@@ -190,6 +190,7 @@ export default function ParentSettingsScreen() {
             />
           </View>
         ) : null}
+        <Text style={styles.trustStatement}>{t('parent.settings.trustStatement')}</Text>
       </ScrollView>
     </Screen>
   );
@@ -207,6 +208,14 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { color: colors.brandPrimary, fontSize: 19, fontWeight: '900' },
   sectionBody: { color: colors.textPrimary, lineHeight: 20, opacity: 0.72 },
+  trustStatement: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    lineHeight: 18,
+    opacity: 0.58,
+    paddingHorizontal: spacing.md,
+    textAlign: 'center',
+  },
   previewButton: {
     alignItems: 'center',
     backgroundColor: colors.white,

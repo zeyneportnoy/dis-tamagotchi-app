@@ -674,6 +674,8 @@ export const tr = {
         open: 'Ayarlar',
         title: 'Ayarlar',
         developerTools: 'Geliştirici Araçları',
+        trustStatement:
+          'Bir diş hekimi tarafından çocukların ağız bakım alışkanlıklarını desteklemek için tasarlandı.',
         childProfile: {
           title: 'Çocuk profili',
           body: '{{name}} profilinin doğum tarihini buradan güncelleyebilirsiniz.',
