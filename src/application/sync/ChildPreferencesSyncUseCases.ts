@@ -105,13 +105,14 @@ export class ChildPreferencesSyncUseCases {
   }
 
   /**
-   * Multi-device recovery. Customization is hydrated when local is missing, or
-   * when local is clean (unchanged since the last push) and the cloud row is
-   * newer than that push — local unpushed edits are never overwritten. Voice /
-   * reminder preferences hydrate only when nothing is stored locally yet; the
-   * caller rebuilds their canonical grouped device schedule after recovery.
-   * Customization is written verbatim; the current-Mine-Puan unlock guards still
-   * decide what activates, so a locked cloud selection can never become active.
+   * Multi-device recovery. Cloud customization only seeds a profile that has no
+   * local customization yet. Once the per-child local record exists it remains
+   * authoritative: a row-wide cloud `updated_at` can also change because of
+   * voice/reminder writes, so using it to replace the whole room configuration
+   * could restore stale or empty placements. Voice / reminder preferences keep
+   * their existing recovery rules below. Customization is written verbatim; the
+   * current-Mine-Puan unlock guards still decide what activates, so a locked
+   * cloud selection can never become active.
    */
   async recover(): Promise<void> {
     for (const row of await this.cloud.listOwned()) {
@@ -120,12 +121,6 @@ export class ChildPreferencesSyncUseCases {
 
       if (!(await this.local.hasLocalCustomization(profileId))) {
         await this.local.hydrateCustomization(profileId, row);
-      } else {
-        const meta = await this.local.readCustomizationSyncMeta(profileId);
-        const cloudNewer = Boolean(row.updatedAt && meta.syncedAt && row.updatedAt > meta.syncedAt);
-        if (!meta.dirty && cloudNewer) {
-          await this.local.hydrateCustomization(profileId, row);
-        }
       }
 
       const parentUserId = await this.local.resolveParentUserId(profileId);

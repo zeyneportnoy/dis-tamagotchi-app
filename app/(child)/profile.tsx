@@ -147,30 +147,12 @@ export default function ProfileScreen() {
     growthStage,
     roomBackground,
     roomEffectKey,
-    equippedItems,
     selectedRoomMaterials,
   } = data;
   const stageLabel = t(`growth.stages.${characterGrowthStageNames[growthStage]}`);
   const ageBandLabel = t(
     profile.ageBand === '7_11' ? 'onboarding.ageBand.sevenEleven' : 'onboarding.ageBand.fourSix',
   );
-  const itemChips: { key: string; icon: string | null; label: string }[] = [
-    ...equippedItems
-      .filter((item) => item.slot !== 'decor' || item.equipped)
-      .map((item) => ({
-        key: `item:${item.key}`,
-        icon: item.icon || null,
-        label: t(`rewards.items.${item.key}`),
-      })),
-    ...selectedRoomMaterials.map((material) => ({
-      key: `material:${material.key}`,
-      icon: null,
-      label: t(`collection.roomMaterials.${material.key}`),
-    })),
-  ].filter(
-    (chip, index, chips) => chips.findIndex((candidate) => candidate.label === chip.label) === index,
-  );
-
   return (
     <Screen
       style={[styles.screen, { backgroundColor: sceneBackgroundForCharacter(profile.avatarId) }]}
@@ -219,24 +201,6 @@ export default function ProfileScreen() {
               </Text>
             </View>
 
-            <View style={styles.chipSection}>
-              <Text style={styles.label}>{t('profile.selectedItems')}</Text>
-              <View style={styles.chipRow}>
-                {itemChips.length > 0 ? (
-                  itemChips.map((chip) => (
-                    <View
-                      key={chip.key}
-                      style={styles.chip}
-                      testID={`profile-item-chip-${chip.key}`}
-                    >
-                      <Text style={styles.chipLabel}>{chip.label}</Text>
-                    </View>
-                  ))
-                ) : (
-                  <Text style={styles.value}>{t('profile.noSelectedItems')}</Text>
-                )}
-              </View>
-            </View>
           </View>
         </View>
 
@@ -266,23 +230,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '900',
   },
-  chip: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderColor: 'rgba(108,92,231,0.18)',
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 6,
-    justifyContent: 'center',
-    minHeight: 30,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-  },
-  chipIcon: { fontSize: 15, lineHeight: 17 },
-  chipLabel: { color: colors.navy, fontSize: 13, fontWeight: '800', lineHeight: 17 },
-  chipRow: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  chipSection: { gap: spacing.sm },
   content: {
     alignItems: 'center',
     flexGrow: 1,
