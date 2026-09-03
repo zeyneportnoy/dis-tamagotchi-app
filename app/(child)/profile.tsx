@@ -167,7 +167,9 @@ export default function ProfileScreen() {
       icon: null,
       label: t(`collection.roomMaterials.${material.key}`),
     })),
-  ];
+  ].filter(
+    (chip, index, chips) => chips.findIndex((candidate) => candidate.label === chip.label) === index,
+  );
 
   return (
     <Screen

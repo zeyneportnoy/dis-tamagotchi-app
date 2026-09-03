@@ -26,9 +26,17 @@ const customizationSyncMetaKey = (profileId: string): string =>
   `customization.profile.${profileId}.sync-meta.v1`;
 
 /** Stable string identity of a customization state, ignoring key order. */
-const customizationFingerprint = (state: CustomizationState): string =>
+const customizationFingerprint = (
+  state: CustomizationState,
+  equipped: Partial<Record<AccessorySlot, string>>,
+): string =>
   JSON.stringify({
     developerEquipped: state.developerEquipped,
+    equipped: {
+      background: equipped.background ?? null,
+      brush: equipped.brush ?? null,
+      effect: equipped.effect ?? null,
+    },
     placements: state.placements,
     selectedRoomMaterials: [...state.selectedRoomMaterials].sort(),
   });
@@ -129,7 +137,7 @@ export class SQLiteChildPreferenceSyncRepository implements LocalChildPreference
     const state = await this.loadCustomization(profileId);
     const equipped = await this.equippedInventory(profileId);
     const resolve = (slot: AccessorySlot): string | null => {
-      if (Object.prototype.hasOwnProperty.call(state.developerEquipped, slot)) {
+      if (__DEV__ && Object.prototype.hasOwnProperty.call(state.developerEquipped, slot)) {
         return state.developerEquipped[slot] ?? null;
       }
       return equipped[slot] ?? null;
@@ -224,7 +232,10 @@ export class SQLiteChildPreferenceSyncRepository implements LocalChildPreference
         : typeof roomConfiguration === 'string'
           ? roomConfiguration
           : JSON.stringify(roomConfiguration);
-    const fingerprint = customizationFingerprint(decodeCustomizationState(raw));
+    const fingerprint = customizationFingerprint(
+      decodeCustomizationState(raw),
+      await this.equippedInventory(profileId),
+    );
     await AsyncStorage.setItem(
       customizationSyncMetaKey(profileId),
       JSON.stringify({ syncedAt: new Date().toISOString(), fingerprint }),
@@ -236,7 +247,10 @@ export class SQLiteChildPreferenceSyncRepository implements LocalChildPreference
     if (!stored) return { syncedAt: null, dirty: true };
     try {
       const parsed = JSON.parse(stored) as { syncedAt?: string; fingerprint?: string };
-      const current = customizationFingerprint(await this.loadCustomization(profileId));
+      const current = customizationFingerprint(
+        await this.loadCustomization(profileId),
+        await this.equippedInventory(profileId),
+      );
       return {
         syncedAt: typeof parsed.syncedAt === 'string' ? parsed.syncedAt : null,
         dirty: parsed.fingerprint !== current,
