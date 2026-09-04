@@ -24,6 +24,11 @@ export function BrandedSplash() {
 }
 
 const styles = StyleSheet.create({
-  image: { bottom: 0, left: 0, position: 'absolute', right: 0, top: 0 },
-  screen: { backgroundColor: '#D9D3F6', flex: 1 },
+  image: { height: '100%', width: '100%' },
+  screen: {
+    alignItems: 'center',
+    backgroundColor: '#D9D3F6',
+    flex: 1,
+    justifyContent: 'center',
+  },
 });
