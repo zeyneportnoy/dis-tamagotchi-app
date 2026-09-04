@@ -250,6 +250,20 @@ export function effectiveBackgroundKey(
 }
 
 /**
+ * Which background key a room scene should actually RENDER — display only,
+ * never the equip/unlock decision. Unlike `effectiveBackgroundKey` (which
+ * falls back once a score-gated pick re-locks, because THAT decides what can
+ * be actively equipped), this only falls back when there is no real
+ * persisted/equipped selection at all. A child who genuinely picked a
+ * background keeps seeing it even after their Mine Puan drops below its
+ * unlock threshold — the score gate controls whether it can be RE-selected
+ * in Collection, not whether an already-active pick keeps rendering.
+ */
+export function displayBackgroundKey(persistedKey: string | null | undefined): RewardItemKey {
+  return (persistedKey ?? DEFAULT_BACKGROUND_KEY) as RewardItemKey;
+}
+
+/**
  * The always-open scene effect every child starts with. When a score-gated
  * effect re-locks, the active effect falls back to this one.
  */

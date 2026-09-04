@@ -26,6 +26,7 @@ import { isLegacyAgeBand } from '@/domain/family';
 import { deriveHomeCharacterMood } from '@/domain/character';
 import {
   characterGrowthStageNames,
+  displayBackgroundKey as resolveDisplayBackgroundKey,
   estimatedBrushingsToNextStage,
   growthProgressForXp,
   isBackgroundUnlockedForScore,
@@ -232,6 +233,14 @@ export default function ChildHomeScreen() {
   const selectedRoomMaterials = roomMaterialsForTheme(roomBackground?.key).filter((item) =>
     customization.selectedRoomMaterials.includes(item.key),
   );
+  // Display-only fallback: a child with NO real persisted background
+  // selection shows the always-open Pastel Oyun Odası image instead of the
+  // scene's own generic empty-room placeholder. Deliberately keyed off the
+  // raw `equippedBackground` (not the score-gated `roomBackground` used for
+  // room materials above) — a real selection keeps rendering as itself even
+  // after re-locking; only "nothing was ever selected" falls back. Pure
+  // display computation: writes nothing, reads nothing new.
+  const displayBackgroundKey = resolveDisplayBackgroundKey(equippedBackground?.key);
 
   const updatePlacement = (itemKey: CustomizationItemKey, placement: ItemPlacement): void => {
     setCustomization((current) => ({
@@ -270,8 +279,8 @@ export default function ChildHomeScreen() {
         </View>
 
         <CharacterRoomScene
-          backgroundKey={roomBackground?.key}
-          backgroundTestID={roomBackground ? `home-background-${roomBackground.key}` : undefined}
+          backgroundKey={displayBackgroundKey}
+          backgroundTestID={`home-background-${displayBackgroundKey}`}
           characterKey={active.avatarId}
           editable={editMode}
           effectKey={roomEffectKey}

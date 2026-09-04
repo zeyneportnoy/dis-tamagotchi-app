@@ -20,11 +20,13 @@ import {
 } from '@/design-system';
 import {
   characterGrowthStageNames,
+  displayBackgroundKey as resolveDisplayBackgroundKey,
   growthProgressForXp,
   isBackgroundUnlockedForScore,
   isEffectUnlockedForScore,
   type CharacterGrowthStage,
   type InventoryItem,
+  type RewardItemKey,
 } from '@/domain/rewards';
 import { CharacterScreenBackdrop, sceneBackgroundForCharacter } from '@/features/character';
 import {
@@ -44,6 +46,7 @@ type ProfileData = Readonly<{
   totalXp: number;
   growthStage: CharacterGrowthStage;
   roomBackground: InventoryItem | undefined;
+  displayBackgroundKey: RewardItemKey;
   roomEffectKey: CharacterSceneEffectKey | null;
   equippedItems: readonly InventoryItem[];
   selectedRoomMaterials: readonly RoomMaterial[];
@@ -79,6 +82,14 @@ async function readProfileData(): Promise<ProfileData | null> {
     equippedBackground && isBackgroundUnlockedForScore(equippedBackground.key, totalXp)
       ? equippedBackground
       : undefined;
+  // Display-only fallback: a child with NO real persisted background
+  // selection shows the always-open Pastel Oyun Odası image instead of the
+  // scene's own generic empty-room placeholder. Deliberately keyed off the
+  // raw `equippedBackground` (not the score-gated `roomBackground` used for
+  // room materials below) — a real selection keeps rendering as itself even
+  // after re-locking; only "nothing was ever selected" falls back. Pure
+  // display computation: writes nothing.
+  const displayBackgroundKey = resolveDisplayBackgroundKey(equippedBackground?.key);
   const equippedEffect = equippedItems.find((item) => item.slot === 'effect');
   const roomEffectKey =
     isCharacterSceneEffectKey(equippedEffect?.key) &&
@@ -91,6 +102,7 @@ async function readProfileData(): Promise<ProfileData | null> {
 
   return {
     customization,
+    displayBackgroundKey,
     equippedItems,
     growthStage,
     profile,
@@ -145,7 +157,7 @@ export default function ProfileScreen() {
   const {
     profile,
     growthStage,
-    roomBackground,
+    displayBackgroundKey,
     roomEffectKey,
     selectedRoomMaterials,
   } = data;
@@ -168,10 +180,8 @@ export default function ProfileScreen() {
           <Text style={styles.cardTitle}>{t('profile.summaryTitle')}</Text>
 
           <CharacterRoomScene
-            backgroundKey={roomBackground?.key}
-            backgroundTestID={
-              roomBackground ? `profile-background-${roomBackground.key}` : undefined
-            }
+            backgroundKey={displayBackgroundKey}
+            backgroundTestID={`profile-background-${displayBackgroundKey}`}
             characterKey={profile.avatarId}
             effectKey={roomEffectKey}
             effectTestID="profile-character-effect"
