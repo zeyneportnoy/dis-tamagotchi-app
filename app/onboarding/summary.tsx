@@ -28,9 +28,10 @@ export default function SummaryScreen() {
   const draft = useOnboardingDraft();
   const { session } = useAuth();
   // Voice is per-child and the child does not exist until this screen creates
-  // it, so the picker starts on the default and the choice is persisted with the
-  // new profile id below.
-  const [voiceProfile, setVoiceProfile] = useState<BrushingVoiceProfile | null>('gokce');
+  // it. Selection is a local highlight only; the choice is persisted with the
+  // new profile id when the user confirms via the bottom CTA below. Starts
+  // unselected so "Onayla" stays disabled until the user picks a voice.
+  const [voiceProfile, setVoiceProfile] = useState<BrushingVoiceProfile | null>(null);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
   const gokcePreview = useAudioPlayer(brushingVoiceCues.gokce[0].source);
@@ -110,10 +111,11 @@ export default function SummaryScreen() {
     void activePlayer.seekTo(0).then(() => activePlayer.play());
   };
 
+  // Tapping a voice card only highlights it locally — no save, no navigation.
+  // Persisting + advancing happens exclusively when the user taps "Onayla".
   const selectVoiceProfile = (profile: BrushingVoiceProfile): void => {
     if (saving) return;
     setVoiceProfile(profile);
-    void createProfile(profile);
   };
 
   return (
@@ -137,46 +139,42 @@ export default function SummaryScreen() {
         </Text>
         <Text style={styles.center}>{t('onboarding.voice.body')}</Text>
         <View accessibilityRole="radiogroup" style={styles.card}>
-          {voiceProfile ? (
-            brushingVoiceProfiles.map((profile) => (
-              <View key={profile} style={styles.voiceOption}>
-                <View style={styles.voiceSelectionCard}>
-                  <SelectionCard
-                    label={t(`parent.settings.voiceGuide.options.${profile}.title`)}
-                    onPress={() => selectVoiceProfile(profile)}
-                    selected={voiceProfile === profile}
-                    testID={`onboarding-voice-${profile}`}
-                  />
-                </View>
-                {profile !== 'off' ? (
-                  <Pressable
-                    accessibilityLabel={t('parent.settings.voiceGuide.listenTo', {
-                      name: t(`parent.settings.voiceGuide.options.${profile}.title`),
-                    })}
-                    accessibilityRole="button"
-                    onPress={() => playPreview(profile)}
-                    style={({ pressed }) => [
-                      styles.previewButton,
-                      pressed && styles.previewButtonPressed,
-                    ]}
-                    testID={`onboarding-voice-preview-${profile}`}
-                  >
-                    <View style={styles.previewIcon} />
-                    <Text style={styles.previewLabel}>
-                      {t('parent.settings.voiceGuide.listen')}
-                    </Text>
-                  </Pressable>
-                ) : null}
+          {brushingVoiceProfiles.map((profile) => (
+            <View key={profile} style={styles.voiceOption}>
+              <View style={styles.voiceSelectionCard}>
+                <SelectionCard
+                  label={t(`parent.settings.voiceGuide.options.${profile}.title`)}
+                  onPress={() => selectVoiceProfile(profile)}
+                  selected={voiceProfile === profile}
+                  testID={`onboarding-voice-${profile}`}
+                />
               </View>
-            ))
-          ) : (
-            <Text style={styles.center}>{t('common.loading')}</Text>
-          )}
+              {profile !== 'off' ? (
+                <Pressable
+                  accessibilityLabel={t('parent.settings.voiceGuide.listenTo', {
+                    name: t(`parent.settings.voiceGuide.options.${profile}.title`),
+                  })}
+                  accessibilityRole="button"
+                  onPress={() => playPreview(profile)}
+                  style={({ pressed }) => [
+                    styles.previewButton,
+                    pressed && styles.previewButtonPressed,
+                  ]}
+                  testID={`onboarding-voice-preview-${profile}`}
+                >
+                  <View style={styles.previewIcon} />
+                  <Text style={styles.previewLabel}>
+                    {t('parent.settings.voiceGuide.listen')}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ))}
         </View>
         {failed ? <Text>{t('onboarding.voice.error')}</Text> : null}
         <Button
           disabled={saving || voiceProfile === null}
-          label={saving ? t('common.saving') : t('common.continue')}
+          label={saving ? t('common.saving') : t('onboarding.voice.confirm')}
           onPress={() => {
             if (voiceProfile) void createProfile(voiceProfile);
           }}

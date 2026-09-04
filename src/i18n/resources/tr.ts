@@ -353,6 +353,7 @@ export const tr = {
       voice: {
         title: 'Fırçalarken sana kim eşlik etsin?',
         body: 'Bu seçimi daha sonra Ayarlar’dan değiştirebilirsin.',
+        confirm: 'Onayla',
         error: 'Ses tercihi kaydedilemedi. Bir kez daha deneyelim.',
       },
       summary: {

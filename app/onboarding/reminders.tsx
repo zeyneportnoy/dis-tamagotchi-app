@@ -1,6 +1,7 @@
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -16,15 +17,17 @@ import {
 import { defaultReminderSettings, type ReminderSlot } from '@/features/reminders';
 import { useOnboardingDraft } from '@/features/onboarding/OnboardingDraftContext';
 
-const minutesFromTime = (time: string): number => {
+// Mirrors the exact-minute picker in Parent Settings (app/(parent)/reminders.tsx)
+// so onboarding and settings stay consistent in minute precision.
+const dateFromTime = (time: string): Date => {
   const [hours = '0', minutes = '0'] = time.split(':');
-  return Number(hours) * 60 + Number(minutes);
+  const value = new Date();
+  value.setHours(Number(hours), Number(minutes), 0, 0);
+  return value;
 };
 
-const timeFromMinutes = (minutes: number): string => {
-  const normalized = (minutes + 24 * 60) % (24 * 60);
-  return `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`;
-};
+const timeFromDate = (value: Date): string =>
+  `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`;
 
 export default function OnboardingRemindersScreen() {
   const { t } = useTranslation();
@@ -34,12 +37,30 @@ export default function OnboardingRemindersScreen() {
     morning: draft.morningReminderTime || defaultReminderSettings.morning.time,
     evening: draft.eveningReminderTime || defaultReminderSettings.evening.time,
   });
+  const [editingSlot, setEditingSlot] = useState<ReminderSlot | null>(null);
+  const [pendingTime, setPendingTime] = useState<Date>(() =>
+    dateFromTime(draft.morningReminderTime || defaultReminderSettings.morning.time),
+  );
 
-  const shiftTime = (slot: ReminderSlot, delta: number): void => {
-    setTimes((current) => ({
-      ...current,
-      [slot]: timeFromMinutes(minutesFromTime(current[slot]) + delta),
-    }));
+  const openTimePicker = (slot: ReminderSlot): void => {
+    setPendingTime(dateFromTime(times[slot]));
+    setEditingSlot(slot);
+  };
+
+  const handleTimeChange = (event: DateTimePickerEvent, selectedTime?: Date): void => {
+    if (event.type === 'dismissed') {
+      setEditingSlot(null);
+      return;
+    }
+    if (selectedTime) setPendingTime(selectedTime);
+  };
+
+  const confirmTime = (): void => {
+    const slot = editingSlot;
+    if (!slot) return;
+    const value = timeFromDate(pendingTime);
+    setEditingSlot(null);
+    setTimes((current) => ({ ...current, [slot]: value }));
   };
 
   // The child profile is created on the summary screen; store the choice on the
@@ -87,25 +108,16 @@ export default function OnboardingRemindersScreen() {
                 <Text style={styles.timeTitle}>{t(`parent.reminders.${slot}`)}</Text>
                 <View style={styles.timePicker}>
                   <Pressable
-                    accessibilityLabel={t('parent.reminders.earlier', {
+                    accessibilityLabel={t('parent.reminders.chooseTime', {
                       slot: t(`parent.reminders.${slot}`),
+                      time: times[slot],
                     })}
                     accessibilityRole="button"
-                    onPress={() => shiftTime(slot, -15)}
-                    style={styles.timeButton}
+                    onPress={() => openTimePicker(slot)}
+                    style={({ pressed }) => [styles.timeValue, pressed && styles.pressed]}
+                    testID={`${slot}-onboarding-time-picker`}
                   >
-                    <Text style={styles.timeButtonLabel}>−</Text>
-                  </Pressable>
-                  <Text style={styles.time}>{times[slot]}</Text>
-                  <Pressable
-                    accessibilityLabel={t('parent.reminders.later', {
-                      slot: t(`parent.reminders.${slot}`),
-                    })}
-                    accessibilityRole="button"
-                    onPress={() => shiftTime(slot, 15)}
-                    style={styles.timeButton}
-                  >
-                    <Text style={styles.timeButtonLabel}>+</Text>
+                    <Text style={styles.time}>{times[slot]}</Text>
                   </Pressable>
                 </View>
               </View>
@@ -118,6 +130,42 @@ export default function OnboardingRemindersScreen() {
           </View>
         ) : null}
       </ScrollView>
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setEditingSlot(null)}
+        transparent
+        visible={editingSlot !== null}
+      >
+        <View style={styles.pickerBackdrop}>
+          <View accessibilityViewIsModal style={styles.pickerCard}>
+            <Text style={styles.pickerTitle}>
+              {editingSlot ? t(`parent.reminders.${editingSlot}`) : ''}
+            </Text>
+            <DateTimePicker
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              is24Hour
+              locale="tr-TR"
+              minuteInterval={1}
+              mode="time"
+              onChange={handleTimeChange}
+              testID="onboarding-reminder-native-time-picker"
+              value={pendingTime}
+            />
+            <View style={styles.pickerActions}>
+              <View style={styles.pickerAction}>
+                <Button
+                  label={t('common.cancel')}
+                  onPress={() => setEditingSlot(null)}
+                  variant="secondary"
+                />
+              </View>
+              <View style={styles.pickerAction}>
+                <Button label={t('common.done')} onPress={confirmTime} />
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -135,27 +183,41 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 38,
   },
-  timeButton: {
-    alignItems: 'center',
-    backgroundColor: '#F0E9FF',
-    borderRadius: radii.pill,
-    height: 48,
-    justifyContent: 'center',
-    width: 48,
-  },
-  timeButtonLabel: {
-    color: colors.brandPrimary,
-    fontFamily: typography.family.display,
-    fontSize: 30,
-    lineHeight: 34,
-  },
   timeCard: {
     backgroundColor: colors.white,
     borderRadius: radii.lg,
     gap: spacing.sm,
     padding: spacing.md,
   },
-  timePicker: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  timePicker: { alignItems: 'center' },
   timeTitle: { fontSize: 18, fontWeight: '900' },
+  timeValue: {
+    alignItems: 'center',
+    backgroundColor: '#F0E9FF',
+    borderRadius: radii.pill,
+    justifyContent: 'center',
+    minHeight: 56,
+    minWidth: 150,
+    paddingHorizontal: spacing.lg,
+  },
   times: { gap: spacing.md },
+  pressed: { opacity: 0.7, transform: [{ scale: 0.96 }] },
+  pickerAction: { flex: 1 },
+  pickerActions: { flexDirection: 'row', gap: spacing.sm },
+  pickerBackdrop: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(38,50,56,0.42)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  pickerCard: {
+    backgroundColor: colors.white,
+    borderRadius: radii.lg,
+    gap: spacing.md,
+    maxWidth: 430,
+    padding: spacing.md,
+    width: '100%',
+  },
+  pickerTitle: { color: colors.textPrimary, fontSize: 22, fontWeight: '900' },
 });

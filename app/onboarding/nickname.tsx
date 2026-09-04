@@ -1,6 +1,14 @@
 import { router, Stack } from 'expo-router';
 import { useState } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import {
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import { getFamilyUseCases } from '@/application/family';
@@ -11,9 +19,16 @@ import { useOnboardingDraft } from '@/features/onboarding/OnboardingDraftContext
 
 const nicknameRoomHero = require('../../assets/onboarding/nickname-room-hero.png');
 
+// Standard iOS UINavigationBar content height. The KeyboardAvoidingView renders
+// below the native onboarding Stack header, so its measured frame already starts
+// this far (plus the top inset) down the window — feeding that back as the
+// vertical offset keeps the padding it adds equal to the real keyboard overlap.
+const IOS_NATIVE_HEADER_HEIGHT = 44;
+
 export default function NicknameScreen() {
   const { t } = useTranslation();
   const draft = useOnboardingDraft();
+  const insets = useSafeAreaInsets();
   const [nickname, setNickname] = useState(draft.nickname);
   const [showError, setShowError] = useState(false);
 
@@ -43,65 +58,67 @@ export default function NicknameScreen() {
           ),
         }}
       />
-      <View style={styles.content} testID="nickname-static-content">
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + IOS_NATIVE_HEADER_HEIGHT : 0}
+        style={styles.keyboardView}
+      >
         <View style={styles.skySpace} />
-        <View style={styles.body}>
-          <View style={styles.hero}>
-            <Image
-              accessibilityIgnoresInvertColors
-              resizeMode="cover"
-              source={nicknameRoomHero}
-              style={styles.heroImage}
-            />
-          </View>
-          <View style={styles.copy}>
-            <Text style={styles.center} variant="title">
-              {t('onboarding.nickname.title')}
-            </Text>
-            <Text style={styles.center}>{t('onboarding.nickname.body')}</Text>
-          </View>
-          <View style={styles.inputCard}>
-            <Input
-              accessibilityLabel={t('onboarding.nickname.label')}
-              autoCapitalize="words"
-              autoCorrect={false}
-              keyboardType="default"
-              maxLength={20}
-              onChangeText={(value) => {
-                setNickname(value);
-                setShowError(false);
-              }}
-              placeholder={t('onboarding.nickname.placeholder')}
-              style={styles.nicknameInput}
-              value={nickname}
-            />
-            {showError ? <Text>{t('onboarding.nickname.error')}</Text> : null}
-          </View>
-          <View style={styles.action}>
+        <View style={styles.panel}>
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            contentInsetAdjustmentBehavior="never"
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            style={styles.scrollArea}
+            testID="nickname-static-content"
+          >
+            <View style={styles.hero}>
+              <Image
+                accessibilityIgnoresInvertColors
+                resizeMode="cover"
+                source={nicknameRoomHero}
+                style={styles.heroImage}
+              />
+            </View>
+            <View style={styles.copy}>
+              <Text style={styles.center} variant="title">
+                {t('onboarding.nickname.title')}
+              </Text>
+              <Text style={styles.center}>{t('onboarding.nickname.body')}</Text>
+            </View>
+            <View style={styles.inputCard}>
+              <Input
+                accessibilityLabel={t('onboarding.nickname.label')}
+                autoCapitalize="words"
+                autoCorrect={false}
+                keyboardType="default"
+                maxLength={20}
+                onChangeText={(value) => {
+                  setNickname(value);
+                  setShowError(false);
+                }}
+                placeholder={t('onboarding.nickname.placeholder')}
+                style={styles.nicknameInput}
+                value={nickname}
+              />
+              {showError ? <Text>{t('onboarding.nickname.error')}</Text> : null}
+            </View>
+          </ScrollView>
+          <View style={styles.footer}>
             <Button label={t('common.continue')} onPress={() => void continueFlow()} />
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  action: { marginTop: 'auto', paddingTop: spacing.sm },
-  body: {
-    backgroundColor: colors.offWhite,
-    borderTopLeftRadius: radii.lg,
-    borderTopRightRadius: radii.lg,
-    flex: 1,
-    gap: spacing.sm,
-    paddingBottom: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-  },
   brand: { color: colors.brandPrimary, fontWeight: '800' },
   center: { textAlign: 'center' },
-  content: { flex: 1 },
   copy: { gap: spacing.xs },
+  footer: { paddingBottom: spacing.lg, paddingTop: spacing.sm },
   hero: {
     alignItems: 'center',
     backgroundColor: '#EAF5FF',
@@ -116,11 +133,22 @@ const styles = StyleSheet.create({
   },
   heroImage: { height: '100%', width: '100%' },
   inputCard: { gap: spacing.xs },
+  keyboardView: { flex: 1 },
   nicknameInput: {
     borderColor: colors.brandPrimary,
     borderRadius: radii.lg,
     minHeight: spacing.xl + spacing.xl,
   },
+  panel: {
+    backgroundColor: colors.offWhite,
+    borderTopLeftRadius: radii.lg,
+    borderTopRightRadius: radii.lg,
+    flex: 1,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+  },
+  scrollArea: { flex: 1 },
+  scrollContent: { flexGrow: 1, gap: spacing.sm },
   screen: {
     backgroundColor: '#DCEEFF',
     gap: 0,
