@@ -3,9 +3,8 @@ import { useEffect, useState } from 'react';
 
 import { getFamilyUseCases } from '@/application/family';
 import {
+  ensureChildDataRecovered,
   getProfileSyncUseCases,
-  recoverChildBrushingHistory,
-  recoverChildCloudProgress,
   recoverChildPreferences,
   retryPendingCloudSync,
 } from '@/application/sync';
@@ -24,25 +23,30 @@ type Destination =
   | 'claim-local'
   | 'error';
 
-const routeForProfile = (profile: {
+export const routeForProfile = (profile: {
   dateOfBirth: string | null;
   ageBand: string;
 }): Extract<Destination, 'age-band-update' | 'child'> =>
   !profile.dateOfBirth || isLegacyAgeBand(profile.ageBand) ? 'age-band-update' : 'child';
 
 /**
- * When the active child would route to the child home, a family with 2+ child
- * profiles first sees the post-login picker (`/select-child`); a single-child
- * family keeps going straight to the child home exactly as before.
+ * A family with 2+ child profiles must ALWAYS see the post-login picker
+ * (`/select-child`) first, no matter which child happens to be the persisted
+ * "active" one or whether that child's profile is complete — the parent has
+ * not chosen a child yet, so nothing about a specific child (including
+ * whether IT still needs a date of birth) may be evaluated before that
+ * choice is made. Only `/select-child`'s own `chooseProfile` — after an
+ * explicit tap — is allowed to route a specific child into age-band-update.
+ * A single-child family keeps going straight to the child home / its own
+ * completeness check exactly as before.
  */
-async function routeForActiveChild(
-  family: Awaited<ReturnType<typeof getFamilyUseCases>>,
+export async function routeForActiveChild(
+  family: Pick<Awaited<ReturnType<typeof getFamilyUseCases>>, 'listProfiles'>,
   profile: { dateOfBirth: string | null; ageBand: string },
 ): Promise<Extract<Destination, 'age-band-update' | 'child' | 'child-select'>> {
-  const base = routeForProfile(profile);
-  if (base !== 'child') return base;
   const profiles = await family.listProfiles();
-  return profiles.length > 1 ? 'child-select' : 'child';
+  if (profiles.length > 1) return 'child-select';
+  return routeForProfile(profile);
 }
 
 /**
@@ -57,11 +61,7 @@ function deferCloudRecovery(): void {
       if (sync) {
         await perfStep('bootstrap:recoverFromCloud(deferred)', () => sync.recoverFromCloud());
       }
-      await perfStep('bootstrap:recoverChildCloudProgress(deferred)', recoverChildCloudProgress);
-      await perfStep(
-        'bootstrap:recoverChildBrushingHistory(deferred)',
-        recoverChildBrushingHistory,
-      );
+      await perfStep('bootstrap:recoverChildData(deferred)', ensureChildDataRecovered);
       await perfStep('bootstrap:recoverChildPreferences(deferred)', recoverChildPreferences);
       void retryPendingCloudSync();
     } catch (error) {
@@ -137,8 +137,7 @@ export default function Index() {
         if (sync) {
           await perfStep('bootstrap:recoverFromCloud(cold)', () => sync.recoverFromCloud());
         }
-        await perfStep('bootstrap:recoverChildCloudProgress(cold)', recoverChildCloudProgress);
-        await perfStep('bootstrap:recoverChildBrushingHistory(cold)', recoverChildBrushingHistory);
+        await perfStep('bootstrap:recoverChildData(cold)', ensureChildDataRecovered);
         await perfStep('bootstrap:recoverChildPreferences(cold)', recoverChildPreferences);
         void retryPendingCloudSync();
 

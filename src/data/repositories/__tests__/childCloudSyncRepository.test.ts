@@ -173,6 +173,7 @@ describe('SQLiteChildCloudSyncRepository', () => {
       period: 'morning',
       outcome: 'missed',
       penaltyMine: -10,
+      appliedPenaltyMine: -10,
       evaluatedAt: '2026-08-24T00:00:00.000Z',
       updatedAt: '2026-08-24T00:00:01.000Z',
       ...over,
@@ -182,7 +183,10 @@ describe('SQLiteChildCloudSyncRepository', () => {
       const { db, repo } = await build();
       await seedSyncedChild(db, 'profile-1');
       await repo.hydrateSlotEvaluation('profile-1', cloudEval());
-      await repo.hydrateSlotEvaluation('profile-1', cloudEval({ outcome: 'completed', penaltyMine: 0 }));
+      await repo.hydrateSlotEvaluation(
+        'profile-1',
+        cloudEval({ outcome: 'completed', penaltyMine: 0, appliedPenaltyMine: 0 }),
+      );
 
       const rows = await asDb(db).getAllAsync<{
         outcome: string;
@@ -195,6 +199,35 @@ describe('SQLiteChildCloudSyncRepository', () => {
       expect(rows).toEqual([
         { outcome: 'missed', penalty_amount: -10, synced_at: '2026-08-24T00:00:01.000Z' },
       ]);
+    });
+
+    it('hydrates the real floor-clamped delta as an exactly refundable score_before/score_after pair', async () => {
+      const { db, repo } = await build();
+      await seedSyncedChild(db, 'profile-1');
+      // Cloud row says the actual loss at evaluation time was only 5 Mine
+      // (the score was 5 and floored to 0), not the full -10 label.
+      await repo.hydrateSlotEvaluation('profile-1', cloudEval({ appliedPenaltyMine: -5 }));
+
+      const row = await asDb(db).getFirstAsync<{ score_before: number; score_after: number }>(
+        `SELECT score_before, score_after FROM brushing_slot_evaluations
+         WHERE child_profile_id = 'profile-1' AND local_day_key = '2026-08-23' AND period = 'morning'`,
+      );
+      // Any pair whose difference is 5 reproduces the exact refund; this repo
+      // reconstructs it as (5, 0).
+      expect(row).toEqual({ score_before: 5, score_after: 0 });
+      expect((row?.score_before ?? 0) - (row?.score_after ?? 0)).toBe(5);
+    });
+
+    it('hydrates a legacy row with no known delta (null) as zero known loss — never guesses -10', async () => {
+      const { db, repo } = await build();
+      await seedSyncedChild(db, 'profile-1');
+      await repo.hydrateSlotEvaluation('profile-1', cloudEval({ appliedPenaltyMine: null }));
+
+      const row = await asDb(db).getFirstAsync<{ score_before: number; score_after: number }>(
+        `SELECT score_before, score_after FROM brushing_slot_evaluations
+         WHERE child_profile_id = 'profile-1' AND local_day_key = '2026-08-23' AND period = 'morning'`,
+      );
+      expect(row).toEqual({ score_before: 0, score_after: 0 }); // refund = 0, not guessed
     });
 
     it('a hydrated missed evaluation is NOT re-pushed and blocks a second -10', async () => {
@@ -231,6 +264,7 @@ describe('SQLiteChildCloudSyncRepository', () => {
           period: 'evening',
           outcome: 'missed',
           penaltyMine: -10,
+          appliedPenaltyMine: -10, // score_after(90) - score_before(100)
           evaluatedAt: '2026-07-20T20:00:00.000Z',
         },
       ]);

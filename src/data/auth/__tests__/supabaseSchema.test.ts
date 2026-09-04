@@ -13,6 +13,9 @@ const parentAuthProfiles = readMigration('202608080001_m35_parent_auth_profiles.
 const characterIdentityKeys = readMigration('202608090001_m4_character_identity_keys.sql');
 const childDateOfBirth = readMigration('202608100001_m5_child_date_of_birth.sql');
 const childDataRls = readMigration('202608110001_m6_child_data_rls.sql');
+const slotEvaluationAppliedPenalty = readMigration(
+  '202608120001_m7_slot_evaluation_applied_penalty.sql',
+);
 
 // Remote temporarily still accepts these for two old test rows, but they are NOT
 // part of the app's canonical schema and must never be persisted by new records.
@@ -109,6 +112,23 @@ describe('Supabase repo schema contract — child game-data tables', () => {
     expect(childDataRls).toContain("penalty_mine in (0, -10)");
     expect(childDataRls).toContain("status in ('completed', 'interrupted')");
     expect(childDataRls).toContain("voice_guide in ('gokce', 'samet', 'off')");
+  });
+
+  it('adds the actual applied slot-penalty delta as a purely additive, nullable column', () => {
+    expect(slotEvaluationAppliedPenalty).toContain(
+      'alter table public.brushing_slot_evaluations',
+    );
+    expect(slotEvaluationAppliedPenalty).toContain(
+      'add column if not exists applied_penalty_mine integer',
+    );
+    // Nullable (no "not null"), and range-constrained when present — legacy
+    // rows stay NULL rather than being backfilled with a guessed value.
+    expect(slotEvaluationAppliedPenalty).not.toMatch(/applied_penalty_mine[^;]*not null/i);
+    expect(slotEvaluationAppliedPenalty).toContain(
+      'check (applied_penalty_mine is null or applied_penalty_mine between -10 and 0)',
+    );
+    expect(slotEvaluationAppliedPenalty).not.toMatch(/\bupdate\s+public\.brushing_slot_evaluations/i);
+    expect(slotEvaluationAppliedPenalty).not.toMatch(/\bdelete\s+from\b/i);
   });
 });
 

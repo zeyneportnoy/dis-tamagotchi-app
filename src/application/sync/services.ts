@@ -30,6 +30,8 @@ import { ProfileSyncUseCases } from './ProfileSyncUseCases';
 let useCasesPromise: Promise<ProfileSyncUseCases | null> | undefined;
 let childDataSyncPromise: Promise<ChildDataSyncUseCases | null> | undefined;
 let childPreferencesSyncPromise: Promise<ChildPreferencesSyncUseCases | null> | undefined;
+let childDataRecoveryPromise: Promise<void> | null = null;
+let childPreferencesRecoveryPromise: Promise<void> | null = null;
 
 const childPreferenceAccessors: ChildPreferenceAccessors = {
   readVoice: (parentUserId, childProfileId) =>
@@ -117,6 +119,8 @@ const lastPushedProgress = new Map<string, string>();
  */
 export function resetSessionSyncState(): void {
   lastPushedProgress.clear();
+  childDataRecoveryPromise = null;
+  childPreferencesRecoveryPromise = null;
 }
 
 /**
@@ -223,6 +227,32 @@ export async function recoverChildBrushingHistory(): Promise<void> {
 }
 
 /**
+ * Runs Mine Puan progress recovery and brushing/evaluation history recovery
+ * exactly once per signed-in app session, and hands every caller the SAME
+ * in-flight/resolved promise instead of letting them race independent copies
+ * of the same work.
+ *
+ * This matters because missed-slot reconciliation (`ChildExperienceUseCases
+ * .getProgress` → `reconcileMissedSlots`, driven by `MissedSlotReconciler` in
+ * the root layout as well as every screen that reads progress) must never run
+ * against local `brushing_sessions` / `daily_progress` tables that have not
+ * been hydrated from the cloud yet on this device. An unhydrated table looks
+ * exactly like a wall of missed slots: reconciliation applies a real -10
+ * penalty for every closed slot since the profile was created, which can
+ * crash a genuinely-progressing child's score to the 0 floor the moment a
+ * device is reinstalled, a cold start races the recovery pass, or a second
+ * device opens the app before the first device's history has synced.
+ * Awaiting this gate before reconciling guarantees history is hydrated first.
+ */
+export function ensureChildDataRecovered(): Promise<void> {
+  childDataRecoveryPromise ??= (async () => {
+    await recoverChildCloudProgress();
+    await recoverChildBrushingHistory();
+  })();
+  return childDataRecoveryPromise;
+}
+
+/**
  * Retry every locally pending cloud write (child profiles first, then dependent
  * progress / sessions / evaluations / preferences). Triggered on bootstrap and
  * when the app returns to the foreground — not polled. Idempotent upserts, so a
@@ -260,6 +290,7 @@ export function getChildPreferencesSyncUseCases(): Promise<ChildPreferencesSyncU
  */
 export async function syncChildPreferences(profileId: string): Promise<void> {
   try {
+    await ensureChildPreferencesRecovered();
     const sync = await getChildPreferencesSyncUseCases();
     await sync?.pushForProfile(profileId);
   } catch {
@@ -273,6 +304,7 @@ export async function syncChildPreferences(profileId: string): Promise<void> {
  */
 export async function syncAllChildPreferences(): Promise<void> {
   try {
+    await ensureChildPreferencesRecovered();
     const sync = await getChildPreferencesSyncUseCases();
     await sync?.pushForAllSyncedChildren();
   } catch {
@@ -302,4 +334,28 @@ export async function recoverChildPreferences(): Promise<void> {
   } catch {
     // Swallowed: local data (if any) stays intact.
   }
+}
+
+/**
+ * Runs preferences recovery (customization + voice + reminders) exactly once
+ * per signed-in app session, and hands every caller the SAME in-flight/
+ * resolved promise instead of letting them race independent copies of the
+ * same work.
+ *
+ * This matters because `syncChildPreferences` / `syncAllChildPreferences` can
+ * be triggered (via `retryPendingCloudSync`) from an app-foreground effect
+ * that is NOT sequenced after bootstrap's own `recoverChildPreferences()`
+ * call — the two are separate, unawaited effects racing off the same
+ * "session ready" signal. If a push fires first for a child whose
+ * customization/reminders/voice have not been hydrated on this device yet,
+ * it would push local defaults over real cloud data (a genuine destructive
+ * overwrite: background/room/reminders silently reset for that child).
+ * `ChildPreferencesSyncUseCases.pushSnapshot` also refuses to push an
+ * unresolved child that already has a cloud row, as defense in depth, but
+ * awaiting this gate first means recovery has normally already caught up
+ * every child before any push is attempted at all.
+ */
+export function ensureChildPreferencesRecovered(): Promise<void> {
+  childPreferencesRecoveryPromise ??= recoverChildPreferences();
+  return childPreferencesRecoveryPromise;
 }

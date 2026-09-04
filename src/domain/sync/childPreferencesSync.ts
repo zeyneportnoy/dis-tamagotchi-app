@@ -42,6 +42,8 @@ export type CustomizationSyncMeta = Readonly<{
 
 export interface CloudChildPreferencesRepository {
   upsert(preferences: CloudChildPreferences): Promise<void>;
+  /** Current cloud row for one child, or null when none exists yet. */
+  get(childId: string): Promise<CloudChildPreferences | null>;
   listOwned(): Promise<readonly CloudChildPreferences[]>;
 }
 

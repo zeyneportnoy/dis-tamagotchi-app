@@ -58,13 +58,22 @@ export class SQLiteProfileSyncRepository implements LocalProfileSyncRepository {
   async upsertCloud(profile: CloudChildProfile): Promise<void> {
     await this.database.withTransactionAsync(async () => {
       const familyId = await this.ensureLocalFamilyId();
+      // date_of_birth is the one nullable field here. A null incoming value
+      // (a stale/incomplete cloud row, a transient fetch, a profile whose DOB
+      // hasn't been written on any device yet) must never erase an already-
+      // known local DOB — this call runs on every cold AND warm bootstrap, so
+      // an unconditional overwrite would silently re-null a real DOB (and
+      // route the child back into onboarding) the next time this runs.
+      // COALESCE keeps the existing local value whenever the incoming one is
+      // null; a real, non-null cloud DOB still always wins, per the recovery
+      // contract (cloud is authoritative once it actually knows a DOB).
       await this.database.runAsync(
         `INSERT INTO child_profiles
           (id, family_id, nickname, date_of_birth, age_band, avatar_id, created_at, archived_at,
            remote_id, parent_auth_user_id, sync_status, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
          ON CONFLICT(id) DO UPDATE SET nickname = excluded.nickname,
-          date_of_birth = excluded.date_of_birth,
+          date_of_birth = COALESCE(excluded.date_of_birth, child_profiles.date_of_birth),
           age_band = excluded.age_band, avatar_id = excluded.avatar_id,
           archived_at = excluded.archived_at, remote_id = excluded.remote_id,
           parent_auth_user_id = excluded.parent_auth_user_id,

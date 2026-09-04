@@ -39,6 +39,8 @@ type EvaluationRow = {
   period: 'morning' | 'evening';
   outcome: 'completed' | 'missed';
   penalty_amount: -10 | 0;
+  score_before: number;
+  score_after: number;
   evaluated_at: string;
 };
 
@@ -225,7 +227,7 @@ export class SQLiteChildCloudSyncRepository implements LocalChildCloudSyncReposi
     profileId: string,
   ): Promise<readonly Omit<CloudSlotEvaluation, 'childId'>[]> {
     const rows = await this.database.getAllAsync<EvaluationRow>(
-      `SELECT local_day_key, period, outcome, penalty_amount, evaluated_at
+      `SELECT local_day_key, period, outcome, penalty_amount, score_before, score_after, evaluated_at
        FROM brushing_slot_evaluations
        WHERE child_profile_id = ? AND synced_at IS NULL
        ORDER BY local_day_key, period`,
@@ -236,6 +238,9 @@ export class SQLiteChildCloudSyncRepository implements LocalChildCloudSyncReposi
       period: row.period,
       outcome: row.outcome,
       penaltyMine: row.penalty_amount === -10 ? -10 : 0,
+      // The actual clamped delta this device applied — 0 for a completed
+      // outcome by construction, never guessed for a missed one.
+      appliedPenaltyMine: row.outcome === 'missed' ? row.score_after - row.score_before : 0,
       evaluatedAt: row.evaluated_at,
     }));
   }
@@ -260,16 +265,31 @@ export class SQLiteChildCloudSyncRepository implements LocalChildCloudSyncReposi
     // INSERT OR IGNORE on the composite key → an evaluation already present is
     // never overwritten. reconcileMissedSlots checks for this same row before
     // applying a penalty, so hydrating it here makes recovery penalty-safe.
+    //
+    // The cloud only carries the actual delta (or null for a legacy row that
+    // predates that field), not absolute scores. A later repair only ever
+    // reads the DIFFERENCE `score_before - score_after`, so any pair of
+    // non-negative numbers with that difference reproduces the exact refund:
+    // `score_before = |appliedPenaltyMine|`, `score_after = 0`. A null/unknown
+    // delta hydrates as 0 — a safe "no known loss", never an invented refund.
+    const knownLoss =
+      evaluation.outcome === 'missed' && evaluation.appliedPenaltyMine !== null
+        ? Math.min(0, Math.max(-10, evaluation.appliedPenaltyMine))
+        : 0;
+    const scoreBefore = -knownLoss;
+    const scoreAfter = 0;
     await this.database.runAsync(
       `INSERT OR IGNORE INTO brushing_slot_evaluations
         (child_profile_id, local_day_key, period, outcome, penalty_amount,
          score_before, score_after, evaluated_at, synced_at)
-       VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       profileId,
       evaluation.localDayKey,
       evaluation.period,
       evaluation.outcome,
       evaluation.penaltyMine === -10 ? -10 : 0,
+      scoreBefore,
+      scoreAfter,
       evaluation.evaluatedAt,
       evaluation.updatedAt ?? new Date().toISOString(),
     );

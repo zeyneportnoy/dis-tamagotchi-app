@@ -9,11 +9,13 @@ export {
   syncChildBrushingSession,
   recoverChildCloudProgress,
   recoverChildBrushingHistory,
+  ensureChildDataRecovered,
   retryPendingCloudSync,
   getChildPreferencesSyncUseCases,
   syncChildPreferences,
   syncAllChildPreferences,
   recoverChildPreferences,
+  ensureChildPreferencesRecovered,
   resetSessionSyncState,
   wipeLocalAccountData,
 } from './services';

@@ -6,6 +6,7 @@ import { AppState } from 'react-native';
 
 import { getChildExperienceUseCases } from '@/application/child';
 import { getFamilyUseCases } from '@/application/family';
+import { ensureChildDataRecovered } from '@/application/sync';
 import { perfMark, perfStep } from '@/config/perf';
 import { ErrorState } from '@/design-system';
 import { initializeDatabase } from '@/data/db';
@@ -34,6 +35,12 @@ function MissedSlotReconciler() {
 
     const reconcileAllChildren = (): Promise<void> => {
       reconciliation ??= (async () => {
+        // Missed-slot reconciliation must never run ahead of cloud history
+        // hydration: an unhydrated local device looks exactly like a wall of
+        // missed slots and would apply real -10 penalties for brushing that
+        // already happened. This resolves instantly once recovery has already
+        // run this session.
+        await ensureChildDataRecovered();
         const family = await getFamilyUseCases();
         const child = await getChildExperienceUseCases();
         for (const profile of await family.listProfiles()) {

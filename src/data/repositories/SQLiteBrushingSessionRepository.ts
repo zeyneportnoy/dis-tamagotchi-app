@@ -179,6 +179,95 @@ export class SQLiteBrushingSessionRepository
     this.activeSessionIds.add(input.sessionId);
   }
 
+  /**
+   * Self-healing repair for a legacy data-integrity bug: a slot can end up
+   * with BOTH a genuine completed+rewarded `brushing_sessions` row AND a
+   * `brushing_slot_evaluations` row recorded as `missed` for the exact same
+   * (child, day, period), when reconciliation ran on a device before that
+   * device's cloud session history was hydrated (see `ensureChildDataRecovered`
+   * in `@/application/sync`, which now prevents this going forward). Once an
+   * evaluation row exists it is immutable to `reconcileMissedSlots` itself
+   * (`if (existing) continue`), so a wrongly-applied -10 could never
+   * self-correct without this pass.
+   *
+   * Deterministic precedence: a real completed+rewarded session always wins
+   * over a stale `missed` evaluation for the same logical slot. The fix
+   * corrects the evaluation row in place and refunds exactly the amount that
+   * was actually removed from the score at the time — never more, never
+   * twice.
+   *
+   * The refund is NOT the flat -10 `penalty_amount` label: the score floor at
+   * 0 means the real delta actually applied could have been anywhere from 0
+   * to -10 (e.g. score 5 → floor 0 only removed 5, not 10). The row's own
+   * `score_after - score_before` records that real, already-clamped delta, so
+   * refunding by that instead of by `penalty_amount` is what keeps this exact
+   * at the floor and never manufactures Mine Puan the child was never
+   * actually docked.
+   *
+   * A row whose `score_before`/`score_after` are BOTH 0 is ambiguous: it is
+   * indistinguishable between "this device recorded the penalty and the score
+   * genuinely already was 0" (refund 0 is exact) and "this row was hydrated
+   * from the cloud" — `hydrateSlotEvaluation` always writes literal 0/0
+   * placeholders because the cloud `brushing_slot_evaluations` schema does not
+   * carry `score_before`/`score_after` at all, so the real amount removed on
+   * the originating device is unknowable from this row alone. Refunding 0 in
+   * that case is the only choice that can never over-credit; it may
+   * under-refund a hydrated conflict, which is the safe direction to be wrong
+   * in. See the final report for the schema change that would close this gap.
+   *
+   * The `outcome = 'missed'` guard on the UPDATE is the idempotency claim:
+   * once corrected, `changes` is 0 on any later pass (including this same
+   * transaction, repeated recovery, or a soak of bootstrap/foreground
+   * retries), so this can run on every call and never refunds twice. No
+   * history row is deleted and no reward is re-granted.
+   */
+  private async repairLegacyMissedSlotConflicts(profileId: string): Promise<void> {
+    const conflicts = await this.database.getAllAsync<{
+      local_day_key: string;
+      period: BrushingPeriod;
+      score_before: number;
+      score_after: number;
+    }>(
+      `SELECT e.local_day_key, e.period, e.score_before, e.score_after
+       FROM brushing_slot_evaluations e
+       WHERE e.child_profile_id = ? AND e.outcome = 'missed' AND e.penalty_amount = -10
+         AND EXISTS (
+           SELECT 1 FROM brushing_sessions s
+           WHERE s.profile_id = e.child_profile_id
+             AND s.local_day_key = e.local_day_key
+             AND s.period = e.period
+             AND s.completed = 1
+             AND s.reward_granted_at IS NOT NULL
+         )`,
+      profileId,
+    );
+    for (const conflict of conflicts) {
+      const corrected = await this.database.runAsync(
+        // score_after is normalized to score_before so a corrected row's own
+        // recorded delta becomes 0, matching its new 'completed' outcome —
+        // otherwise a later push would report a stale nonzero applied delta
+        // for a slot that no longer carries any penalty at all.
+        `UPDATE brushing_slot_evaluations
+         SET outcome = 'completed', penalty_amount = 0, score_after = score_before
+         WHERE child_profile_id = ? AND local_day_key = ? AND period = ? AND outcome = 'missed'`,
+        profileId,
+        conflict.local_day_key,
+        conflict.period,
+      );
+      if (corrected.changes === 0) continue;
+      const refund = conflict.score_before - conflict.score_after; // 0..10, never negative
+      if (refund <= 0) continue;
+      const progress = await this.requireProgress(profileId);
+      const restoredXp = progress.totalXp + refund;
+      await this.database.runAsync(
+        `UPDATE profile_progress SET total_xp = ?, level = ? WHERE child_profile_id = ?`,
+        restoredXp,
+        levelForXp(restoredXp),
+        profileId,
+      );
+    }
+  }
+
   async reconcileMissedSlots(profileId: string): Promise<readonly BrushingSlotEvaluation[]> {
     await this.assertOwned(profileId);
     const now = this.now();
@@ -192,6 +281,7 @@ export class SQLiteBrushingSessionRepository
       );
       if (!profile) throw new Error('PROFILE_NOT_FOUND');
       await this.ensureProgress(profileId, toLocalDateKey(now));
+      await this.repairLegacyMissedSlotConflicts(profileId);
 
       const openAttempts = await this.database.getAllAsync<AttemptRow>(
         `SELECT * FROM brushing_session_attempts
@@ -237,8 +327,23 @@ export class SQLiteBrushingSessionRepository
           slot.localDayKey,
         );
         const daily = await this.requireDaily(profileId, slot.localDayKey);
-        const completed =
+        // `daily_progress` reflects a session completed ON THIS DEVICE, but a
+        // session hydrated from the cloud (a different device, or a reinstall
+        // recovering history) only ever writes `brushing_sessions` — never
+        // backfills `daily_progress`. Checking both sources is what keeps a
+        // genuinely completed slot from ever being misjudged as missed here,
+        // regardless of hydration order.
+        const dailyFlagCompleted =
           slot.period === 'morning' ? daily.morningCompleted : daily.eveningCompleted;
+        const hydratedCompletedSession = await this.database.getFirstAsync<{ id: string }>(
+          `SELECT id FROM brushing_sessions
+           WHERE profile_id = ? AND local_day_key = ? AND period = ? AND completed = 1
+           LIMIT 1`,
+          profileId,
+          slot.localDayKey,
+          slot.period,
+        );
+        const completed = dailyFlagCompleted || Boolean(hydratedCompletedSession);
         const progress = await this.requireProgress(profileId);
         const scoreBefore = progress.totalXp;
         const scoreAfter = completed ? scoreBefore : Math.max(0, scoreBefore - 10);

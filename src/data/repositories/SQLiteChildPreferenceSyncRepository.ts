@@ -243,6 +243,11 @@ export class SQLiteChildPreferenceSyncRepository implements LocalChildPreference
   }
 
   async readCustomizationSyncMeta(profileId: string): Promise<CustomizationSyncMeta> {
+    // No local customization at all is NOT "dirty" — there is nothing a user
+    // has actually changed yet, so there is nothing that warrants a push.
+    // Only a real local write (via saveItemPlacement / saveSelectedRoomMaterials
+    // / saveDeveloperEquippedItem, or a prior hydration/push) can make this true.
+    if (!(await this.hasLocalCustomization(profileId))) return { syncedAt: null, dirty: false };
     const stored = await AsyncStorage.getItem(customizationSyncMetaKey(profileId));
     if (!stored) return { syncedAt: null, dirty: true };
     try {

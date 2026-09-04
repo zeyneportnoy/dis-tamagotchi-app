@@ -89,4 +89,16 @@ export class SupabaseChildPreferencesRepository implements CloudChildPreferences
     if (error) throw new Error('CLOUD_PREFERENCES_LIST_FAILED');
     return (data as PreferencesRow[]).map(mapRow);
   }
+
+  async get(childId: string): Promise<CloudChildPreferences | null> {
+    const { data, error } = await this.client
+      .from('child_preferences')
+      .select(
+        'child_id, selected_brush_id, selected_background_id, selected_effect_id, room_configuration, voice_guide, morning_reminder_enabled, morning_reminder_time, evening_reminder_enabled, evening_reminder_time, dentist_reminder_enabled, dentist_last_visit_date, updated_at',
+      )
+      .eq('child_id', childId)
+      .maybeSingle();
+    if (error) throw new Error('CLOUD_PREFERENCES_GET_FAILED');
+    return data ? mapRow(data as PreferencesRow) : null;
+  }
 }

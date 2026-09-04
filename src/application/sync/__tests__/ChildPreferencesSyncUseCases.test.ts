@@ -54,9 +54,15 @@ const local = (
 
 const cloud = (
   rows: readonly CloudChildPreferences[] = [],
+  overrides: Partial<jest.Mocked<CloudChildPreferencesRepository>> = {},
 ): jest.Mocked<CloudChildPreferencesRepository> => ({
   upsert: jest.fn().mockResolvedValue(undefined),
+  // Defaults to "no existing cloud row" so a not-fully-resolved local state
+  // (the default shape below) still represents the safe, genuinely-new-child
+  // case unless a test explicitly overrides it to simulate an EXISTING row.
+  get: jest.fn().mockResolvedValue(null),
   listOwned: jest.fn().mockResolvedValue(rows),
+  ...overrides,
 });
 
 const prefs = (
@@ -130,6 +136,77 @@ describe('ChildPreferencesSyncUseCases', () => {
     expect(cloudRepo.upsert.mock.calls[1]?.[0].childId).toBe('remote-b');
   });
 
+  describe('push safety — never overwrite an existing cloud row with unresolved local defaults', () => {
+    it('skips the push entirely when local is unresolved and the cloud already has a row for this child', async () => {
+      const cloudRepo = cloud([], { get: jest.fn().mockResolvedValue(cloudRow) });
+      const localRepo = local({ hasLocalCustomization: jest.fn().mockResolvedValue(false) });
+      const prefAccessors = prefs({
+        hasStoredVoice: jest.fn().mockResolvedValue(false),
+        hasStoredReminders: jest.fn().mockResolvedValue(false),
+      });
+      await new ChildPreferencesSyncUseCases(localRepo, cloudRepo, prefAccessors).pushForProfile(
+        'profile-1',
+      );
+      expect(cloudRepo.get).toHaveBeenCalledWith('child-remote-1');
+      expect(cloudRepo.upsert).not.toHaveBeenCalled();
+      expect(localRepo.markCustomizationSynced).not.toHaveBeenCalled();
+      expect(prefAccessors.markRemindersSynced).not.toHaveBeenCalled();
+    });
+
+    it('still pushes an unresolved local state when the cloud has no existing row (a genuinely brand-new child)', async () => {
+      const cloudRepo = cloud([], { get: jest.fn().mockResolvedValue(null) });
+      const localRepo = local({ hasLocalCustomization: jest.fn().mockResolvedValue(false) });
+      const prefAccessors = prefs({
+        hasStoredVoice: jest.fn().mockResolvedValue(false),
+        hasStoredReminders: jest.fn().mockResolvedValue(false),
+      });
+      await new ChildPreferencesSyncUseCases(localRepo, cloudRepo, prefAccessors).pushForProfile(
+        'profile-1',
+      );
+      expect(cloudRepo.upsert).toHaveBeenCalledTimes(1);
+    });
+
+    it('pushes without ever checking the cloud when local is fully resolved (fast path)', async () => {
+      const cloudRepo = cloud();
+      const localRepo = local({ hasLocalCustomization: jest.fn().mockResolvedValue(true) });
+      const prefAccessors = prefs({
+        hasStoredVoice: jest.fn().mockResolvedValue(true),
+        hasStoredReminders: jest.fn().mockResolvedValue(true),
+      });
+      await new ChildPreferencesSyncUseCases(localRepo, cloudRepo, prefAccessors).pushForProfile(
+        'profile-1',
+      );
+      expect(cloudRepo.get).not.toHaveBeenCalled();
+      expect(cloudRepo.upsert).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips only the unresolved sibling in a bulk push — does not block the resolved one', async () => {
+      const cloudRepo = cloud([], { get: jest.fn().mockResolvedValue(cloudRow) });
+      const localRepo = local({
+        listSyncedProfileIds: jest.fn().mockResolvedValue(['profile-resolved', 'profile-unresolved']),
+        resolveRemoteChildId: jest
+          .fn()
+          .mockResolvedValueOnce('remote-resolved')
+          .mockResolvedValueOnce('remote-unresolved'),
+        hasLocalCustomization: jest
+          .fn()
+          .mockResolvedValueOnce(true) // profile-resolved
+          .mockResolvedValueOnce(false), // profile-unresolved
+      });
+      const prefAccessors = prefs({
+        hasStoredVoice: jest.fn().mockResolvedValue(true),
+        hasStoredReminders: jest.fn().mockResolvedValue(true),
+      });
+      await new ChildPreferencesSyncUseCases(
+        localRepo,
+        cloudRepo,
+        prefAccessors,
+      ).pushForAllSyncedChildren();
+      expect(cloudRepo.upsert).toHaveBeenCalledTimes(1);
+      expect(cloudRepo.upsert.mock.calls[0]?.[0].childId).toBe('remote-resolved');
+    });
+  });
+
   describe('recover', () => {
     it('hydrates customization + child voice + reschedules reminders when nothing is stored locally', async () => {
       const localRepo = local();
@@ -161,7 +238,7 @@ describe('ChildPreferencesSyncUseCases', () => {
       expect(prefAccessors.applyRecoveredReminders).not.toHaveBeenCalled();
     });
 
-    it('refreshes customization when local is clean and the cloud row is newer', async () => {
+    it('never refreshes customization once local exists, even clean and cloud-newer (the row-wide updated_at also bumps on unrelated voice/reminder writes, so it is not a reliable per-field staleness signal)', async () => {
       const localRepo = local({
         hasLocalCustomization: jest.fn().mockResolvedValue(true),
         readCustomizationSyncMeta: jest
@@ -170,7 +247,7 @@ describe('ChildPreferencesSyncUseCases', () => {
       });
       const newerRow = { ...cloudRow, updatedAt: '2026-08-25T00:00:00.000Z' };
       await new ChildPreferencesSyncUseCases(localRepo, cloud([newerRow]), prefs()).recover();
-      expect(localRepo.hydrateCustomization).toHaveBeenCalledWith('profile-1', newerRow);
+      expect(localRepo.hydrateCustomization).not.toHaveBeenCalled();
     });
 
     it('keeps local customization when it holds unpushed edits even if the cloud row is newer', async () => {

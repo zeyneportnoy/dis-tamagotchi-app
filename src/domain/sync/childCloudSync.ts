@@ -42,6 +42,16 @@ export type CloudSlotEvaluation = Readonly<{
   outcome: 'completed' | 'missed';
   /** Mirrors the local penalty: only ever 0 or -10. */
   penaltyMine: 0 | -10;
+  /**
+   * The ACTUAL Mine Puan removed at evaluation time, already clamped by the
+   * score floor — distinct from `penaltyMine`, which is the fixed intended
+   * label and does not reflect clamping (e.g. a -10 penalty against a score
+   * of 5 only ever removes 5). Always 0 for a `completed` outcome. `null`
+   * means this row predates this field (a legacy row from an older app
+   * version): the real delta is unknown and must never be treated as -10 by
+   * a repair pass — it hydrates as "no known loss".
+   */
+  appliedPenaltyMine: number | null;
   evaluatedAt: string;
   updatedAt?: string;
 }>;

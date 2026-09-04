@@ -35,6 +35,7 @@ type EvaluationRow = {
   period: 'morning' | 'evening';
   outcome: 'completed' | 'missed';
   penalty_mine: number;
+  applied_penalty_mine: number | null;
   evaluated_at: string;
   updated_at: string | null;
 };
@@ -65,6 +66,10 @@ const mapEvaluation = (row: EvaluationRow): CloudSlotEvaluation => ({
   period: row.period,
   outcome: row.outcome,
   penaltyMine: row.penalty_mine === -10 ? -10 : 0,
+  appliedPenaltyMine:
+    row.applied_penalty_mine === null
+      ? null
+      : Math.max(-10, Math.min(0, row.applied_penalty_mine)),
   evaluatedAt: row.evaluated_at,
   updatedAt: row.updated_at ?? undefined,
 });
@@ -123,6 +128,7 @@ export class SupabaseChildDataRepository implements CloudChildDataRepository {
         period: evaluation.period,
         outcome: evaluation.outcome,
         penalty_mine: evaluation.penaltyMine,
+        applied_penalty_mine: evaluation.appliedPenaltyMine,
         evaluated_at: evaluation.evaluatedAt,
         updated_at: updatedAt,
       },
@@ -163,7 +169,9 @@ export class SupabaseChildDataRepository implements CloudChildDataRepository {
   async listOwnedSlotEvaluations(): Promise<readonly CloudSlotEvaluation[]> {
     const { data, error } = await this.client
       .from('brushing_slot_evaluations')
-      .select('child_id, local_day_key, period, outcome, penalty_mine, evaluated_at, updated_at');
+      .select(
+        'child_id, local_day_key, period, outcome, penalty_mine, applied_penalty_mine, evaluated_at, updated_at',
+      );
     if (error) throw new Error('CLOUD_SLOT_EVALUATION_LIST_FAILED');
     return (data as EvaluationRow[]).map(mapEvaluation);
   }

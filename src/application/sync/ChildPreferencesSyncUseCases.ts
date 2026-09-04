@@ -77,8 +77,31 @@ export class ChildPreferencesSyncUseCases {
     };
   }
 
+  /**
+   * A child whose customization/reminders/voice have never been resolved
+   * locally (neither hydrated from the cloud nor genuinely edited by a user
+   * on this device) has no trustworthy snapshot yet: `buildSnapshot` would
+   * fabricate empty/default values for the unresolved parts. Pushing that
+   * default is safe ONLY when the cloud has no existing row to protect (a
+   * genuinely brand-new child, e.g. mid-onboarding) — never when an existing
+   * cloud row could be destructively overwritten by it. This is the guard
+   * that stops a bootstrap/foreground sync pass from bulk-defaulting many
+   * siblings' background/room/reminders before recovery has caught up.
+   */
+  private async isSafeToPush(profileId: string, childId: string, parentUserId: string | null): Promise<boolean> {
+    const [hasCustomization, hasReminders, hasVoice] = await Promise.all([
+      this.local.hasLocalCustomization(profileId),
+      parentUserId ? this.prefs.hasStoredReminders(parentUserId, profileId) : Promise.resolve(true),
+      parentUserId ? this.prefs.hasStoredVoice(parentUserId, profileId) : Promise.resolve(true),
+    ]);
+    if (hasCustomization && hasReminders && hasVoice) return true;
+    const existing = await this.cloud.get(childId);
+    return existing === null;
+  }
+
   private async pushSnapshot(profileId: string, childId: string): Promise<void> {
     const parentUserId = await this.local.resolveParentUserId(profileId);
+    if (!(await this.isSafeToPush(profileId, childId, parentUserId))) return;
     const snapshot = await this.buildSnapshot(profileId, childId);
     await this.cloud.upsert(snapshot);
     await this.local.markCustomizationSynced(profileId, snapshot.roomConfiguration);

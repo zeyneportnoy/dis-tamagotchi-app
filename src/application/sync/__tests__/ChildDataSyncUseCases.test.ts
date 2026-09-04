@@ -92,6 +92,7 @@ describe('ChildDataSyncUseCases — push', () => {
       period: 'evening',
       outcome: 'missed',
       penaltyMine: -10,
+      appliedPenaltyMine: -10,
       evaluatedAt: '2026-08-24T00:00:00.000Z',
     };
     const localRepo = local({
@@ -265,6 +266,7 @@ describe('ChildDataSyncUseCases — brushing history recovery', () => {
       period: 'evening',
       outcome: 'missed',
       penaltyMine: -10,
+      appliedPenaltyMine: -10,
       evaluatedAt: '2026-08-24T00:00:00.000Z',
       updatedAt: '2026-08-24T00:00:01.000Z',
     };

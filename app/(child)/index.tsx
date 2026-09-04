@@ -1,6 +1,7 @@
 import { router, type Href, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import { getChildExperienceUseCases, subscribeToChildProgressChanges } from '@/application/child';
@@ -139,6 +140,7 @@ function TaskCard({
 
 export default function ChildHomeScreen() {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const [active, setActive] = useState<ChildProfileViewModel | null>(null);
   const [profiles, setProfiles] = useState<readonly ChildProfileViewModel[]>([]);
   const [progress, setProgress] = useState<ProfileProgress | null>(null);
@@ -372,7 +374,15 @@ export default function ChildHomeScreen() {
         transparent
         visible={pickerVisible}
       >
-        <View style={styles.modalBackdrop}>
+        <View
+          style={[
+            styles.modalBackdrop,
+            {
+              paddingBottom: Math.max(spacing.lg, insets.bottom),
+              paddingTop: Math.max(spacing.lg, insets.top),
+            },
+          ]}
+        >
           <View accessibilityViewIsModal style={styles.modalCard} testID="profile-switcher-modal">
             <View style={styles.modalHeader}>
               <Text variant="title">{t('childHome.profilePickerTitle')}</Text>
@@ -385,19 +395,25 @@ export default function ChildHomeScreen() {
                 <Text style={styles.closeIcon}>×</Text>
               </Pressable>
             </View>
-            {profiles.map((profile) => (
-              <SelectionCard
-                key={profile.id}
-                label={profile.nickname}
-                onPress={() => {
-                  setPickerVisible(false);
-                  void getFamilyUseCases()
-                    .then((useCases) => useCases.selectActiveProfile(profile.id))
-                    .then(load);
-                }}
-                selected={profile.id === active.id}
-              />
-            ))}
+            <ScrollView
+              contentContainerStyle={styles.modalListContent}
+              showsVerticalScrollIndicator
+              style={styles.modalList}
+            >
+              {profiles.map((profile) => (
+                <SelectionCard
+                  key={profile.id}
+                  label={profile.nickname}
+                  onPress={() => {
+                    setPickerVisible(false);
+                    void getFamilyUseCases()
+                      .then((useCases) => useCases.selectActiveProfile(profile.id))
+                      .then(load);
+                  }}
+                  selected={profile.id === active.id}
+                />
+              ))}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -538,15 +554,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(38, 50, 56, 0.35)',
     flex: 1,
     justifyContent: 'flex-end',
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg,
   },
   modalCard: {
     backgroundColor: colors.backgroundBase,
     borderRadius: radii.lg,
     gap: spacing.md,
+    maxHeight: '100%',
+    overflow: 'hidden',
     padding: spacing.lg,
   },
   modalHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  modalList: { flexShrink: 1 },
+  modalListContent: { gap: spacing.md, paddingBottom: spacing.xs },
   pressed: { opacity: 0.75 },
   primaryAction: {
     borderRadius: radii.lg,

@@ -104,6 +104,11 @@ export class ReminderSettingsService {
 
   /** Whether the local child reminder preference differs from the last push. */
   async readSyncMeta(parentId: string, childProfileId: string): Promise<ReminderSyncMeta> {
+    // No stored child-specific (or legacy) record at all is NOT "dirty" —
+    // nothing a user has actually set yet, so nothing warrants a push.
+    if (!(await this.hasStoredSettings(parentId, childProfileId))) {
+      return { syncedAt: null, dirty: false };
+    }
     const stored = await this.storage.getItem(syncMetaKey(parentId, childProfileId));
     if (!stored) return { syncedAt: null, dirty: true };
     try {
