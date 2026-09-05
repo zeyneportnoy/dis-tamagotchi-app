@@ -8,6 +8,7 @@ type Props = Readonly<{
   accessibilityLabel: string;
   editable: boolean;
   materialKey: RoomMaterialKey;
+  onDragActiveChange?(active: boolean): void;
   onPlacementChange(placement: ItemPlacement): void;
   placement: ItemPlacement;
   sceneSize: SceneSize;
@@ -19,6 +20,7 @@ export function RoomMaterialItem({
   accessibilityLabel,
   editable,
   materialKey,
+  onDragActiveChange,
   onPlacementChange,
   placement,
   sceneSize,
@@ -50,21 +52,36 @@ export function RoomMaterialItem({
     return PanResponder.create({
       onMoveShouldSetPanResponder: () => editable,
       onMoveShouldSetPanResponderCapture: () => editable,
+      onPanResponderGrant: () => {
+        if (editable) onDragActiveChange?.(true);
+      },
       onPanResponderMove: (_, gesture) => {
         if (!editable) return;
         drag.setValue(clamp(gesture.dx, gesture.dy));
       },
       onPanResponderRelease: (_, gesture) => {
         if (editable) commit(gesture.dx, gesture.dy);
+        // Always release the lock, even if this item somehow became the
+        // responder while not editable, so parent scroll can never stick.
+        onDragActiveChange?.(false);
       },
       onPanResponderTerminate: (_, gesture) => {
         if (editable) commit(gesture.dx, gesture.dy);
+        onDragActiveChange?.(false);
       },
       onPanResponderTerminationRequest: () => !editable,
       onStartShouldSetPanResponder: () => editable,
       onStartShouldSetPanResponderCapture: () => editable,
     });
-  }, [drag, editable, material.dimensions, onPlacementChange, placement, sceneSize]);
+  }, [
+    drag,
+    editable,
+    material.dimensions,
+    onDragActiveChange,
+    onPlacementChange,
+    placement,
+    sceneSize,
+  ]);
 
   if (sceneSize.height <= 0 || sceneSize.width <= 0) return null;
 

@@ -117,6 +117,9 @@ export default function CollectionScreen() {
   const [customization, setCustomization] = useState<CustomizationState>(emptyCustomizationState);
   const [sceneSize, setSceneSize] = useState<SceneSize>({ height: 0, width: 0 });
   const [lockedMessage, setLockedMessage] = useState(false);
+  // Locks the outer ScrollView only while a placed room object is actively
+  // being dragged, so the parent scroll never fights the drag gesture.
+  const [isDraggingRoomMaterial, setIsDraggingRoomMaterial] = useState(false);
   const [failed, setFailed] = useState(false);
 
   useFocusEffect(
@@ -388,7 +391,11 @@ export default function CollectionScreen() {
       testID="collection-screen"
     >
       <CharacterScreenBackdrop characterKey={profile.avatarId} />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        scrollEnabled={!isDraggingRoomMaterial}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.heading} variant="title">
           {t('collection.title')}
         </Text>
@@ -418,6 +425,7 @@ export default function CollectionScreen() {
               editable
               key={`${profile.id}:${material.key}:${customization.placements[material.key]?.x}:${customization.placements[material.key]?.y}`}
               materialKey={material.key}
+              onDragActiveChange={setIsDraggingRoomMaterial}
               onPlacementChange={(placement) => updatePlacement(material.key, placement)}
               placement={
                 customization.placements[material.key] ??
