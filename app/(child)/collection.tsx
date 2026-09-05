@@ -23,9 +23,11 @@ import {
   DEFAULT_EFFECT_KEY,
   backgroundUnlockScore,
   brushUnlockScore,
+  displayBackgroundKey,
   effectUnlockScore,
   growthStageForXp,
   isBackgroundUnlockedForScore,
+  isBrushRewardKey,
   isBrushUnlockedForScore,
   isEffectUnlockedForScore,
   type AccessorySlot,
@@ -250,6 +252,11 @@ export default function CollectionScreen() {
     setLockedMessage(false);
     const selectedItem = items?.find((item) => item.key === itemKey);
     if (selectedItem?.equipped) {
+      // The background and brush slots always show a canonical selection
+      // (falling back to Pastel Oyun Odası / Bulut Fırça when nothing is
+      // persisted) — re-tapping the currently equipped card must never clear
+      // it back to empty.
+      if (selectedItem.slot === 'background' || selectedItem.slot === 'brush') return;
       await remove(selectedItem.slot);
       return;
     }
@@ -363,6 +370,24 @@ export default function CollectionScreen() {
   if (failed) return <ErrorState />;
   if (!items || !profile) return <LoadingState />;
   const selectedBackground = items.find((item) => item.equipped && item.slot === 'background');
+  // Display-only fallback, mirroring Home/Profile's `displayBackgroundKey`: a
+  // child with no real persisted background selection — or a stale id that no
+  // longer resolves in the catalog — always sees the always-open Pastel Oyun
+  // Odası instead of an empty scene. Pure render-time computation: it writes
+  // nothing and never triggers a cloud/local push on its own.
+  const candidateBackgroundKey = displayBackgroundKey(selectedBackground?.key);
+  const resolvedBackgroundKey = isCollectionBackgroundKey(candidateBackgroundKey)
+    ? candidateBackgroundKey
+    : DEFAULT_BACKGROUND_KEY;
+  const isBackgroundFallbackActive = resolvedBackgroundKey !== selectedBackground?.key;
+  const selectedBrush = items.find((item) => item.equipped && item.slot === 'brush');
+  // Display-only fallback: a child with no real persisted brush selection —
+  // or a stale id that no longer resolves in the catalog — always sees the
+  // always-open Bulut Fırça selected, matching the brushing screen's own
+  // fallback. Pure render-time computation: writes nothing on its own.
+  const candidateBrushKey = selectedBrush?.key ?? DEFAULT_BRUSH_KEY;
+  const resolvedBrushKey = isBrushRewardKey(candidateBrushKey) ? candidateBrushKey : DEFAULT_BRUSH_KEY;
+  const isBrushFallbackActive = resolvedBrushKey !== selectedBrush?.key;
   const selectedEffect = items.find((item) => item.equipped && item.slot === 'effect');
   const selectedSceneEffectKey = isCharacterSceneEffectKey(selectedEffect?.key)
     ? selectedEffect.key
@@ -410,14 +435,12 @@ export default function CollectionScreen() {
           testID="collection-preview-scene"
         >
           <CharacterSceneDecor tone={sceneToneForCharacter(profile.avatarId)} />
-          {selectedBackground ? (
-            <Image
-              resizeMode="cover"
-              source={premiumRewardSource(selectedBackground.key)}
-              style={styles.previewBackgroundAsset}
-              testID="collection-preview-background"
-            />
-          ) : null}
+          <Image
+            resizeMode="cover"
+            source={premiumRewardSource(resolvedBackgroundKey)}
+            style={styles.previewBackgroundAsset}
+            testID="collection-preview-background"
+          />
           <View style={styles.previewFloor} />
           {selectedRoomMaterials.map((material) => (
             <RoomMaterialItem
@@ -505,7 +528,7 @@ export default function CollectionScreen() {
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>{t(`collection.categories.${activeSlot}`)}</Text>
-          {hasEquippedInSlot ? (
+          {hasEquippedInSlot && activeSlot !== 'background' && activeSlot !== 'brush' ? (
             <Pressable
               accessibilityRole="button"
               onPress={() => void remove()}
@@ -591,7 +614,16 @@ export default function CollectionScreen() {
             const unlocked = gate ? gate.isUnlocked(item.key, currentMineScore) : item.unlocked;
             // A stored selection that has re-locked (score dropped) must never
             // still read as "equipped", even if the revert write has not landed.
-            const equipped = item.equipped && unlocked;
+            // When no valid background/brush is actually persisted, the
+            // always-open default card reads as equipped instead — matching
+            // the display-only fallback used above (and, for brush, on the
+            // brushing screen itself).
+            const equipped =
+              activeSlot === 'background' && isBackgroundFallbackActive
+                ? item.key === resolvedBackgroundKey
+                : activeSlot === 'brush' && isBrushFallbackActive
+                  ? item.key === resolvedBrushKey
+                  : item.equipped && unlocked;
             const statusKey = equipped
               ? 'collection.equipped'
               : unlocked

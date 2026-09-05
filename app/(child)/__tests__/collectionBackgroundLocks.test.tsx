@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { premiumRewardSource } from '@/features/character';
 import { customizationStorageKey } from '@/features/customization';
 
 import CollectionScreen from '../collection';
@@ -60,7 +61,7 @@ const backgroundKeys = [
   ['rainbow-cape', 3600],
 ] as const;
 
-const buildBackgroundInventory = (equippedKey = 'pastel-playroom') =>
+const buildBackgroundInventory = (equippedKey: string | null = 'pastel-playroom') =>
   backgroundKeys.map(([key, unlockXp]) => ({
     key,
     slot: 'background',
@@ -167,5 +168,149 @@ describe('Collection · background lock system', () => {
       (await AsyncStorage.getItem(customizationStorageKey('profile-1'))) ?? '{}',
     );
     expect(persisted.developerEquipped.background).toBe('rainbow-room');
+  });
+});
+
+describe('Collection · never shows an empty background scene', () => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    await AsyncStorage.clear();
+    mockMineScore = 0;
+    mockBackgroundInventory = buildBackgroundInventory();
+  });
+
+  afterEach(() => cleanup());
+
+  it('falls back to Pastel Oyun Odası when nothing is equipped (undefined selection)', async () => {
+    mockBackgroundInventory = buildBackgroundInventory(null);
+    const view = await render(<CollectionScreen />);
+    await openBackgroundTab(view);
+
+    expect(status(view, 'pastel-playroom')).toBe('Seçili');
+    expect(view.getByTestId('collection-preview-background').props.source).toEqual(
+      premiumRewardSource('pastel-playroom'),
+    );
+  });
+
+  it('falls back to Pastel Oyun Odası when the persisted background is explicitly null', async () => {
+    await AsyncStorage.setItem(
+      customizationStorageKey('profile-1'),
+      JSON.stringify({ developerEquipped: { background: null }, version: 1 }),
+    );
+    mockBackgroundInventory = buildBackgroundInventory(null);
+    const view = await render(<CollectionScreen />);
+    await openBackgroundTab(view);
+
+    expect(status(view, 'pastel-playroom')).toBe('Seçili');
+    expect(view.getByTestId('collection-preview-background').props.source).toEqual(
+      premiumRewardSource('pastel-playroom'),
+    );
+  });
+
+  it('falls back to Pastel Oyun Odası when the persisted background id no longer exists in the catalog', async () => {
+    mockBackgroundInventory = [
+      ...buildBackgroundInventory(null),
+      {
+        key: 'legacy-mint-fog',
+        slot: 'background',
+        unlockXp: 0,
+        unlocked: true,
+        equipped: true,
+        unlockedAt: '2026-08-09T00:00:00.000Z',
+        icon: '✨',
+      },
+    ];
+    const view = await render(<CollectionScreen />);
+    await openBackgroundTab(view);
+
+    expect(status(view, 'pastel-playroom')).toBe('Seçili');
+    expect(view.getByTestId('collection-preview-background').props.source).toEqual(
+      premiumRewardSource('pastel-playroom'),
+    );
+    expect(view.queryByTestId('collection-item-status-legacy-mint-fog')).toBeNull();
+  });
+
+  it('re-tapping the already-equipped Pastel Oyun Odası card is a no-op, not a removal', async () => {
+    mockBackgroundInventory = buildBackgroundInventory('pastel-playroom');
+    const view = await render(<CollectionScreen />);
+    await openBackgroundTab(view);
+    expect(status(view, 'pastel-playroom')).toBe('Seçili');
+
+    fireEvent.press(view.getByRole('button', { name: 'Pastel Oyun Odası. Seçili' }));
+
+    await waitFor(() => expect(status(view, 'pastel-playroom')).toBe('Seçili'));
+    expect(mockUnequipAccessorySlot).not.toHaveBeenCalled();
+    const persisted = JSON.parse(
+      (await AsyncStorage.getItem(customizationStorageKey('profile-1'))) ?? '{}',
+    );
+    expect(persisted.developerEquipped?.background).toBeUndefined();
+  });
+
+  it('re-tapping an already-equipped OTHER background is a no-op, not a removal', async () => {
+    mockMineScore = 640;
+    mockBackgroundInventory = buildBackgroundInventory('rainbow-room');
+    const view = await render(<CollectionScreen />);
+    await openBackgroundTab(view);
+    expect(status(view, 'rainbow-room')).toBe('Seçili');
+
+    fireEvent.press(view.getByRole('button', { name: 'Gökkuşağı Işıltısı. Seçili' }));
+
+    await waitFor(() => expect(status(view, 'rainbow-room')).toBe('Seçili'));
+    expect(mockUnequipAccessorySlot).not.toHaveBeenCalled();
+    expect(status(view, 'pastel-playroom')).toBe('Seçmek için dokun');
+    const persisted = JSON.parse(
+      (await AsyncStorage.getItem(customizationStorageKey('profile-1'))) ?? '{}',
+    );
+    expect(persisted.developerEquipped?.background).toBeUndefined();
+  });
+
+  it('still selects a different unlocked background normally', async () => {
+    mockMineScore = 640;
+    mockBackgroundInventory = buildBackgroundInventory('pastel-playroom');
+    const view = await render(<CollectionScreen />);
+    await openBackgroundTab(view);
+
+    fireEvent.press(view.getByRole('button', { name: 'Gökkuşağı Işıltısı. Kazanıldı' }));
+
+    await waitFor(() => expect(status(view, 'rainbow-room')).toBe('Seçili'));
+    expect(status(view, 'pastel-playroom')).toBe('Seçmek için dokun');
+    const persisted = JSON.parse(
+      (await AsyncStorage.getItem(customizationStorageKey('profile-1'))) ?? '{}',
+    );
+    expect(persisted.developerEquipped.background).toBe('rainbow-room');
+  });
+
+  it('selecting Pastel Oyun Odası from a different background persists as a real explicit selection', async () => {
+    mockMineScore = 640;
+    mockBackgroundInventory = buildBackgroundInventory('rainbow-room');
+    const view = await render(<CollectionScreen />);
+    await openBackgroundTab(view);
+
+    fireEvent.press(view.getByRole('button', { name: 'Pastel Oyun Odası. Kazanıldı' }));
+
+    await waitFor(() => expect(status(view, 'pastel-playroom')).toBe('Seçili'));
+    const persisted = JSON.parse(
+      (await AsyncStorage.getItem(customizationStorageKey('profile-1'))) ?? '{}',
+    );
+    expect(persisted.developerEquipped.background).toBe('pastel-playroom');
+  });
+
+  it('renders the fallback with zero persistence, dirty flag, or cloud-push side effects', async () => {
+    mockBackgroundInventory = buildBackgroundInventory(null);
+    const view = await render(<CollectionScreen />);
+    await openBackgroundTab(view);
+    await waitFor(() => expect(status(view, 'pastel-playroom')).toBe('Seçili'));
+
+    expect(mockEquipItem).not.toHaveBeenCalled();
+    expect(mockUnequipAccessorySlot).not.toHaveBeenCalled();
+    expect(await AsyncStorage.getItem(customizationStorageKey('profile-1'))).toBeNull();
+  });
+
+  it('hides the remove control for the background category, since it always shows a selection', async () => {
+    mockBackgroundInventory = buildBackgroundInventory('pastel-playroom');
+    const view = await render(<CollectionScreen />);
+    await openBackgroundTab(view);
+
+    expect(view.queryByText('Seçimi kaldır')).toBeNull();
   });
 });

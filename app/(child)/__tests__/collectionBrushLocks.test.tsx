@@ -1,4 +1,4 @@
-import { cleanup, render, waitFor } from '@testing-library/react-native';
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { customizationStorageKey } from '@/features/customization';
@@ -177,5 +177,121 @@ describe('Collection · brush lock system', () => {
       (await AsyncStorage.getItem(customizationStorageKey('profile-1'))) ?? '{}',
     );
     expect(persisted.developerEquipped.brush).toBe('star-brush');
+  });
+});
+
+describe('Collection · never shows a brushless state', () => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    await AsyncStorage.clear();
+    mockMineScore = 0;
+    mockBrushInventory = buildBrushInventory();
+  });
+
+  afterEach(() => cleanup());
+
+  type Rendered = Awaited<ReturnType<typeof render>>;
+  const status = (view: Rendered, key: string): unknown =>
+    view.getByTestId(`collection-item-status-${key}`).props.children;
+
+  it('falls back to Bulut Fırça when no brush is persisted (undefined selection)', async () => {
+    mockBrushInventory = buildBrushInventory();
+    const view = await render(<CollectionScreen />);
+    await waitFor(() => expect(status(view, 'classic-brush')).toBe('Seçili'));
+  });
+
+  it('re-tapping the already-equipped Bulut Fırça card is a no-op, not a removal', async () => {
+    mockBrushInventory = buildBrushInventory('classic-brush');
+    const view = await render(<CollectionScreen />);
+    await waitFor(() => expect(status(view, 'classic-brush')).toBe('Seçili'));
+
+    fireEvent.press(view.getByRole('button', { name: 'Bulut Fırça. Seçili' }));
+
+    await waitFor(() => expect(status(view, 'classic-brush')).toBe('Seçili'));
+    expect(mockUnequipAccessorySlot).not.toHaveBeenCalled();
+    const persisted = JSON.parse(
+      (await AsyncStorage.getItem(customizationStorageKey('profile-1'))) ?? '{}',
+    );
+    expect(persisted.developerEquipped?.brush).toBeUndefined();
+  });
+
+  it('re-tapping an already-equipped OTHER brush is a no-op, not a removal', async () => {
+    mockMineScore = 80;
+    mockBrushInventory = buildBrushInventory('pink-brush');
+    const view = await render(<CollectionScreen />);
+    await waitFor(() => expect(status(view, 'pink-brush')).toBe('Seçili'));
+
+    fireEvent.press(view.getByRole('button', { name: 'Deniz Kızı Fırça. Seçili' }));
+
+    await waitFor(() => expect(status(view, 'pink-brush')).toBe('Seçili'));
+    expect(mockUnequipAccessorySlot).not.toHaveBeenCalled();
+    expect(status(view, 'classic-brush')).toBe('Seçmek için dokun');
+    const persisted = JSON.parse(
+      (await AsyncStorage.getItem(customizationStorageKey('profile-1'))) ?? '{}',
+    );
+    expect(persisted.developerEquipped?.brush).toBeUndefined();
+  });
+
+  it('still selects a different unlocked brush normally', async () => {
+    mockMineScore = 80;
+    mockBrushInventory = buildBrushInventory('classic-brush');
+    const view = await render(<CollectionScreen />);
+    await waitFor(() => expect(status(view, 'pink-brush')).toBe('Seçmek için dokun'));
+
+    fireEvent.press(view.getByRole('button', { name: 'Deniz Kızı Fırça. Kazanıldı' }));
+
+    await waitFor(() => expect(status(view, 'pink-brush')).toBe('Seçili'));
+    expect(status(view, 'classic-brush')).toBe('Seçmek için dokun');
+    const persisted = JSON.parse(
+      (await AsyncStorage.getItem(customizationStorageKey('profile-1'))) ?? '{}',
+    );
+    expect(persisted.developerEquipped.brush).toBe('pink-brush');
+  });
+
+  it('selecting Bulut Fırça from a different brush persists as a real explicit selection', async () => {
+    mockMineScore = 80;
+    mockBrushInventory = buildBrushInventory('pink-brush');
+    const view = await render(<CollectionScreen />);
+    await waitFor(() => expect(status(view, 'classic-brush')).toBe('Seçmek için dokun'));
+
+    fireEvent.press(view.getByRole('button', { name: 'Bulut Fırça. Kazanıldı' }));
+
+    await waitFor(() => expect(status(view, 'classic-brush')).toBe('Seçili'));
+    const persisted = JSON.parse(
+      (await AsyncStorage.getItem(customizationStorageKey('profile-1'))) ?? '{}',
+    );
+    expect(persisted.developerEquipped.brush).toBe('classic-brush');
+  });
+
+  it('renders the fallback with zero persistence, dirty flag, or cloud-push side effects', async () => {
+    mockBrushInventory = buildBrushInventory();
+    const view = await render(<CollectionScreen />);
+    await waitFor(() => expect(status(view, 'classic-brush')).toBe('Seçili'));
+
+    expect(mockEquipItem).not.toHaveBeenCalled();
+    expect(mockUnequipAccessorySlot).not.toHaveBeenCalled();
+    expect(await AsyncStorage.getItem(customizationStorageKey('profile-1'))).toBeNull();
+  });
+
+  it('hides the remove control for the brush category, since it always shows a selection', async () => {
+    mockBrushInventory = buildBrushInventory('classic-brush');
+    const view = await render(<CollectionScreen />);
+    await waitFor(() => expect(status(view, 'classic-brush')).toBe('Seçili'));
+
+    expect(view.queryByText('Seçimi kaldır')).toBeNull();
+  });
+
+  it('keeps Deniz Kızı Fırça locked at 79 Mine Puan, unaffected by the fallback fix', async () => {
+    mockMineScore = 79;
+    mockBrushInventory = buildBrushInventory();
+    const view = await render(<CollectionScreen />);
+    await waitFor(() => expect(status(view, 'pink-brush')).toBe("80 Mine Puan'da açılır"));
+  });
+
+  it('still unlocks Deniz Kızı Fırça at exactly 80 Mine Puan, unaffected by the fallback fix', async () => {
+    mockMineScore = 80;
+    mockBrushInventory = buildBrushInventory();
+    const view = await render(<CollectionScreen />);
+    await waitFor(() => expect(status(view, 'pink-brush')).toBe('Seçmek için dokun'));
   });
 });
