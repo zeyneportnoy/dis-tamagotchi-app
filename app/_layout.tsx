@@ -47,7 +47,9 @@ function MissedSlotReconciler() {
           await child.getProgress(profile.id);
         }
       })()
-        .catch(() => undefined)
+        .catch((error) => {
+          console.error('[MissedSlotReconciler] reconcileAllChildren failed', error);
+        })
         .finally(() => {
           reconciliation = null;
         });

@@ -158,8 +158,47 @@ export class SQLiteChildPreferenceSyncRepository implements LocalChildPreference
     return Boolean(row);
   }
 
+  async readDentistDatesForPush(
+    profileId: string,
+  ): Promise<Readonly<{ lastVisitDate: string | null; nextAppointmentDate: string | null }>> {
+    const row = await this.database.getFirstAsync<{
+      last_visit_date: string | null;
+      next_appointment_date: string | null;
+    }>(
+      `SELECT last_visit_date, next_appointment_date FROM dentist_reminders
+       WHERE child_profile_id = ?`,
+      profileId,
+    );
+    return {
+      lastVisitDate: row?.last_visit_date ?? null,
+      nextAppointmentDate: row?.next_appointment_date ?? null,
+    };
+  }
+
+  async resolveNickname(profileId: string): Promise<string> {
+    const row = await this.database.getFirstAsync<{ nickname: string }>(
+      `SELECT nickname FROM child_profiles WHERE id = ?`,
+      profileId,
+    );
+    return row?.nickname ?? '';
+  }
+
   async hasLocalCustomization(profileId: string): Promise<boolean> {
-    return (await AsyncStorage.getItem(customizationStorageKey(profileId))) !== null;
+    if ((await AsyncStorage.getItem(customizationStorageKey(profileId))) !== null) return true;
+    // Equip-only children (background/effect/brush changed from Collection but
+    // no room decor ever placed) never touch the AsyncStorage placement blob —
+    // only saveItemPlacement / saveSelectedRoomMaterials / saveDeveloperEquippedItem
+    // write it. An equipped production inventory row is an equally valid
+    // "this device has resolved this child's customization" signal; without it,
+    // every equip change after the first cloud row exists would be silently
+    // refused by isSafeToPush forever (see equippedInventory below).
+    const equipped = await this.database.getFirstAsync<{ item_key: string }>(
+      `SELECT item_key FROM inventory_items
+       WHERE child_profile_id = ? AND equipped = 1 AND slot IN ('background', 'effect', 'brush')
+       LIMIT 1`,
+      profileId,
+    );
+    return equipped !== null;
   }
 
   async hydrateCustomization(

@@ -27,6 +27,8 @@ const cloudRow: CloudChildPreferences = {
   eveningReminder: { enabled: true, time: '21:00' },
   dentistReminderEnabled: true,
   dentistLastVisitDate: null,
+  dentistNextAppointmentDate: null,
+  nicknamePersonalizationEnabled: null,
 };
 
 const local = (
@@ -42,6 +44,10 @@ const local = (
     roomConfiguration: roomConfig,
   }),
   dentistReminderEnabled: jest.fn().mockResolvedValue(true),
+  readDentistDatesForPush: jest
+    .fn()
+    .mockResolvedValue({ lastVisitDate: null, nextAppointmentDate: null }),
+  resolveNickname: jest.fn().mockResolvedValue('Ada'),
   hasLocalCustomization: jest.fn().mockResolvedValue(false),
   hydrateCustomization: jest.fn().mockResolvedValue(undefined),
   findProfileByRemoteChildId: jest.fn().mockResolvedValue('profile-1'),
@@ -85,6 +91,14 @@ const prefs = (
   readRemindersSyncMeta: jest
     .fn()
     .mockResolvedValue({ syncedAt: '2026-08-20T00:00:00.000Z', dirty: false }),
+  applyRecoveredDentist: jest.fn().mockResolvedValue(undefined),
+  readNicknamePersonalization: jest.fn().mockResolvedValue(false),
+  hasStoredNicknamePersonalization: jest.fn().mockResolvedValue(true),
+  writeNicknamePersonalization: jest.fn().mockResolvedValue(undefined),
+  markNicknamePersonalizationSynced: jest.fn().mockResolvedValue(undefined),
+  readNicknamePersonalizationSyncMeta: jest
+    .fn()
+    .mockResolvedValue({ syncedAt: '2026-08-20T00:00:00.000Z', dirty: false }),
   ...overrides,
 });
 
@@ -103,6 +117,8 @@ describe('ChildPreferencesSyncUseCases', () => {
       eveningReminder: { enabled: false, time: '20:00' },
       dentistReminderEnabled: true,
       dentistLastVisitDate: null,
+      dentistNextAppointmentDate: null,
+      nicknamePersonalizationEnabled: false,
     });
   });
 
@@ -319,5 +335,125 @@ describe('ChildPreferencesSyncUseCases', () => {
     expect(localRepo.markCustomizationSynced).toHaveBeenCalledWith('profile-1', roomConfig);
     expect(prefAccessors.markVoiceSynced).toHaveBeenCalledWith('parent-1', 'profile-1', 'samet');
     expect(prefAccessors.markRemindersSynced).toHaveBeenCalledWith('parent-1', 'profile-1');
+    expect(prefAccessors.markNicknamePersonalizationSynced).toHaveBeenCalledWith(
+      'parent-1',
+      'profile-1',
+      false,
+    );
+  });
+
+  describe('dentist last-visit / next-appointment sync', () => {
+    it('pushes the real local dentist dates, never a hardcoded null', async () => {
+      const cloudRepo = cloud();
+      const localRepo = local({
+        readDentistDatesForPush: jest
+          .fn()
+          .mockResolvedValue({ lastVisitDate: '2026-06-01', nextAppointmentDate: '2026-12-01' }),
+      });
+      await new ChildPreferencesSyncUseCases(localRepo, cloudRepo, prefs()).pushForProfile(
+        'profile-1',
+      );
+      expect(cloudRepo.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dentistLastVisitDate: '2026-06-01',
+          dentistNextAppointmentDate: '2026-12-01',
+        }),
+      );
+    });
+
+    it('hydrates a recovered dentist state only for a child with no local dentist_reminders row yet', async () => {
+      const localRepo = local({ dentistReminderEnabled: jest.fn().mockResolvedValue(false) });
+      const prefAccessors = prefs();
+      const row = {
+        ...cloudRow,
+        dentistLastVisitDate: '2026-05-10',
+        dentistNextAppointmentDate: '2026-11-10',
+      };
+      await new ChildPreferencesSyncUseCases(localRepo, cloud([row]), prefAccessors).recover();
+      expect(localRepo.resolveNickname).toHaveBeenCalledWith('profile-1');
+      expect(prefAccessors.applyRecoveredDentist).toHaveBeenCalledWith('profile-1', 'Ada', {
+        lastVisitDate: '2026-05-10',
+        nextAppointmentDate: '2026-11-10',
+      });
+    });
+
+    it('never touches a child that already has a local dentist_reminders row', async () => {
+      const localRepo = local({ dentistReminderEnabled: jest.fn().mockResolvedValue(true) });
+      const prefAccessors = prefs();
+      await new ChildPreferencesSyncUseCases(localRepo, cloud([cloudRow]), prefAccessors).recover();
+      expect(prefAccessors.applyRecoveredDentist).not.toHaveBeenCalled();
+    });
+
+    it('recovers dentist state even when the child has no parentUserId resolved yet', async () => {
+      const localRepo = local({
+        dentistReminderEnabled: jest.fn().mockResolvedValue(false),
+        resolveParentUserId: jest.fn().mockResolvedValue(null),
+      });
+      const prefAccessors = prefs();
+      await new ChildPreferencesSyncUseCases(localRepo, cloud([cloudRow]), prefAccessors).recover();
+      expect(prefAccessors.applyRecoveredDentist).toHaveBeenCalled();
+    });
+
+    it('treats an unresolved dentist state as unsafe to push against an existing cloud row', async () => {
+      const cloudRepo = cloud([], { get: jest.fn().mockResolvedValue(cloudRow) });
+      const localRepo = local({
+        hasLocalCustomization: jest.fn().mockResolvedValue(true),
+        dentistReminderEnabled: jest.fn().mockResolvedValue(false),
+      });
+      const prefAccessors = prefs({
+        hasStoredVoice: jest.fn().mockResolvedValue(true),
+        hasStoredReminders: jest.fn().mockResolvedValue(true),
+        hasStoredNicknamePersonalization: jest.fn().mockResolvedValue(true),
+      });
+      await new ChildPreferencesSyncUseCases(localRepo, cloudRepo, prefAccessors).pushForProfile(
+        'profile-1',
+      );
+      expect(cloudRepo.upsert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('nickname personalization sync', () => {
+    it('hydrates a recovered value only for a child with no local record yet', async () => {
+      const localRepo = local();
+      const prefAccessors = prefs({
+        hasStoredNicknamePersonalization: jest.fn().mockResolvedValue(false),
+      });
+      const row = { ...cloudRow, nicknamePersonalizationEnabled: true };
+      await new ChildPreferencesSyncUseCases(localRepo, cloud([row]), prefAccessors).recover();
+      expect(prefAccessors.writeNicknamePersonalization).toHaveBeenCalledWith(
+        'parent-1',
+        'profile-1',
+        true,
+      );
+      expect(prefAccessors.markNicknamePersonalizationSynced).toHaveBeenCalledWith(
+        'parent-1',
+        'profile-1',
+        true,
+      );
+    });
+
+    it('never overwrites a locally-set value that is dirty, even when the cloud row is newer', async () => {
+      const localRepo = local();
+      const prefAccessors = prefs({
+        hasStoredNicknamePersonalization: jest.fn().mockResolvedValue(true),
+        readNicknamePersonalizationSyncMeta: jest
+          .fn()
+          .mockResolvedValue({ syncedAt: '2026-08-20T00:00:00.000Z', dirty: true }),
+      });
+      const row = {
+        ...cloudRow,
+        nicknamePersonalizationEnabled: true,
+        updatedAt: '2026-08-25T00:00:00.000Z',
+      };
+      await new ChildPreferencesSyncUseCases(localRepo, cloud([row]), prefAccessors).recover();
+      expect(prefAccessors.writeNicknamePersonalization).not.toHaveBeenCalled();
+    });
+
+    it('does nothing when the cloud has never resolved this preference (null)', async () => {
+      const localRepo = local();
+      const prefAccessors = prefs();
+      await new ChildPreferencesSyncUseCases(localRepo, cloud([cloudRow]), prefAccessors).recover();
+      expect(prefAccessors.writeNicknamePersonalization).not.toHaveBeenCalled();
+    });
   });
 });

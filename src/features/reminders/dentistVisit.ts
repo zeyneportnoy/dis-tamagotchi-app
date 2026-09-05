@@ -233,8 +233,55 @@ export class DentistVisitService {
     );
   }
 
-  /** A child recovered from the cloud may not have a dentist_reminders row yet. */
-  private async ensureRow(database: ReminderDatabase, childProfileId: string): Promise<void> {
+  /**
+   * Cloud-recovery entry point: only called for a child with no local
+   * dentist_reminders row yet (a second device, or a reinstall). Persists the
+   * recovered dates and (re)schedules the routine / appointment notifications
+   * through the exact same live-edit paths (`setLastVisitDate` /
+   * `setNextAppointmentDate`), so the +6-month / -1-day derivation and the
+   * 09:00 local trigger are never re-implemented here. A date that is null on
+   * the cloud is left unset — recovery must not invent a date the parent never
+   * entered, and `ensureRow` alone still marks the child as resolved so this
+   * is never re-attempted.
+   *
+   * `ensureRow` anchors the generic +6/+12-month fallback due dates
+   * (`first_due_at` / `second_due_at`) to the child's real `created_at` —
+   * never to "now" — so a device that creates this row during recovery
+   * computes the SAME due dates the originating device already scheduled
+   * against, instead of silently drifting them forward to the moment of
+   * recovery.
+   */
+  async applyRecovered(
+    child: DentistVisitChild,
+    values: Readonly<{ lastVisitDate: string | null; nextAppointmentDate: string | null }>,
+  ): Promise<void> {
+    const database = await this.database();
+    const profile = await database.getFirstAsync<{ created_at: string }>(
+      `SELECT created_at FROM child_profiles WHERE id = ?`,
+      child.id,
+    );
+    await this.ensureRow(database, child.id, profile?.created_at);
+    if (values.lastVisitDate) {
+      await this.setLastVisitDate(child, values.lastVisitDate);
+    }
+    if (values.nextAppointmentDate) {
+      await this.setNextAppointmentDate(child, values.nextAppointmentDate);
+    }
+  }
+
+  /**
+   * A child recovered from the cloud may not have a dentist_reminders row yet.
+   * `dueDateAnchor` defaults to "now" for the live-edit call sites
+   * (`setLastVisitDate` / `setNextAppointmentDate`), where a missing row means
+   * this really is the first time the row is ever created on any device; a
+   * recovering device passes the child's actual `created_at` instead so the
+   * derived due dates match what the originating device already computed.
+   */
+  private async ensureRow(
+    database: ReminderDatabase,
+    childProfileId: string,
+    dueDateAnchor: string = this.now(),
+  ): Promise<void> {
     const nowIso = this.now();
     await database.runAsync(
       `INSERT INTO dentist_reminders
@@ -243,8 +290,8 @@ export class DentistVisitService {
        VALUES (?, ?, ?, NULL, NULL, ?, ?)
        ON CONFLICT(child_profile_id) DO NOTHING`,
       childProfileId,
-      addCalendarMonths(nowIso, 6),
-      addCalendarMonths(nowIso, 12),
+      addCalendarMonths(dueDateAnchor, 6),
+      addCalendarMonths(dueDateAnchor, 12),
       nowIso,
       nowIso,
     );

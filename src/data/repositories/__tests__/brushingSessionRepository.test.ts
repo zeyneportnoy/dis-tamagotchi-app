@@ -6,7 +6,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { ChildExperienceUseCases } from '@/application/child';
 import { migrateDatabase } from '@/data/db';
-import { growthStageForXp } from '@/domain/rewards';
+import { growthStageForXp, type BrushingSlotEvaluation } from '@/domain/rewards';
 import { NodeSQLiteDatabase } from '@/test/NodeSQLiteDatabase';
 
 import { SQLiteBrushingSessionRepository } from '../SQLiteBrushingSessionRepository';
@@ -808,5 +808,366 @@ describe('SQLiteBrushingSessionRepository', () => {
     ).resolves.toEqual({ total_xp: 40, mood: 65 });
     reopened.close();
     rmSync(directory, { recursive: true, force: true });
+  });
+
+  // ---------------------------------------------------------------------
+  // Concurrent reconcileMissedSlots (Home + MissedSlotReconciler race fix).
+  //
+  // Root cause: this repository instance is a memoized singleton shared by
+  // every caller in the app (getChildExperienceUseCases() returns the same
+  // instance to Home, MissedSlotReconciler, Tasks, Profile, Brushing).
+  // ensureChildDataRecovered() synchronizes those callers onto the same
+  // resolved promise, so two of them can call reconcileMissedSlots — for the
+  // SAME child, or for two DIFFERENT children — in the same microtask tick.
+  // expo-sqlite's own docs (`withTransactionAsync`) say plainly: "this
+  // transaction is not exclusive and can be interrupted by other async
+  // queries" — it does not serialize concurrent transactions on one shared
+  // connection at all, regardless of which rows they touch. Two overlapping
+  // BEGINs on the single shared SQLiteDatabase throw (observed on device:
+  // "cannot rollback - no transaction is active"). The fix has two layers:
+  // (1) per-profileId dedup onto one in-flight execution, and (2) a global
+  // FIFO queue so at most one reconcileMissedSlotsExclusive — for ANY
+  // child — has an open transaction at a time.
+  // ---------------------------------------------------------------------
+  describe('reconcileMissedSlots concurrency', () => {
+    async function seedMissedMorning(
+      database: NodeSQLiteDatabase,
+      profileId: string,
+      totalXp = 30,
+    ): Promise<void> {
+      await seedProfile(database, profileId, new Date(2026, 7, 8, 4).toISOString());
+      await database.runAsync(
+        `INSERT INTO profile_progress(child_profile_id, status_date, total_xp)
+         VALUES (?, '2026-08-08', ?)`,
+        profileId,
+        totalXp,
+      );
+    }
+
+    /** Tracks how many withTransactionAsync calls are concurrently open. */
+    function instrumentTransactionConcurrency(database: SQLiteDatabase): {
+      getCallCount: () => number;
+      getCurrent: () => number;
+      getMax: () => number;
+    } {
+      let current = 0;
+      let max = 0;
+      let callCount = 0;
+      const original = database.withTransactionAsync.bind(database);
+      database.withTransactionAsync = (async (task: () => Promise<void>) => {
+        callCount += 1;
+        current += 1;
+        max = Math.max(max, current);
+        try {
+          return await original(task);
+        } finally {
+          current -= 1;
+        }
+      }) as typeof database.withTransactionAsync;
+      return {
+        getCallCount: () => callCount,
+        getCurrent: () => current,
+        getMax: () => max,
+      };
+    }
+
+    it('two concurrent calls for the SAME child run exactly one transaction and apply the penalty once', async () => {
+      const database = new NodeSQLiteDatabase();
+      await migrateDatabase(database as unknown as SQLiteDatabase);
+      await seedMissedMorning(database, 'profile-1');
+      const now = new Date(2026, 7, 8, 12); // morning slot just closed
+      const repository = new SQLiteBrushingSessionRepository(
+        database as unknown as SQLiteDatabase,
+        undefined,
+        () => now,
+      );
+      const stats = instrumentTransactionConcurrency(database as unknown as SQLiteDatabase);
+
+      // Simulates MissedSlotReconciler and Home both calling reconcile for
+      // the same active child at the same instant.
+      const [fromReconciler, fromHome] = await Promise.all([
+        repository.reconcileMissedSlots('profile-1'),
+        repository.reconcileMissedSlots('profile-1'),
+      ]);
+
+      expect(stats.getCallCount()).toBe(1); // only ONE transaction ever opened
+      expect(fromHome).toBe(fromReconciler); // both callers got the SAME execution
+      expect(fromHome).toEqual([
+        expect.objectContaining({
+          outcome: 'missed',
+          penaltyAmount: -10,
+          period: 'morning',
+          scoreAfter: 20,
+          scoreBefore: 30,
+        }),
+      ]);
+      // Penalty applied exactly once (20), never twice (would be 10 or a
+      // duplicate-evaluation error).
+      await expect(
+        database.getFirstAsync<{ total_xp: number }>(
+          `SELECT total_xp FROM profile_progress WHERE child_profile_id = 'profile-1'`,
+        ),
+      ).resolves.toEqual({ total_xp: 20 });
+      await expect(
+        database.getAllAsync(
+          `SELECT * FROM brushing_slot_evaluations WHERE child_profile_id = 'profile-1'`,
+        ),
+      ).resolves.toHaveLength(1); // no duplicate evaluation row either
+      database.close();
+    });
+
+    it('reproduces the exact device symptom (Home + MissedSlotReconciler via getProgress) without throwing or double-penalizing', async () => {
+      const database = new NodeSQLiteDatabase();
+      await migrateDatabase(database as unknown as SQLiteDatabase);
+      await seedMissedMorning(database, 'profile-1');
+      const now = new Date(2026, 7, 8, 12);
+      const sessions = new SQLiteBrushingSessionRepository(
+        database as unknown as SQLiteDatabase,
+        undefined,
+        () => now,
+      );
+      const progress = new SQLiteProfileProgressRepository(
+        database as unknown as SQLiteDatabase,
+        () => now,
+      );
+      // AUTH_REQUIRED from a null active parent is swallowed inside
+      // ensureEquippedItemsAreStillUnlocked — irrelevant to this race.
+      const inventory = new SQLiteInventoryRepository(
+        database as unknown as SQLiteDatabase,
+        async () => null,
+      );
+      const useCases = new ChildExperienceUseCases(progress, sessions, inventory);
+
+      // "MissedSlotReconciler" and "Home" both calling getProgress for the
+      // same active child at the same instant — this is the literal
+      // reported repro (cold launch, single-child auto-redirect).
+      await expect(
+        Promise.all([useCases.getProgress('profile-1'), useCases.getProgress('profile-1')]),
+      ).resolves.toEqual([
+        expect.objectContaining({ totalXp: 20 }),
+        expect.objectContaining({ totalXp: 20 }),
+      ]);
+      database.close();
+    });
+
+    it('two DIFFERENT children reconciled concurrently never have overlapping transactions (maxConcurrency === 1)', async () => {
+      // This is the case the per-profileId dedup ALONE does not cover:
+      // MissedSlotReconciler mid-reconcile for child A while Home/Tasks/
+      // Profile calls getProgress for child B. Real Promise.all concurrency
+      // on two DIFFERENT keys — now safe to assert on directly because the
+      // global queue is what makes it safe.
+      const database = new NodeSQLiteDatabase();
+      await migrateDatabase(database as unknown as SQLiteDatabase);
+      await seedMissedMorning(database, 'profile-a', 30);
+      await seedMissedMorning(database, 'profile-b', 50);
+      const now = new Date(2026, 7, 8, 12);
+      const repository = new SQLiteBrushingSessionRepository(
+        database as unknown as SQLiteDatabase,
+        undefined,
+        () => now,
+      );
+      const stats = instrumentTransactionConcurrency(database as unknown as SQLiteDatabase);
+
+      const [resultA, resultB] = await Promise.all([
+        repository.reconcileMissedSlots('profile-a'),
+        repository.reconcileMissedSlots('profile-b'),
+      ]);
+
+      expect(stats.getMax()).toBe(1); // NEVER two transactions open at once
+      expect(stats.getCallCount()).toBe(2); // both still ran — isolation preserved
+      expect(stats.getCurrent()).toBe(0); // none left dangling open
+      expect(resultA).not.toBe(resultB);
+      expect(resultA).toEqual([expect.objectContaining({ scoreBefore: 30, scoreAfter: 20 })]);
+      expect(resultB).toEqual([expect.objectContaining({ scoreBefore: 50, scoreAfter: 40 })]);
+      await expect(
+        database.getFirstAsync<{ total_xp: number }>(
+          `SELECT total_xp FROM profile_progress WHERE child_profile_id = 'profile-a'`,
+        ),
+      ).resolves.toEqual({ total_xp: 20 });
+      await expect(
+        database.getFirstAsync<{ total_xp: number }>(
+          `SELECT total_xp FROM profile_progress WHERE child_profile_id = 'profile-b'`,
+        ),
+      ).resolves.toEqual({ total_xp: 40 });
+      database.close();
+    });
+
+    it('100 concurrent calls for the same child still apply the missed-slot penalty exactly once', async () => {
+      const database = new NodeSQLiteDatabase();
+      await migrateDatabase(database as unknown as SQLiteDatabase);
+      await seedMissedMorning(database, 'profile-1');
+      const now = new Date(2026, 7, 8, 12);
+      const repository = new SQLiteBrushingSessionRepository(
+        database as unknown as SQLiteDatabase,
+        undefined,
+        () => now,
+      );
+      const stats = instrumentTransactionConcurrency(database as unknown as SQLiteDatabase);
+
+      const results = await Promise.all(
+        Array.from({ length: 100 }, () => repository.reconcileMissedSlots('profile-1')),
+      );
+
+      // Every caller observed the SAME single execution.
+      expect(new Set(results).size).toBe(1);
+      expect(stats.getCallCount()).toBe(1);
+      expect(stats.getMax()).toBe(1);
+      await expect(
+        database.getFirstAsync<{ total_xp: number }>(
+          `SELECT total_xp FROM profile_progress WHERE child_profile_id = 'profile-1'`,
+        ),
+      ).resolves.toEqual({ total_xp: 20 });
+      await expect(
+        database.getAllAsync(
+          `SELECT * FROM brushing_slot_evaluations WHERE child_profile_id = 'profile-1'`,
+        ),
+      ).resolves.toHaveLength(1);
+      database.close();
+    });
+
+    it('100 concurrent calls mixed across 3 children never exceed 1 concurrent transaction and each score stays isolated', async () => {
+      const database = new NodeSQLiteDatabase();
+      await migrateDatabase(database as unknown as SQLiteDatabase);
+      await seedMissedMorning(database, 'profile-a', 30);
+      await seedMissedMorning(database, 'profile-b', 50);
+      await seedMissedMorning(database, 'profile-c', 70);
+      const now = new Date(2026, 7, 8, 12);
+      const repository = new SQLiteBrushingSessionRepository(
+        database as unknown as SQLiteDatabase,
+        undefined,
+        () => now,
+      );
+      const stats = instrumentTransactionConcurrency(database as unknown as SQLiteDatabase);
+
+      const ids = ['profile-a', 'profile-b', 'profile-c'];
+      const calls = Array.from({ length: 100 }, (_, i) => ids[i % 3] as string);
+      const results = await Promise.all(calls.map((id) => repository.reconcileMissedSlots(id)));
+
+      expect(stats.getMax()).toBe(1); // still never more than 1 open, mixed children included
+      expect(stats.getCallCount()).toBe(3); // exactly one real execution per distinct child
+      expect(stats.getCurrent()).toBe(0);
+
+      // Every result for a given child is the identical dedup'd reference.
+      for (const id of ids) {
+        const resultsForId = calls
+          .map((calledId, i) => (calledId === id ? results[i] : undefined))
+          .filter((value): value is readonly BrushingSlotEvaluation[] => value !== undefined);
+        expect(new Set(resultsForId).size).toBe(1);
+      }
+
+      await expect(
+        database.getFirstAsync<{ total_xp: number }>(
+          `SELECT total_xp FROM profile_progress WHERE child_profile_id = 'profile-a'`,
+        ),
+      ).resolves.toEqual({ total_xp: 20 }); // 30 - 10, exactly once
+      await expect(
+        database.getFirstAsync<{ total_xp: number }>(
+          `SELECT total_xp FROM profile_progress WHERE child_profile_id = 'profile-b'`,
+        ),
+      ).resolves.toEqual({ total_xp: 40 }); // 50 - 10, exactly once
+      await expect(
+        database.getFirstAsync<{ total_xp: number }>(
+          `SELECT total_xp FROM profile_progress WHERE child_profile_id = 'profile-c'`,
+        ),
+      ).resolves.toEqual({ total_xp: 60 }); // 70 - 10, exactly once
+      for (const id of ids) {
+        await expect(
+          database.getAllAsync(
+            `SELECT * FROM brushing_slot_evaluations WHERE child_profile_id = '${id}'`,
+          ),
+        ).resolves.toHaveLength(1); // no duplicate evaluation rows for any child
+      }
+      database.close();
+    });
+
+    it('a failing reconciliation for one child does not block the next child\'s turn in the queue', async () => {
+      const database = new NodeSQLiteDatabase();
+      await migrateDatabase(database as unknown as SQLiteDatabase);
+      await seedMissedMorning(database, 'profile-good', 30);
+      // 'profile-missing' is never seeded — its transaction opens, the
+      // internal "SELECT created_at FROM child_profiles" finds nothing, and
+      // it throws + rolls back, exactly the failure shape the queue must
+      // survive.
+      const now = new Date(2026, 7, 8, 12);
+      const repository = new SQLiteBrushingSessionRepository(
+        database as unknown as SQLiteDatabase,
+        undefined,
+        () => now,
+      );
+
+      const failing = repository.reconcileMissedSlots('profile-missing');
+      const succeeding = repository.reconcileMissedSlots('profile-good');
+
+      await expect(failing).rejects.toThrow();
+      await expect(succeeding).resolves.toEqual([
+        expect.objectContaining({
+          outcome: 'missed',
+          period: 'morning',
+          scoreBefore: 30,
+          scoreAfter: 20,
+        }),
+      ]);
+      await expect(
+        database.getFirstAsync<{ total_xp: number }>(
+          `SELECT total_xp FROM profile_progress WHERE child_profile_id = 'profile-good'`,
+        ),
+      ).resolves.toEqual({ total_xp: 20 });
+
+      // The queue itself is healthy afterwards too — a brand-new call for
+      // either profile still runs cleanly (no permanently-wedged tail).
+      await expect(repository.reconcileMissedSlots('profile-good')).resolves.toEqual([]);
+      await expect(repository.reconcileMissedSlots('profile-missing')).rejects.toThrow();
+      database.close();
+    });
+
+    it('keys the dedup map by profileId — a repeat call for one child is never blocked by another child\'s in-flight entry', async () => {
+      const database = new NodeSQLiteDatabase();
+      await migrateDatabase(database as unknown as SQLiteDatabase);
+      await seedMissedMorning(database, 'profile-a', 30);
+      await seedMissedMorning(database, 'profile-b', 50);
+      const now = new Date(2026, 7, 8, 12);
+      const repository = new SQLiteBrushingSessionRepository(
+        database as unknown as SQLiteDatabase,
+        undefined,
+        () => now,
+      );
+
+      await Promise.all([
+        repository.reconcileMissedSlots('profile-a'),
+        repository.reconcileMissedSlots('profile-b'),
+      ]);
+      // The two children's dedup entries never collided: a same-child repeat
+      // call for EITHER one is still a clean no-op (proves 'a' and 'b' were
+      // never merged into one shared in-flight slot, and the map was
+      // correctly cleared once each settled).
+      await expect(repository.reconcileMissedSlots('profile-a')).resolves.toEqual([]);
+      await expect(repository.reconcileMissedSlots('profile-b')).resolves.toEqual([]);
+      database.close();
+    });
+
+    it('a second call after the first settles runs its own fresh transaction (dedup does not leak across calls)', async () => {
+      const database = new NodeSQLiteDatabase();
+      await migrateDatabase(database as unknown as SQLiteDatabase);
+      await seedMissedMorning(database, 'profile-1');
+      let now = new Date(2026, 7, 8, 12);
+      const repository = new SQLiteBrushingSessionRepository(
+        database as unknown as SQLiteDatabase,
+        undefined,
+        () => now,
+      );
+
+      await expect(repository.reconcileMissedSlots('profile-1')).resolves.toEqual([
+        expect.objectContaining({ outcome: 'missed', period: 'morning' }),
+      ]);
+      // Same-day re-call: no-op, as always (recovery-before-reconcile /
+      // idempotency untouched by the dedup wrapper).
+      await expect(repository.reconcileMissedSlots('profile-1')).resolves.toEqual([]);
+
+      now = new Date(2026, 7, 9, 0); // evening slot also now closed
+      await expect(repository.reconcileMissedSlots('profile-1')).resolves.toEqual([
+        expect.objectContaining({ outcome: 'missed', period: 'evening' }),
+      ]);
+      database.close();
+    });
   });
 });

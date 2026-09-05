@@ -26,6 +26,8 @@ type PreferencesRow = {
   evening_reminder_time: string | null;
   dentist_reminder_enabled: boolean | null;
   dentist_last_visit_date: string | null;
+  dentist_next_appointment_date: string | null;
+  nickname_personalization_enabled: boolean | null;
   updated_at: string | null;
 };
 
@@ -46,6 +48,8 @@ const mapRow = (row: PreferencesRow): CloudChildPreferences => ({
   },
   dentistReminderEnabled: row.dentist_reminder_enabled === true,
   dentistLastVisitDate: row.dentist_last_visit_date,
+  dentistNextAppointmentDate: row.dentist_next_appointment_date,
+  nicknamePersonalizationEnabled: row.nickname_personalization_enabled,
   updatedAt: row.updated_at ?? undefined,
 });
 
@@ -73,6 +77,8 @@ export class SupabaseChildPreferencesRepository implements CloudChildPreferences
         evening_reminder_time: preferences.eveningReminder.time,
         dentist_reminder_enabled: preferences.dentistReminderEnabled,
         dentist_last_visit_date: preferences.dentistLastVisitDate,
+        dentist_next_appointment_date: preferences.dentistNextAppointmentDate,
+        nickname_personalization_enabled: preferences.nicknamePersonalizationEnabled,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'child_id' },
@@ -84,7 +90,7 @@ export class SupabaseChildPreferencesRepository implements CloudChildPreferences
     const { data, error } = await this.client
       .from('child_preferences')
       .select(
-        'child_id, selected_brush_id, selected_background_id, selected_effect_id, room_configuration, voice_guide, morning_reminder_enabled, morning_reminder_time, evening_reminder_enabled, evening_reminder_time, dentist_reminder_enabled, dentist_last_visit_date, updated_at',
+        'child_id, selected_brush_id, selected_background_id, selected_effect_id, room_configuration, voice_guide, morning_reminder_enabled, morning_reminder_time, evening_reminder_enabled, evening_reminder_time, dentist_reminder_enabled, dentist_last_visit_date, dentist_next_appointment_date, nickname_personalization_enabled, updated_at',
       );
     if (error) throw new Error('CLOUD_PREFERENCES_LIST_FAILED');
     return (data as PreferencesRow[]).map(mapRow);
@@ -94,7 +100,7 @@ export class SupabaseChildPreferencesRepository implements CloudChildPreferences
     const { data, error } = await this.client
       .from('child_preferences')
       .select(
-        'child_id, selected_brush_id, selected_background_id, selected_effect_id, room_configuration, voice_guide, morning_reminder_enabled, morning_reminder_time, evening_reminder_enabled, evening_reminder_time, dentist_reminder_enabled, dentist_last_visit_date, updated_at',
+        'child_id, selected_brush_id, selected_background_id, selected_effect_id, room_configuration, voice_guide, morning_reminder_enabled, morning_reminder_time, evening_reminder_enabled, evening_reminder_time, dentist_reminder_enabled, dentist_last_visit_date, dentist_next_appointment_date, nickname_personalization_enabled, updated_at',
       )
       .eq('child_id', childId)
       .maybeSingle();

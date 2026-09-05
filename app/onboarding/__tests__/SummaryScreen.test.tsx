@@ -41,6 +41,7 @@ jest.mock('@/features/brushing', () => ({
     samet: [{ source: 2 }],
   },
   brushingVoiceProfiles: ['gokce', 'samet', 'off'],
+  ensureVoicePreviewAudioMode: jest.fn(() => Promise.resolve()),
   setBrushingVoiceProfile: jest.fn(),
 }));
 jest.mock('@/features/reminders', () => ({

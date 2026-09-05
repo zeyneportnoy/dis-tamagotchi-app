@@ -5,6 +5,7 @@ import { getFamilyUseCases } from '@/application/family';
 import {
   ensureChildDataRecovered,
   getProfileSyncUseCases,
+  pushPendingChildProfiles,
   recoverChildPreferences,
   retryPendingCloudSync,
 } from '@/application/sync';
@@ -57,6 +58,12 @@ export async function routeForActiveChild(
 function deferCloudRecovery(): void {
   void (async () => {
     try {
+      // Flush any locally-queued profile edit / archive / delete BEFORE pulling
+      // from the cloud. `upsertCloud` already refuses a pending-removal or
+      // pending-edit row on its own, so this ordering is defense in depth, not
+      // the only guard: it just means the common case never needs that guard at
+      // all — the cloud is already caught up by the time recovery reads it.
+      await perfStep('bootstrap:pushPendingChildProfiles(deferred)', pushPendingChildProfiles);
       const sync = await getProfileSyncUseCases();
       if (sync) {
         await perfStep('bootstrap:recoverFromCloud(deferred)', () => sync.recoverFromCloud());

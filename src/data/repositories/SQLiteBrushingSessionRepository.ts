@@ -125,6 +125,38 @@ export class SQLiteBrushingSessionRepository
   implements BrushingSessionRepository, RewardSessionRepository
 {
   private readonly activeSessionIds = new Set<string>();
+  // Two layers protect reconcileMissedSlots, both needed:
+  //
+  // 1. Per-child dedup (this map): this repository instance is a memoized
+  //    singleton shared by every caller (Home's own getProgress,
+  //    MissedSlotReconciler's per-child loop, Tasks, Profile, Brushing), so
+  //    two callers can legitimately ask to reconcile the SAME child at
+  //    nearly the same instant (e.g. right after both resolve the same
+  //    shared ensureChildDataRecovered() gate). Keying by profileId means a
+  //    second call for the SAME child awaits the SAME in-flight execution
+  //    instead of running its own — no wasted duplicate work.
+  //
+  // 2. Global serialization (reconciliationQueueTail below): dedup alone is
+  //    NOT enough, because expo-sqlite's withTransactionAsync does not
+  //    itself queue concurrent transactions on one shared connection — its
+  //    own docs say plainly "this transaction is not exclusive and can be
+  //    interrupted by other async queries". Two DIFFERENT children's
+  //    transactions (e.g. MissedSlotReconciler mid-reconcile for child A
+  //    while Home calls getProgress for child B) can overlap on the one
+  //    shared SQLiteDatabase and throw (observed on device: "cannot
+  //    rollback - no transaction is active"). The queue below guarantees at
+  //    most one reconcileMissedSlotsExclusive — for ANY child — has an open
+  //    transaction at a time.
+  private readonly reconciliationInFlight = new Map<
+    string,
+    Promise<readonly BrushingSlotEvaluation[]>
+  >();
+  // FIFO tail: chaining a new job onto this (and immediately replacing it,
+  // synchronously, with a promise that ALWAYS resolves — never rejects) is
+  // what gives every child's reconciliation a turn without ever being able
+  // to run concurrently with another child's, and without one child's
+  // failure ever wedging the turns after it.
+  private reconciliationQueueTail: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly database: SQLiteDatabase,
@@ -268,7 +300,52 @@ export class SQLiteBrushingSessionRepository
     }
   }
 
-  async reconcileMissedSlots(profileId: string): Promise<readonly BrushingSlotEvaluation[]> {
+  /**
+   * Public entry point. Dedupes concurrent calls for the SAME child onto a
+   * single in-flight execution (see `reconciliationInFlight` above) — a
+   * second caller for the same profileId never opens its own transaction,
+   * it awaits the one already running/queued and receives the exact same
+   * result. On top of that, every actual execution — for ANY child — is
+   * chained onto the global `reconciliationQueueTail`, so at most one
+   * `reconcileMissedSlotsExclusive` (and therefore at most one open
+   * `withTransactionAsync`) ever runs at a time, regardless of profileId.
+   * Different children still each get their own independent result and
+   * never share or corrupt each other's data — they simply take turns
+   * instead of overlapping on the shared SQLite connection. A failing job
+   * never blocks the next one: the queue tail is always replaced with a
+   * promise that resolves regardless of that job's outcome. Recovery-
+   * before-reconcile (`assertOwned` runs inside the same execution as
+   * before) and every missed-slot rule below are untouched — this only
+   * changes how many transactions can be open at once, never what they do
+   * or when they're allowed to run relative to recovery.
+   */
+  reconcileMissedSlots(profileId: string): Promise<readonly BrushingSlotEvaluation[]> {
+    const existing = this.reconciliationInFlight.get(profileId);
+    if (existing) return existing;
+
+    const previousTail = this.reconciliationQueueTail;
+    const run = previousTail.then(() => this.reconcileMissedSlotsExclusive(profileId));
+    // Advance the queue past this job synchronously, before it can settle,
+    // and unconditionally resolve regardless of outcome — a rejection here
+    // must never become the new tail, or every child queued after this one
+    // would inherit that rejection and never actually run.
+    this.reconciliationQueueTail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+
+    const tracked = run.finally(() => {
+      if (this.reconciliationInFlight.get(profileId) === tracked) {
+        this.reconciliationInFlight.delete(profileId);
+      }
+    });
+    this.reconciliationInFlight.set(profileId, tracked);
+    return tracked;
+  }
+
+  private async reconcileMissedSlotsExclusive(
+    profileId: string,
+  ): Promise<readonly BrushingSlotEvaluation[]> {
     await this.assertOwned(profileId);
     const now = this.now();
     const nowIso = now.toISOString();

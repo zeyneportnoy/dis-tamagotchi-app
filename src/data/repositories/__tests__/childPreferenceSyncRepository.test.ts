@@ -118,6 +118,72 @@ describe('SQLiteChildPreferenceSyncRepository', () => {
     await expect(repo.dentistReminderEnabled('profile-1')).resolves.toBe(true);
   });
 
+  it('reads the real local dentist dates for push, never a fabricated value', async () => {
+    const { db, repo } = await build();
+    await seedChild(db, 'profile-1');
+    await expect(repo.readDentistDatesForPush('profile-1')).resolves.toEqual({
+      lastVisitDate: null,
+      nextAppointmentDate: null,
+    });
+    await db.runAsync(
+      `INSERT INTO dentist_reminders
+        (child_profile_id, first_due_at, second_due_at, last_visit_date, next_appointment_date,
+         created_at, updated_at)
+       VALUES ('profile-1', '2027-02-01T00:00:00.000Z', '2027-08-01T00:00:00.000Z',
+         '2026-06-01', '2026-12-01', '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z')`,
+    );
+    await expect(repo.readDentistDatesForPush('profile-1')).resolves.toEqual({
+      lastVisitDate: '2026-06-01',
+      nextAppointmentDate: '2026-12-01',
+    });
+  });
+
+  it('resolves the current nickname for the recovered-dentist notification copy', async () => {
+    const { db, repo } = await build();
+    await seedChild(db, 'profile-1');
+    await expect(repo.resolveNickname('profile-1')).resolves.toBe('profile-1');
+    await db.runAsync(`UPDATE child_profiles SET nickname = 'Ada' WHERE id = 'profile-1'`);
+    await expect(repo.resolveNickname('profile-1')).resolves.toBe('Ada');
+  });
+
+  describe('hasLocalCustomization', () => {
+    it('is false for a freshly recovered child with no room AsyncStorage and no equipped inventory', async () => {
+      const { db, repo } = await build();
+      await seedChild(db, 'profile-1');
+      await expect(repo.hasLocalCustomization('profile-1')).resolves.toBe(false);
+    });
+
+    it('is true once the room-placement AsyncStorage blob exists', async () => {
+      const { db, repo } = await build();
+      await seedChild(db, 'profile-1');
+      await AsyncStorage.setItem(
+        customizationStorageKey('profile-1'),
+        JSON.stringify({ developerEquipped: {}, placements: {}, selectedRoomMaterials: [], version: 1 }),
+      );
+      await expect(repo.hasLocalCustomization('profile-1')).resolves.toBe(true);
+    });
+
+    it('is true for an equip-only child that has never touched room decor (production inventory_items)', async () => {
+      const { db, repo } = await build();
+      await seedChild(db, 'profile-1');
+      await db.runAsync(
+        `INSERT INTO inventory_items (child_profile_id, item_key, unlocked_at, equipped, slot)
+         VALUES ('profile-1', 'pastel-playroom', '2026-08-01T00:00:00.000Z', 1, 'background')`,
+      );
+      await expect(repo.hasLocalCustomization('profile-1')).resolves.toBe(true);
+    });
+
+    it('ignores an equipped wearable/decor row — only background/effect/brush count', async () => {
+      const { db, repo } = await build();
+      await seedChild(db, 'profile-1');
+      await db.runAsync(
+        `INSERT INTO inventory_items (child_profile_id, item_key, unlocked_at, equipped, slot)
+         VALUES ('profile-1', 'cozy-scarf', '2026-08-01T00:00:00.000Z', 1, 'decor')`,
+      );
+      await expect(repo.hasLocalCustomization('profile-1')).resolves.toBe(false);
+    });
+  });
+
   const prefsFixture = (
     overrides: Partial<CloudChildPreferences> = {},
   ): CloudChildPreferences => ({
@@ -136,6 +202,8 @@ describe('SQLiteChildPreferenceSyncRepository', () => {
     eveningReminder: { enabled: false, time: null },
     dentistReminderEnabled: true,
     dentistLastVisitDate: null,
+    dentistNextAppointmentDate: null,
+    nicknamePersonalizationEnabled: null,
     ...overrides,
   });
 

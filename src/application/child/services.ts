@@ -1,5 +1,6 @@
 import { getParentAuthUseCases } from '@/application/auth';
 import {
+  ensureChildDataRecovered,
   syncChildBrushingSession,
   syncChildCloudProgress,
   syncChildPreferences,
@@ -21,8 +22,19 @@ import { ChildExperienceUseCases } from './useCases';
  * The push is fire-and-forget — a network/Supabase failure never blocks the UI,
  * rolls back Mine Puan, deletes a session or re-runs a penalty.
  */
-class CloudAwareChildExperienceUseCases extends ChildExperienceUseCases {
+export class CloudAwareChildExperienceUseCases extends ChildExperienceUseCases {
   override async getProgress(profileId: string): Promise<ProfileProgress> {
+    // Missed-slot reconciliation (inside super.getProgress) must never run
+    // ahead of cloud history hydration: an unhydrated local device looks
+    // exactly like a wall of missed slots and would apply a real -10 penalty
+    // for brushing that already happened and was already recorded — on this
+    // device in a prior session, or on another device entirely. Every screen
+    // that reads progress (Home, Tasks, Profile, Collection, Brushing) goes
+    // through this single override, so gating here — not in each screen —
+    // is what actually guarantees the rule. `ensureChildDataRecovered` is
+    // memoized per session, so this is a no-op await once recovery has
+    // already completed.
+    await ensureChildDataRecovered();
     // getProgress also runs missed-slot reconciliation; pushing here catches any
     // resulting -10 penalty and its slot evaluation.
     const progress = await super.getProgress(profileId);

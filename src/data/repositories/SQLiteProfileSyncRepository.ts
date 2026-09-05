@@ -57,27 +57,50 @@ export class SQLiteProfileSyncRepository implements LocalProfileSyncRepository {
 
   async upsertCloud(profile: CloudChildProfile): Promise<void> {
     await this.database.withTransactionAsync(async () => {
+      // A locally-queued archive/delete for this child (see enqueueCloudRemoval /
+      // pending_cloud_profile_removals) has not reached the cloud yet — the cloud
+      // row we are about to recover is, by definition, the STALE pre-removal
+      // state. Skip it entirely: writing it would resurrect an archived child
+      // (or recreate a deleted one) for the short window before the outbox
+      // flushes. Once the removal succeeds the cloud row disappears / gets
+      // archived_at, so a later recovery pass naturally stops hitting this guard.
+      const pendingRemoval = await this.database.getFirstAsync<{ remote_id: string }>(
+        `SELECT remote_id FROM pending_cloud_profile_removals WHERE remote_id = ?`,
+        profile.id,
+      );
+      if (pendingRemoval) return;
+
       const familyId = await this.ensureLocalFamilyId();
-      // date_of_birth is the one nullable field here. A null incoming value
-      // (a stale/incomplete cloud row, a transient fetch, a profile whose DOB
-      // hasn't been written on any device yet) must never erase an already-
-      // known local DOB — this call runs on every cold AND warm bootstrap, so
-      // an unconditional overwrite would silently re-null a real DOB (and
-      // route the child back into onboarding) the next time this runs.
-      // COALESCE keeps the existing local value whenever the incoming one is
-      // null; a real, non-null cloud DOB still always wins, per the recovery
-      // contract (cloud is authoritative once it actually knows a DOB).
+      // A local edit not yet pushed (sync_status 'pending' / 'failed', set by
+      // ChildProfileRepository.update()) means THIS device's nickname / avatar /
+      // age_band / archived_at is the newer, real value — the incoming cloud row
+      // is what we are still waiting to overwrite, not a signal to trust. This
+      // recovery call runs on every cold AND warm bootstrap (not just a fresh
+      // install), so blindly accepting it would silently revert an edit the
+      // moment it loses a race with its own (still in-flight) push, and — since
+      // sync_status would otherwise reset to 'synced' — never retry it again.
+      // date_of_birth keeps its own COALESCE rule below regardless.
       await this.database.runAsync(
         `INSERT INTO child_profiles
           (id, family_id, nickname, date_of_birth, age_band, avatar_id, created_at, archived_at,
            remote_id, parent_auth_user_id, sync_status, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
-         ON CONFLICT(id) DO UPDATE SET nickname = excluded.nickname,
+         ON CONFLICT(id) DO UPDATE SET
+          nickname = CASE WHEN child_profiles.sync_status IN ('pending', 'failed')
+            THEN child_profiles.nickname ELSE excluded.nickname END,
           date_of_birth = COALESCE(excluded.date_of_birth, child_profiles.date_of_birth),
-          age_band = excluded.age_band, avatar_id = excluded.avatar_id,
-          archived_at = excluded.archived_at, remote_id = excluded.remote_id,
+          age_band = CASE WHEN child_profiles.sync_status IN ('pending', 'failed')
+            THEN child_profiles.age_band ELSE excluded.age_band END,
+          avatar_id = CASE WHEN child_profiles.sync_status IN ('pending', 'failed')
+            THEN child_profiles.avatar_id ELSE excluded.avatar_id END,
+          archived_at = CASE WHEN child_profiles.sync_status IN ('pending', 'failed')
+            THEN child_profiles.archived_at ELSE excluded.archived_at END,
+          remote_id = excluded.remote_id,
           parent_auth_user_id = excluded.parent_auth_user_id,
-          sync_status = 'synced', updated_at = excluded.updated_at`,
+          sync_status = CASE WHEN child_profiles.sync_status IN ('pending', 'failed')
+            THEN child_profiles.sync_status ELSE 'synced' END,
+          updated_at = CASE WHEN child_profiles.sync_status IN ('pending', 'failed')
+            THEN child_profiles.updated_at ELSE excluded.updated_at END`,
         profile.id,
         familyId,
         profile.nickname,

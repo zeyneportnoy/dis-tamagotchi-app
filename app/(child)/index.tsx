@@ -166,7 +166,8 @@ export default function ChildHomeScreen() {
       if (data === 'onboarding') return router.replace('/onboarding');
       if (data === 'age-band-update') return router.replace('/age-band-update' as Href);
       applyData(data);
-    } catch {
+    } catch (error) {
+      console.error('[childHome] readHomeData failed', error);
       setFailed(true);
     }
   };
@@ -183,7 +184,8 @@ export default function ChildHomeScreen() {
           applyData(data);
           perfMark('childHome:data-ready');
         })
-        .catch(() => {
+        .catch((error) => {
+          console.error('[childHome] readHomeData failed', error);
           if (mounted) setFailed(true);
         });
       return () => {

@@ -1,11 +1,15 @@
 export {
   getBrushingVoiceProfile,
   getNicknamePersonalizationEnabled,
+  hasStoredNicknamePersonalization,
   hasStoredVoiceProfile,
+  markNicknamePersonalizationSynced,
   markVoiceProfileSynced,
+  readNicknamePersonalizationSyncMeta,
   readVoiceProfileSyncMeta,
   setBrushingVoiceProfile,
   setNicknamePersonalizationEnabled,
+  type NicknamePersonalizationSyncMeta,
   type VoiceProfileSyncMeta,
 } from './preferences';
 export * from './personalizedVoice';
@@ -21,3 +25,4 @@ export {
 export * from './brushMotion';
 export * from './completionJingles';
 export * from './voiceGuidance';
+export { ensureVoicePreviewAudioMode } from './voicePreview';

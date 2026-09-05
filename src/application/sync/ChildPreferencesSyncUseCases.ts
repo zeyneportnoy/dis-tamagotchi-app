@@ -39,6 +39,33 @@ export type ChildPreferenceAccessors = Readonly<{
   ): Promise<void>;
   markRemindersSynced(parentUserId: string, childProfileId: string): Promise<void>;
   readRemindersSyncMeta(parentUserId: string, childProfileId: string): Promise<PreferenceSyncMeta>;
+  /**
+   * Cloud-recovery entry point for a child with no local dentist_reminders row
+   * yet (see `LocalChildPreferenceSyncRepository.dentistReminderEnabled`).
+   * Persists the recovered dates and (re)schedules the routine / appointment
+   * notifications using the exact same derivation as a live parent edit.
+   */
+  applyRecoveredDentist(
+    childProfileId: string,
+    nickname: string,
+    values: Readonly<{ lastVisitDate: string | null; nextAppointmentDate: string | null }>,
+  ): Promise<void>;
+  readNicknamePersonalization(parentUserId: string, childProfileId: string): Promise<boolean>;
+  hasStoredNicknamePersonalization(parentUserId: string, childProfileId: string): Promise<boolean>;
+  writeNicknamePersonalization(
+    parentUserId: string,
+    childProfileId: string,
+    enabled: boolean,
+  ): Promise<void>;
+  markNicknamePersonalizationSynced(
+    parentUserId: string,
+    childProfileId: string,
+    enabled: boolean,
+  ): Promise<void>;
+  readNicknamePersonalizationSyncMeta(
+    parentUserId: string,
+    childProfileId: string,
+  ): Promise<PreferenceSyncMeta>;
 }>;
 
 export class ChildPreferencesSyncUseCases {
@@ -52,10 +79,11 @@ export class ChildPreferencesSyncUseCases {
     profileId: string,
     childId: string,
   ): Promise<CloudChildPreferences> {
-    const [customization, parentUserId, dentistEnabled] = await Promise.all([
+    const [customization, parentUserId, dentistEnabled, dentistDates] = await Promise.all([
       this.local.readCustomizationForPush(profileId),
       this.local.resolveParentUserId(profileId),
       this.local.dentistReminderEnabled(profileId),
+      this.local.readDentistDatesForPush(profileId),
     ]);
     const voiceGuide = parentUserId
       ? await this.prefs.readVoice(parentUserId, profileId)
@@ -63,6 +91,9 @@ export class ChildPreferencesSyncUseCases {
     const reminders = parentUserId
       ? await this.prefs.readReminders(parentUserId, profileId)
       : { morning: { enabled: false, time: null }, evening: { enabled: false, time: null } };
+    const nicknamePersonalizationEnabled = parentUserId
+      ? await this.prefs.readNicknamePersonalization(parentUserId, profileId)
+      : null;
     return {
       childId,
       selectedBrushId: customization.selectedBrushId,
@@ -73,7 +104,9 @@ export class ChildPreferencesSyncUseCases {
       morningReminder: reminders.morning,
       eveningReminder: reminders.evening,
       dentistReminderEnabled: dentistEnabled,
-      dentistLastVisitDate: null,
+      dentistLastVisitDate: dentistDates.lastVisitDate,
+      dentistNextAppointmentDate: dentistDates.nextAppointmentDate,
+      nicknamePersonalizationEnabled,
     };
   }
 
@@ -87,14 +120,28 @@ export class ChildPreferencesSyncUseCases {
    * cloud row could be destructively overwritten by it. This is the guard
    * that stops a bootstrap/foreground sync pass from bulk-defaulting many
    * siblings' background/room/reminders before recovery has caught up.
+   *
+   * Nickname personalization is deliberately NOT part of this gate. Unlike
+   * customization/reminders/voice/dentist — where an "unresolved" local read
+   * is a fabricated placeholder (empty state / 08:00 default / etc.) that
+   * must never overwrite a real cloud value — its unset local read (false)
+   * already IS its real, correct value (there is currently no UI that ever
+   * sets it to true), and it has no equivalent to dentist's "always created
+   * at child-creation time" guarantee. Gating on it would risk permanently
+   * blocking a child's ENTIRE snapshot (background/room/reminders/voice/
+   * dentist too) the moment its cloud row already exists, since nothing in
+   * the app currently causes it to become "stored" on its own. `recover()`
+   * below still protects a genuinely resolved local value from ever being
+   * overwritten by the cloud.
    */
   private async isSafeToPush(profileId: string, childId: string, parentUserId: string | null): Promise<boolean> {
-    const [hasCustomization, hasReminders, hasVoice] = await Promise.all([
+    const [hasCustomization, hasReminders, hasVoice, hasDentist] = await Promise.all([
       this.local.hasLocalCustomization(profileId),
       parentUserId ? this.prefs.hasStoredReminders(parentUserId, profileId) : Promise.resolve(true),
       parentUserId ? this.prefs.hasStoredVoice(parentUserId, profileId) : Promise.resolve(true),
+      this.local.dentistReminderEnabled(profileId),
     ]);
-    if (hasCustomization && hasReminders && hasVoice) return true;
+    if (hasCustomization && hasReminders && hasVoice && hasDentist) return true;
     const existing = await this.cloud.get(childId);
     return existing === null;
   }
@@ -110,6 +157,13 @@ export class ChildPreferencesSyncUseCases {
         await this.prefs.markVoiceSynced(parentUserId, profileId, snapshot.voiceGuide);
       }
       await this.prefs.markRemindersSynced(parentUserId, profileId);
+      if (snapshot.nicknamePersonalizationEnabled !== null) {
+        await this.prefs.markNicknamePersonalizationSynced(
+          parentUserId,
+          profileId,
+          snapshot.nicknamePersonalizationEnabled,
+        );
+      }
     }
   }
 
@@ -146,6 +200,23 @@ export class ChildPreferencesSyncUseCases {
         await this.local.hydrateCustomization(profileId, row);
       }
 
+      // Dentist last-visit / next-appointment dates live purely on the child row
+      // (no per-parent AsyncStorage scoping), so this does not need parentUserId
+      // and must not be skipped by the `continue` below. Only seeds a child with
+      // NO local dentist_reminders row yet (a second device, or a reinstall —
+      // the creating device already has one from profile creation). Persisting
+      // and (re)scheduling both go through the exact same DentistVisitService
+      // path a live parent edit uses, so the routine (+6 months) and
+      // appointment (-1 day) reminders come back correctly without
+      // re-deriving any of that logic here.
+      if (!(await this.local.dentistReminderEnabled(profileId))) {
+        const nickname = await this.local.resolveNickname(profileId);
+        await this.prefs.applyRecoveredDentist(profileId, nickname, {
+          lastVisitDate: row.dentistLastVisitDate,
+          nextAppointmentDate: row.dentistNextAppointmentDate,
+        });
+      }
+
       const parentUserId = await this.local.resolveParentUserId(profileId);
       if (!parentUserId) continue;
 
@@ -173,6 +244,39 @@ export class ChildPreferencesSyncUseCases {
           evening: reminderValues(row.eveningReminder, '20:30'),
         });
         await this.prefs.markRemindersSynced(parentUserId, profileId);
+      }
+
+      // Nickname personalization (brushing says the child's name): same
+      // seed-once-then-authoritative rule as voice, since it is exactly the
+      // same shape of preference (a per-child AsyncStorage value with a
+      // fingerprint sync marker).
+      if (row.nicknamePersonalizationEnabled !== null) {
+        if (!(await this.prefs.hasStoredNicknamePersonalization(parentUserId, profileId))) {
+          await this.prefs.writeNicknamePersonalization(
+            parentUserId,
+            profileId,
+            row.nicknamePersonalizationEnabled,
+          );
+          await this.prefs.markNicknamePersonalizationSynced(
+            parentUserId,
+            profileId,
+            row.nicknamePersonalizationEnabled,
+          );
+        } else {
+          const meta = await this.prefs.readNicknamePersonalizationSyncMeta(parentUserId, profileId);
+          if (!meta.dirty && cloudRowNewerThan(row.updatedAt, meta.syncedAt)) {
+            await this.prefs.writeNicknamePersonalization(
+              parentUserId,
+              profileId,
+              row.nicknamePersonalizationEnabled,
+            );
+            await this.prefs.markNicknamePersonalizationSynced(
+              parentUserId,
+              profileId,
+              row.nicknamePersonalizationEnabled,
+            );
+          }
+        }
       }
     }
   }

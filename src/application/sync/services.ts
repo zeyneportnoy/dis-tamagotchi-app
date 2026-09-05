@@ -13,12 +13,22 @@ import {
 } from '@/data/repositories';
 import {
   getBrushingVoiceProfile,
+  getNicknamePersonalizationEnabled,
+  hasStoredNicknamePersonalization,
   hasStoredVoiceProfile,
+  markNicknamePersonalizationSynced,
   markVoiceProfileSynced,
+  readNicknamePersonalizationSyncMeta,
   readVoiceProfileSyncMeta,
   setBrushingVoiceProfile,
+  setNicknamePersonalizationEnabled,
 } from '@/features/brushing';
-import { reminderSettingsService, syncGroupedBrushingReminders } from '@/features/reminders';
+import {
+  dentistReminderService,
+  dentistVisitService,
+  reminderSettingsService,
+  syncGroupedBrushingReminders,
+} from '@/features/reminders';
 
 import { ChildDataSyncUseCases } from './ChildDataSyncUseCases';
 import {
@@ -59,6 +69,31 @@ const childPreferenceAccessors: ChildPreferenceAccessors = {
     reminderSettingsService.markSynced(parentUserId, childProfileId),
   readRemindersSyncMeta: (parentUserId, childProfileId) =>
     reminderSettingsService.readSyncMeta(parentUserId, childProfileId),
+  async applyRecoveredDentist(childProfileId, nickname, values) {
+    const child = { id: childProfileId, nickname };
+    await dentistVisitService.applyRecovered(child, values);
+    // Mirrors onboarding/summary.tsx's own either/or exactly: the generic
+    // +6/+12-month fallback reminder is only ever scheduled for a child who
+    // has NO real last-visit date (otherwise the specific routine reminder
+    // above already covers it). This device has just created the
+    // dentist_reminders row (via applyRecovered -> ensureRow) with due dates
+    // anchored to the child's real created_at, so re-establishing the
+    // fallback notification here reproduces exactly what onboarding did on
+    // the originating device — never a second, redundant reminder.
+    if (!values.lastVisitDate) {
+      await dentistReminderService.ensureScheduledForProfile(child).catch(() => undefined);
+    }
+  },
+  readNicknamePersonalization: (parentUserId, childProfileId) =>
+    getNicknamePersonalizationEnabled(parentUserId, childProfileId),
+  hasStoredNicknamePersonalization: (parentUserId, childProfileId) =>
+    hasStoredNicknamePersonalization(parentUserId, childProfileId),
+  writeNicknamePersonalization: (parentUserId, childProfileId, enabled) =>
+    setNicknamePersonalizationEnabled(parentUserId, childProfileId, enabled),
+  markNicknamePersonalizationSynced: (parentUserId, childProfileId, enabled) =>
+    markNicknamePersonalizationSynced(parentUserId, childProfileId, enabled),
+  readNicknamePersonalizationSyncMeta: (parentUserId, childProfileId) =>
+    readNicknamePersonalizationSyncMeta(parentUserId, childProfileId),
 };
 
 export function getProfileSyncUseCases(): Promise<ProfileSyncUseCases | null> {

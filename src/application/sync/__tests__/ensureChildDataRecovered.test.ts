@@ -28,12 +28,19 @@ jest.mock('@/data/repositories', () => ({
 }));
 jest.mock('@/features/brushing', () => ({
   getBrushingVoiceProfile: jest.fn(),
+  getNicknamePersonalizationEnabled: jest.fn(),
+  hasStoredNicknamePersonalization: jest.fn(),
   hasStoredVoiceProfile: jest.fn(),
-  setBrushingVoiceProfile: jest.fn(),
+  markNicknamePersonalizationSynced: jest.fn(),
   markVoiceProfileSynced: jest.fn(),
+  readNicknamePersonalizationSyncMeta: jest.fn(),
   readVoiceProfileSyncMeta: jest.fn(),
+  setBrushingVoiceProfile: jest.fn(),
+  setNicknamePersonalizationEnabled: jest.fn(),
 }));
 jest.mock('@/features/reminders', () => ({
+  dentistReminderService: { ensureScheduledForProfile: jest.fn() },
+  dentistVisitService: { applyRecovered: jest.fn() },
   reminderSettingsService: { get: jest.fn(), hasStoredSettings: jest.fn() },
   syncGroupedBrushingReminders: jest.fn(),
 }));

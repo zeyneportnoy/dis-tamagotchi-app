@@ -16,6 +16,12 @@ const childDataRls = readMigration('202608110001_m6_child_data_rls.sql');
 const slotEvaluationAppliedPenalty = readMigration(
   '202608120001_m7_slot_evaluation_applied_penalty.sql',
 );
+const dentistNextAppointmentDate = readMigration(
+  '202608130001_m8_dentist_next_appointment_date.sql',
+);
+const nicknamePersonalizationEnabled = readMigration(
+  '202608140001_m9_nickname_personalization_enabled.sql',
+);
 
 // Remote temporarily still accepts these for two old test rows, but they are NOT
 // part of the app's canonical schema and must never be persisted by new records.
@@ -129,6 +135,26 @@ describe('Supabase repo schema contract — child game-data tables', () => {
     );
     expect(slotEvaluationAppliedPenalty).not.toMatch(/\bupdate\s+public\.brushing_slot_evaluations/i);
     expect(slotEvaluationAppliedPenalty).not.toMatch(/\bdelete\s+from\b/i);
+  });
+
+  it('adds dentist_next_appointment_date as a purely additive, nullable column', () => {
+    expect(dentistNextAppointmentDate).toContain('alter table public.child_preferences');
+    expect(dentistNextAppointmentDate).toContain(
+      'add column if not exists dentist_next_appointment_date date;',
+    );
+    expect(dentistNextAppointmentDate).not.toMatch(
+      /dentist_next_appointment_date date[^;]*not null/i,
+    );
+  });
+
+  it('adds nickname_personalization_enabled as a purely additive, nullable column', () => {
+    expect(nicknamePersonalizationEnabled).toContain('alter table public.child_preferences');
+    expect(nicknamePersonalizationEnabled).toContain(
+      'add column if not exists nickname_personalization_enabled boolean;',
+    );
+    expect(nicknamePersonalizationEnabled).not.toMatch(
+      /nickname_personalization_enabled boolean[^;]*not null/i,
+    );
   });
 });
 

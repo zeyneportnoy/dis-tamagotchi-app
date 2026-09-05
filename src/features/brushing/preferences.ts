@@ -91,14 +91,24 @@ export async function readVoiceProfileSyncMeta(
   }
 }
 
+/**
+ * Defaults to off and PERSISTS that default the first time it is read for a
+ * child (mirroring getBrushingVoiceProfile's seed-on-first-read behavior) —
+ * without this, `hasStoredNicknamePersonalization` (the cloud-recovery /
+ * push-safety gate) would never observe a stored key for a child who has
+ * never explicitly toggled this preference, permanently blocking that
+ * child's ENTIRE preference snapshot (background/room/reminders/voice too)
+ * from ever reaching the cloud.
+ */
 export async function getNicknamePersonalizationEnabled(
   parentUserId: string,
   childProfileId: string,
 ): Promise<boolean> {
-  return (
-    (await AsyncStorage.getItem(nicknamePersonalizationKey(parentUserId, childProfileId))) ===
-    'true'
-  );
+  const key = nicknamePersonalizationKey(parentUserId, childProfileId);
+  const stored = await AsyncStorage.getItem(key);
+  if (stored === 'true' || stored === 'false') return stored === 'true';
+  await AsyncStorage.setItem(key, 'false');
+  return false;
 }
 
 export async function setNicknamePersonalizationEnabled(
@@ -110,4 +120,48 @@ export async function setNicknamePersonalizationEnabled(
     nicknamePersonalizationKey(parentUserId, childProfileId),
     enabled ? 'true' : 'false',
   );
+}
+
+/** True once a child-specific value has been stored (gates cloud recovery). */
+export async function hasStoredNicknamePersonalization(
+  parentUserId: string,
+  childProfileId: string,
+): Promise<boolean> {
+  return (await AsyncStorage.getItem(nicknamePersonalizationKey(parentUserId, childProfileId))) !== null;
+}
+
+const nicknamePersonalizationSyncMetaKey = (parentUserId: string, childProfileId: string): string =>
+  `${nicknamePersonalizationKey(parentUserId, childProfileId)}.sync-meta.v1`;
+
+export type NicknamePersonalizationSyncMeta = Readonly<{ syncedAt: string | null; dirty: boolean }>;
+
+/** Records the value that was just pushed to the cloud, so a later recovery can compare. */
+export async function markNicknamePersonalizationSynced(
+  parentUserId: string,
+  childProfileId: string,
+  value: boolean,
+): Promise<void> {
+  await AsyncStorage.setItem(
+    nicknamePersonalizationSyncMetaKey(parentUserId, childProfileId),
+    JSON.stringify({ value, syncedAt: new Date().toISOString() }),
+  );
+}
+
+/** Whether the local value differs from the last pushed value, and when that was. */
+export async function readNicknamePersonalizationSyncMeta(
+  parentUserId: string,
+  childProfileId: string,
+): Promise<NicknamePersonalizationSyncMeta> {
+  const stored = await AsyncStorage.getItem(nicknamePersonalizationSyncMetaKey(parentUserId, childProfileId));
+  const current = await getNicknamePersonalizationEnabled(parentUserId, childProfileId);
+  if (!stored) return { syncedAt: null, dirty: true };
+  try {
+    const parsed = JSON.parse(stored) as { value?: boolean; syncedAt?: string };
+    return {
+      syncedAt: typeof parsed.syncedAt === 'string' ? parsed.syncedAt : null,
+      dirty: parsed.value !== current,
+    };
+  } catch {
+    return { syncedAt: null, dirty: true };
+  }
 }

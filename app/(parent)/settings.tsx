@@ -11,6 +11,7 @@ import { ageBandFromDateOfBirth } from '@/domain/family';
 import { useAuth } from '@/features/auth';
 import {
   brushingVoiceCues,
+  ensureVoicePreviewAudioMode,
   getBrushingVoiceProfile,
   setBrushingVoiceProfile,
   type BrushingVoiceProfile,
@@ -79,7 +80,13 @@ export default function ParentSettingsScreen() {
     const activePlayer = profile === 'gokce' ? gokcePreview : sametPreview;
     const inactivePlayer = profile === 'gokce' ? sametPreview : gokcePreview;
     inactivePlayer.pause();
-    void activePlayer.seekTo(0).then(() => activePlayer.play());
+    // Must play as media even with the iOS silent switch on — see
+    // ensureVoicePreviewAudioMode for why this can't rely on brushing.tsx's
+    // own audio-mode activation (a parent may open Settings without the
+    // child ever having started a brushing session in this app launch).
+    void ensureVoicePreviewAudioMode().then(() =>
+      activePlayer.seekTo(0).then(() => activePlayer.play()),
+    );
   };
 
   return (

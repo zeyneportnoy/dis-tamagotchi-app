@@ -29,6 +29,11 @@ export type CloudChildPreferences = Readonly<{
   eveningReminder: CloudReminderPreference;
   dentistReminderEnabled: boolean;
   dentistLastVisitDate: string | null;
+  /** Parent-entered next dentist appointment ('YYYY-MM-DD'), or null. */
+  dentistNextAppointmentDate: string | null;
+  /** Whether brushing should say the child's name. `null` only when no parent
+   * context exists to read it from (never a real "off" value). */
+  nicknamePersonalizationEnabled: boolean | null;
   /** Supabase `updated_at`; used to decide whether the cloud is newer. */
   updatedAt?: string;
 }>;
@@ -62,7 +67,21 @@ export interface LocalChildPreferenceSyncRepository {
       roomConfiguration: unknown;
     }>
   >;
+  /**
+   * True once ANY local `dentist_reminders` row exists for this child — set at
+   * child-creation time on the creating device, or by
+   * `ChildPreferenceAccessors.applyRecoveredDentist` during recovery on any
+   * other device. Doubles as the cloud-push value (`dentist_reminder_enabled`)
+   * and as the recovery gate: a child with no row yet has not resolved its
+   * dentist state on this device at all.
+   */
   dentistReminderEnabled(profileId: string): Promise<boolean>;
+  /** Real local dentist dates for a push snapshot — never fabricated/null. */
+  readDentistDatesForPush(
+    profileId: string,
+  ): Promise<Readonly<{ lastVisitDate: string | null; nextAppointmentDate: string | null }>>;
+  /** The child's current nickname, for the recovered-dentist notification copy. */
+  resolveNickname(profileId: string): Promise<string>;
   hasLocalCustomization(profileId: string): Promise<boolean>;
   /**
    * Hydrates the recovered selection into BOTH local stores: the customization

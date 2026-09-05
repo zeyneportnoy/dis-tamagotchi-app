@@ -118,6 +118,18 @@ class FakePreferenceAccessors implements ChildPreferenceAccessors {
     Readonly<{ morning: CloudReminderPreference; evening: CloudReminderPreference }>
   >();
   private readonly remindersSyncedFingerprint = new Map<string, string>();
+  readonly nicknamePersonalization = new Map<string, boolean>();
+  private readonly nicknamePersonalizationSyncedValue = new Map<string, boolean>();
+
+  /**
+   * Real dentist recovery (`DentistVisitService.applyRecovered`) persists into
+   * the SQLite `dentist_reminders` table that the harness's REAL
+   * `SQLiteChildPreferenceSyncRepository` also reads (`dentistReminderEnabled`
+   * / `readDentistDatesForPush`). This fake mirrors that by writing to the
+   * SAME database the harness was built against, so "recovery makes this
+   * device resolved" holds exactly as it does in production.
+   */
+  constructor(private readonly db?: NodeSQLiteDatabase) {}
 
   private key(parentUserId: string, childProfileId: string): string {
     return `${parentUserId}:${childProfileId}`;
@@ -205,6 +217,71 @@ class FakePreferenceAccessors implements ChildPreferenceAccessors {
     this.reminders.set(this.key(parentUserId, childProfileId), values);
     this.remindersSyncedFingerprint.set(this.key(parentUserId, childProfileId), JSON.stringify(values));
   }
+
+  async applyRecoveredDentist(
+    childProfileId: string,
+    _nickname: string,
+    values: Readonly<{ lastVisitDate: string | null; nextAppointmentDate: string | null }>,
+  ): Promise<void> {
+    if (!this.db) return;
+    const now = '2026-08-01T00:00:00.000Z';
+    await this.db.runAsync(
+      `INSERT INTO dentist_reminders
+        (child_profile_id, first_due_at, second_due_at, last_visit_date, next_appointment_date,
+         created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(child_profile_id) DO UPDATE SET
+        last_visit_date = excluded.last_visit_date,
+        next_appointment_date = excluded.next_appointment_date`,
+      childProfileId,
+      now,
+      now,
+      values.lastVisitDate,
+      values.nextAppointmentDate,
+      now,
+      now,
+    );
+  }
+
+  async readNicknamePersonalization(parentUserId: string, childProfileId: string): Promise<boolean> {
+    return this.nicknamePersonalization.get(this.key(parentUserId, childProfileId)) ?? false;
+  }
+
+  async hasStoredNicknamePersonalization(
+    parentUserId: string,
+    childProfileId: string,
+  ): Promise<boolean> {
+    return this.nicknamePersonalization.has(this.key(parentUserId, childProfileId));
+  }
+
+  async writeNicknamePersonalization(
+    parentUserId: string,
+    childProfileId: string,
+    enabled: boolean,
+  ): Promise<void> {
+    this.nicknamePersonalization.set(this.key(parentUserId, childProfileId), enabled);
+  }
+
+  async markNicknamePersonalizationSynced(
+    parentUserId: string,
+    childProfileId: string,
+    enabled: boolean,
+  ): Promise<void> {
+    this.nicknamePersonalizationSyncedValue.set(this.key(parentUserId, childProfileId), enabled);
+  }
+
+  async readNicknamePersonalizationSyncMeta(
+    parentUserId: string,
+    childProfileId: string,
+  ): Promise<Readonly<{ syncedAt: string | null; dirty: boolean }>> {
+    const k = this.key(parentUserId, childProfileId);
+    if (!this.nicknamePersonalization.has(k)) return { syncedAt: null, dirty: false };
+    const synced = this.nicknamePersonalizationSyncedValue.get(k);
+    return {
+      syncedAt: synced !== undefined ? '2026-01-01T00:00:00.000Z' : null,
+      dirty: synced !== this.nicknamePersonalization.get(k),
+    };
+  }
 }
 
 type Harness = Readonly<{
@@ -249,6 +326,8 @@ async function seedCloudPreferences(
     eveningReminder: { enabled: false, time: '20:30' },
     dentistReminderEnabled: true,
     dentistLastVisitDate: null,
+    dentistNextAppointmentDate: null,
+    nicknamePersonalizationEnabled: null,
     ...values,
   });
   cloud.upsertCalls = []; // seeding is not part of what a test measures
@@ -283,8 +362,12 @@ describe('root cause: bulk preferences push cannot destroy an unresolved sibling
       eveningReminder: { enabled: true, time: '21:17' },
     });
 
-    const accessors = new FakePreferenceAccessors();
-    // A is fully resolved on this device (has been used here before).
+    const accessors = new FakePreferenceAccessors(db);
+    // A is fully resolved on this device (has been used here before) —
+    // including its dentist state, seeded directly the same way the other
+    // three "already resolved" signals are, since recover() is not called in
+    // this test (pushForAllSyncedChildren is called directly, matching the
+    // real retryPendingCloudSync call this test documents).
     accessors.seedReminders('parent-1', 'child-A', {
       morning: { enabled: true, time: '07:12' },
       evening: { enabled: true, time: '21:05' },
@@ -294,6 +377,12 @@ describe('root cause: bulk preferences push cannot destroy an unresolved sibling
     await AsyncStorage.setItem(
       `customization.profile.child-A.v1`,
       JSON.stringify(roomConfigOf('cloud-room')),
+    );
+    await db.runAsync(
+      `INSERT INTO dentist_reminders
+        (child_profile_id, first_due_at, second_due_at, created_at, updated_at)
+       VALUES ('child-A', '2027-02-01T00:00:00.000Z', '2027-08-01T00:00:00.000Z',
+         '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z')`,
     );
     // B has NEVER been touched locally on this device — exactly the shape of
     // a reinstall / new device with an existing multi-child family, mid-way
@@ -322,7 +411,7 @@ describe('root cause: bulk preferences push cannot destroy an unresolved sibling
     await migrateDatabase(asDb(db));
     await seedChild(db, 'child-new');
     const cloud = new FakeCloudPreferences();
-    const accessors = new FakePreferenceAccessors();
+    const accessors = new FakePreferenceAccessors(db);
     // Onboarding set real reminders for this brand-new child, but the child
     // was never taken to the Collection/Room screen, so no customization
     // AsyncStorage entry exists — exactly the common "new child" shape.
@@ -486,7 +575,7 @@ describe('multi-child isolation — A/B/C/D fixture', () => {
 
   it('A -> B -> C -> A -> D -> B repeated, then kill/relaunch, foreground, logout/login, fresh install, 100x bootstrap: each child keeps exactly its own values', async () => {
     const { db, cloud } = await buildFixture();
-    const accessors = new FakePreferenceAccessors();
+    const accessors = new FakePreferenceAccessors(db);
     const expectedBackgrounds: Record<string, string> = {
       'child-A': 'cloud-room',
       'child-B': 'space-room',
@@ -527,7 +616,7 @@ describe('multi-child isolation — A/B/C/D fixture', () => {
 
     // Logout/login: fresh accessors (per-session in-memory state cleared),
     // AsyncStorage (durable local data) persists across the "session".
-    const freshAccessors = new FakePreferenceAccessors();
+    const freshAccessors = new FakePreferenceAccessors(db);
     {
       const { useCases } = makeHarness(db, cloud, freshAccessors);
       await useCases.recover();
@@ -543,7 +632,7 @@ describe('multi-child isolation — A/B/C/D fixture', () => {
     await seedChild(db2, 'child-A', { dateOfBirth: '2019-01-10' });
     await seedChild(db2, 'child-B', { dateOfBirth: '2020-06-22' });
     await seedChild(db2, 'child-C', { dateOfBirth: '2018-09-01' });
-    const freshInstallAccessors = new FakePreferenceAccessors();
+    const freshInstallAccessors = new FakePreferenceAccessors(db2);
     {
       const { useCases } = makeHarness(db2, cloud, freshInstallAccessors);
       await useCases.recover();
@@ -581,7 +670,7 @@ describe('transient failure never persists a destructive write', () => {
     await seedChild(db, 'child-1');
     const cloud = new FakeCloudPreferences();
     await seedCloudPreferences(cloud, 'child-1', { selectedBackgroundId: 'space-room' });
-    const accessors = new FakePreferenceAccessors(); // unresolved locally
+    const accessors = new FakePreferenceAccessors(db); // unresolved locally
     const { useCases } = makeHarness(db, cloud, accessors);
     const originalGet = cloud.get.bind(cloud);
     cloud.get = jest.fn().mockRejectedValue(new Error('network down'));
@@ -602,7 +691,7 @@ describe('transient failure never persists a destructive write', () => {
       selectedBackgroundId: 'space-room',
       morningReminder: { enabled: true, time: '07:43' },
     });
-    const accessors = new FakePreferenceAccessors(); // nothing hydrated locally yet
+    const accessors = new FakePreferenceAccessors(db); // nothing hydrated locally yet
     const { useCases } = makeHarness(db, cloud, accessors);
 
     // "retryPendingCloudSync" fires (push) at the same moment as recovery,
@@ -635,7 +724,7 @@ describe('prod-like bulk regression — 10+ children survive repeated sync passe
         eveningReminder: { enabled: i % 3 === 0, time: `2${(i % 3)}:${20 + i}` },
       });
     }
-    const accessors = new FakePreferenceAccessors(); // simulates a fresh device: nothing local yet
+    const accessors = new FakePreferenceAccessors(db); // simulates a fresh device: nothing local yet
 
     // One bootstrap-equivalent pass.
     {
@@ -682,7 +771,7 @@ describe('reminder persistence survives 100 repeated bootstrap cycles', () => {
       morningReminder: { enabled: true, time: '07:43' },
       eveningReminder: { enabled: true, time: '21:17' },
     });
-    const accessors = new FakePreferenceAccessors(); // local starts absent
+    const accessors = new FakePreferenceAccessors(db); // local starts absent
 
     for (let i = 0; i < 100; i += 1) {
       const { useCases } = makeHarness(db, cloud, accessors);

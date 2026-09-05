@@ -10,6 +10,7 @@ import { Button, Screen, SelectionCard, Text, colors, radii, spacing } from '@/d
 import {
   brushingVoiceCues,
   brushingVoiceProfiles,
+  ensureVoicePreviewAudioMode,
   setBrushingVoiceProfile,
   type BrushingVoiceProfile,
 } from '@/features/brushing';
@@ -108,7 +109,13 @@ export default function SummaryScreen() {
     const activePlayer = profile === 'gokce' ? gokcePreview : sametPreview;
     const inactivePlayer = profile === 'gokce' ? sametPreview : gokcePreview;
     inactivePlayer.pause();
-    void activePlayer.seekTo(0).then(() => activePlayer.play());
+    // Must play as media even with the iOS silent switch on — see
+    // ensureVoicePreviewAudioMode for why this can't rely on brushing.tsx's
+    // own audio-mode activation (this screen is reached before any brushing
+    // session has ever started).
+    void ensureVoicePreviewAudioMode().then(() =>
+      activePlayer.seekTo(0).then(() => activePlayer.play()),
+    );
   };
 
   // Tapping a voice card only highlights it locally — no save, no navigation.

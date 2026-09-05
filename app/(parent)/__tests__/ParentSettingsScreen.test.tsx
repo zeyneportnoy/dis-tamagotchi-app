@@ -64,9 +64,19 @@ jest.mock('@/features/brushing', () => ({
     gokce: [{ source: 1 }],
     samet: [{ source: 2 }],
   },
+  ensureVoicePreviewAudioMode: () => Promise.resolve(),
   getBrushingVoiceProfile: () => Promise.resolve('gokce'),
+  getNicknamePersonalizationEnabled: () => Promise.resolve(false),
+  hasStoredNicknamePersonalization: () => Promise.resolve(false),
+  hasStoredVoiceProfile: () => Promise.resolve(true),
+  markNicknamePersonalizationSynced: () => Promise.resolve(),
+  markVoiceProfileSynced: () => Promise.resolve(),
+  readNicknamePersonalizationSyncMeta: () =>
+    Promise.resolve({ syncedAt: null, dirty: false }),
+  readVoiceProfileSyncMeta: () => Promise.resolve({ syncedAt: null, dirty: false }),
   setBrushingVoiceProfile: (parentUserId: string, childProfileId: string, profile: string) =>
     mockSetBrushingVoiceProfile(parentUserId, childProfileId, profile),
+  setNicknamePersonalizationEnabled: () => Promise.resolve(),
 }));
 
 jest.mock('expo-router', () => ({
