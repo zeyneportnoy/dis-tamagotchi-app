@@ -7,10 +7,9 @@ import {
   MAIN_SLOT_REWARD_XP,
   MAX_MOOD,
   SESSION_MOOD_DELTA,
+  deriveStreak,
   levelForXp,
   newlyUnlockedReward,
-  nextFullDayStreak,
-  previousLocalDayKey,
   rewardItemForKey,
   type BrushingRewardResult,
   type BrushingSlotEvaluation,
@@ -553,24 +552,48 @@ export class SQLiteBrushingSessionRepository
         localDayKey,
       );
       const dailyBefore = await this.requireDaily(input.profileId, localDayKey);
-      const firstSlotCompletion =
-        period === null
-          ? false
-          : period === 'morning'
-            ? !dailyBefore.morningCompleted
-            : !dailyBefore.eveningCompleted;
+      // Canonical reward gate: `brushing_sessions` — not the denormalized
+      // `daily_progress` cache — is the source of truth for "was this slot
+      // already completed and rewarded". A slot with an existing completed
+      // session (brushed here earlier, or hydrated from another device) is
+      // never a first completion, so a second attempt from any device is a
+      // no-op: +0 Mine, no streak change, no unlock, no duplicate reward.
+      // `daily_progress` alone cannot decide this: on a device that received
+      // the slot via cloud hydration it stays empty even though the slot is
+      // genuinely done.
+      const slotAlreadyCompleted =
+        period !== null &&
+        Boolean(
+          await this.database.getFirstAsync<{ id: string }>(
+            `SELECT id FROM brushing_sessions
+             WHERE profile_id = ? AND local_day_key = ? AND period = ? AND completed = 1
+               AND id <> ?
+             LIMIT 1`,
+            input.profileId,
+            localDayKey,
+            period,
+            input.sessionId,
+          ),
+        );
+      const slotDoneBefore =
+        period === 'morning' ? dailyBefore.morningCompleted : dailyBefore.eveningCompleted;
+      const firstSlotCompletion = period !== null && !slotDoneBefore && !slotAlreadyCompleted;
       const morningCompleted = dailyBefore.morningCompleted || period === 'morning';
       const eveningCompleted = dailyBefore.eveningCompleted || period === 'evening';
       const becomesFullDay = !dailyBefore.fullDayCompleted && morningCompleted && eveningCompleted;
       let streakAfterDay = dailyBefore.streakAfterDay;
       if (becomesFullDay) {
-        const previous = await this.database.getFirstAsync<DailyRow>(
-          `SELECT * FROM daily_progress
-           WHERE child_profile_id = ? AND local_day_key = ? AND full_day_completed = 1`,
+        // Deterministic derivation from the SET of full-day dates this device
+        // holds (including the day being completed right now), not a running
+        // counter walked one row at a time — so it is identical on every
+        // device regardless of how its history was assembled.
+        const fullDays = await this.database.getAllAsync<{ local_day_key: string }>(
+          `SELECT local_day_key FROM daily_progress
+           WHERE child_profile_id = ? AND full_day_completed = 1`,
           input.profileId,
-          previousLocalDayKey(localDayKey),
         );
-        streakAfterDay = nextFullDayStreak(previous?.streak_after_day ?? null);
+        const fullDayKeys = fullDays.map((row) => row.local_day_key);
+        streakAfterDay = deriveStreak([...fullDayKeys, localDayKey], localDayKey);
       }
       await this.database.runAsync(
         `UPDATE daily_progress SET morning_completed = ?, evening_completed = ?,

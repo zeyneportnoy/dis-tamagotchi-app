@@ -6,7 +6,7 @@ import { AppState } from 'react-native';
 
 import { getChildExperienceUseCases } from '@/application/child';
 import { getFamilyUseCases } from '@/application/family';
-import { ensureChildDataRecovered } from '@/application/sync';
+import { ensureChildDataRecovered, refreshChildCloudData } from '@/application/sync';
 import { perfMark, perfStep } from '@/config/perf';
 import { ErrorState } from '@/design-system';
 import { initializeDatabase } from '@/data/db';
@@ -72,7 +72,15 @@ function MissedSlotReconciler() {
         clearTimeout(boundaryTimer);
         boundaryTimer = undefined;
       }
-      if (state === 'active') void reconcileAllChildren().finally(scheduleNextBoundary);
+      if (state === 'active') {
+        // Returning to the foreground is a strong "catch me up" signal: force a
+        // fresh cloud pull (bypassing the getProgress throttle) so a brushing
+        // another device completed while this one was backgrounded is hydrated
+        // before reconciliation and every screen reads it.
+        void refreshChildCloudData({ force: true })
+          .catch(() => undefined)
+          .finally(() => reconcileAllChildren().finally(scheduleNextBoundary));
+      }
     });
 
     return () => {

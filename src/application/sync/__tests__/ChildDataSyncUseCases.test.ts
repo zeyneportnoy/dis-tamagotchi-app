@@ -1,20 +1,24 @@
 import type {
+  AuthoritativeProgress,
   CloudBrushingSession,
   CloudChildDataRepository,
   CloudChildProgress,
   CloudSlotEvaluation,
   LocalChildCloudSyncRepository,
-  LocalProgressSnapshot,
 } from '@/domain/sync';
 
 import { ChildDataSyncUseCases } from '../ChildDataSyncUseCases';
 
-const snapshot = (over: Partial<LocalProgressSnapshot> = {}): LocalProgressSnapshot => ({
-  currentMineScore: 240,
+const authoritative = (over: Partial<AuthoritativeProgress> = {}): AuthoritativeProgress => ({
+  childId: 'remote-1',
+  xpGranted: 20,
+  penaltyApplied: 0,
+  currentMineScore: 260,
   streak: 3,
-  syncedAt: '2026-08-20T00:00:00.000Z',
-  syncedScore: 240,
-  syncedStreak: 3,
+  morningCompleted: true,
+  eveningCompleted: false,
+  alreadyResolved: false,
+  updatedAt: '2099-01-01T00:00:05.000Z',
   ...over,
 });
 
@@ -24,7 +28,7 @@ const local = (
   resolveRemoteChildId: jest.fn().mockResolvedValue('remote-1'),
   listSyncedProfileIds: jest.fn().mockResolvedValue(['profile-1']),
   findProfileByRemoteChildId: jest.fn().mockResolvedValue('profile-1'),
-  readProgressSnapshot: jest.fn().mockResolvedValue(snapshot()),
+  readProgressSnapshot: jest.fn().mockResolvedValue(null),
   writeRecoveredProgress: jest.fn().mockResolvedValue(undefined),
   markProgressSynced: jest.fn().mockResolvedValue(undefined),
   readUnsyncedSessions: jest.fn().mockResolvedValue([]),
@@ -39,9 +43,12 @@ const local = (
 const cloud = (
   over: Partial<jest.Mocked<CloudChildDataRepository>> = {},
 ): jest.Mocked<CloudChildDataRepository> => ({
-  upsertProgress: jest.fn().mockResolvedValue('2026-08-25T00:00:00.000Z'),
-  upsertSession: jest.fn().mockResolvedValue('2026-08-25T00:00:00.000Z'),
-  upsertSlotEvaluation: jest.fn().mockResolvedValue('2026-08-25T00:00:00.000Z'),
+  claimBrushingSlot: jest.fn().mockResolvedValue(authoritative()),
+  applySlotPenalty: jest
+    .fn()
+    .mockResolvedValue(authoritative({ xpGranted: 0, penaltyApplied: -10, currentMineScore: 230 })),
+  upsertSession: jest.fn().mockResolvedValue('2099-01-01T00:00:09.000Z'),
+  upsertSlotEvaluation: jest.fn().mockResolvedValue('2099-01-01T00:00:09.000Z'),
   getProgress: jest.fn().mockResolvedValue(null),
   listOwnedProgress: jest.fn().mockResolvedValue([]),
   listOwnedSessions: jest.fn().mockResolvedValue([]),
@@ -49,44 +56,99 @@ const cloud = (
   ...over,
 });
 
-describe('ChildDataSyncUseCases — push', () => {
-  it('pushes progress scoped to the remote child id and stamps the sync markers', async () => {
-    const localRepo = local();
-    const cloudRepo = cloud();
-    await new ChildDataSyncUseCases(localRepo, cloudRepo).pushProgress('profile-1');
-    expect(cloudRepo.upsertProgress).toHaveBeenCalledWith({
-      childId: 'remote-1',
-      currentMineScore: 240,
-      streak: 3,
-    });
-    expect(localRepo.markProgressSynced).toHaveBeenCalledWith(
-      'profile-1',
-      240,
-      3,
-      '2026-08-25T00:00:00.000Z',
-    );
+const completedSession = (
+  over: Partial<Omit<CloudBrushingSession, 'childId'>> = {},
+): Omit<CloudBrushingSession, 'childId'> => ({
+  id: 'sess-1',
+  localDayKey: '2026-08-24',
+  period: 'morning',
+  startedAt: '2026-08-24T06:00:00.000Z',
+  completedAt: '2026-08-24T06:02:00.000Z',
+  status: 'completed',
+  rewardMine: 20,
+  timezoneOffsetMinutes: -180,
+  ...over,
+});
+
+describe('ChildDataSyncUseCases — the client never sends an absolute score', () => {
+  it('has no pushProgress method and the cloud repo has no upsertProgress', () => {
+    const sync = new ChildDataSyncUseCases(local(), cloud());
+    // @ts-expect-error — pushProgress was deleted; only per-slot claims remain.
+    expect(sync.pushProgress).toBeUndefined();
+    // @ts-expect-error — upsertProgress was removed from the interface.
+    expect(cloud().upsertProgress).toBeUndefined();
   });
 
-  it('does not push anything while the child profile is not cloud-synced', async () => {
+  it('does nothing while the child profile is not cloud-synced', async () => {
     const localRepo = local({ resolveRemoteChildId: jest.fn().mockResolvedValue(null) });
     const cloudRepo = cloud();
     await new ChildDataSyncUseCases(localRepo, cloudRepo).pushChild('profile-1');
-    expect(cloudRepo.upsertProgress).not.toHaveBeenCalled();
+    expect(cloudRepo.claimBrushingSlot).not.toHaveBeenCalled();
+    expect(cloudRepo.upsertSession).not.toHaveBeenCalled();
+    expect(cloudRepo.applySlotPenalty).not.toHaveBeenCalled();
+  });
+
+  it('pushChild with nothing pending makes no cloud call at all', async () => {
+    const cloudRepo = cloud();
+    await new ChildDataSyncUseCases(local(), cloudRepo).pushChild('profile-1');
+    expect(cloudRepo.claimBrushingSlot).not.toHaveBeenCalled();
+    expect(cloudRepo.applySlotPenalty).not.toHaveBeenCalled();
     expect(cloudRepo.upsertSession).not.toHaveBeenCalled();
     expect(cloudRepo.upsertSlotEvaluation).not.toHaveBeenCalled();
   });
+});
 
-  it('pushChild flushes a dirty score, unsynced sessions and unsynced evaluations', async () => {
-    const session: Omit<CloudBrushingSession, 'childId'> = {
-      id: 'sess-1',
+describe('ChildDataSyncUseCases — session flush', () => {
+  it('presents a completed rewarded slot to the atomic claim and writes the authoritative result back', async () => {
+    const session = completedSession();
+    const localRepo = local({ readUnsyncedSessions: jest.fn().mockResolvedValue([session]) });
+    const cloudRepo = cloud();
+
+    const claims = await new ChildDataSyncUseCases(localRepo, cloudRepo).pushChild('profile-1');
+
+    expect(cloudRepo.claimBrushingSlot).toHaveBeenCalledWith({
+      childId: 'remote-1',
+      sessionId: 'sess-1',
       localDayKey: '2026-08-24',
       period: 'morning',
       startedAt: '2026-08-24T06:00:00.000Z',
       completedAt: '2026-08-24T06:02:00.000Z',
-      status: 'completed',
-      rewardMine: 20,
       timezoneOffsetMinutes: -180,
-    };
+    });
+    // authoritative score/streak → local cache (no absolute value proposed by us)
+    expect(localRepo.writeRecoveredProgress).toHaveBeenCalledWith('profile-1', {
+      childId: 'remote-1',
+      currentMineScore: 260,
+      streak: 3,
+      updatedAt: '2099-01-01T00:00:05.000Z',
+    });
+    expect(localRepo.markSessionSynced).toHaveBeenCalledWith('sess-1', '2099-01-01T00:00:05.000Z');
+    expect(claims.get('sess-1')?.xpGranted).toBe(20);
+  });
+
+  it('records an interrupted / off-slot / non-first session as plain history, never a claim', async () => {
+    const localRepo = local({
+      readUnsyncedSessions: jest.fn().mockResolvedValue([
+        completedSession({ id: 'interrupted', status: 'interrupted', rewardMine: 0 }),
+        completedSession({ id: 'off', period: 'off_slot', rewardMine: 0 }),
+        completedSession({ id: 'dup', rewardMine: 0 }), // local said "not first"
+      ]),
+    });
+    const cloudRepo = cloud();
+
+    await new ChildDataSyncUseCases(localRepo, cloudRepo).pushChild('profile-1');
+
+    expect(cloudRepo.claimBrushingSlot).not.toHaveBeenCalled();
+    expect(cloudRepo.upsertSession).toHaveBeenCalledTimes(3);
+    expect(cloudRepo.upsertSession).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'dup', childId: 'remote-1' }),
+    );
+    expect(localRepo.markSessionSynced).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('ChildDataSyncUseCases — evaluation flush', () => {
+  it('presents a missed slot to the atomic penalty and writes the authoritative result back', async () => {
     const evaluation: Omit<CloudSlotEvaluation, 'childId'> = {
       localDayKey: '2026-08-23',
       period: 'evening',
@@ -95,117 +157,79 @@ describe('ChildDataSyncUseCases — push', () => {
       appliedPenaltyMine: -10,
       evaluatedAt: '2026-08-24T00:00:00.000Z',
     };
-    const localRepo = local({
-      readProgressSnapshot: jest
-        .fn()
-        .mockResolvedValue(snapshot({ currentMineScore: 260, syncedScore: 240 })),
-      readUnsyncedSessions: jest.fn().mockResolvedValue([session]),
-      readUnsyncedEvaluations: jest.fn().mockResolvedValue([evaluation]),
-    });
+    const localRepo = local({ readUnsyncedEvaluations: jest.fn().mockResolvedValue([evaluation]) });
     const cloudRepo = cloud();
+
     await new ChildDataSyncUseCases(localRepo, cloudRepo).pushChild('profile-1');
 
-    expect(cloudRepo.upsertProgress).toHaveBeenCalledWith({
+    expect(cloudRepo.applySlotPenalty).toHaveBeenCalledWith({
       childId: 'remote-1',
-      currentMineScore: 260,
-      streak: 3,
+      localDayKey: '2026-08-23',
+      period: 'evening',
+      evaluatedAt: '2026-08-24T00:00:00.000Z',
     });
-    expect(cloudRepo.upsertSession).toHaveBeenCalledWith({ ...session, childId: 'remote-1' });
-    expect(localRepo.markSessionSynced).toHaveBeenCalledWith('sess-1', '2026-08-25T00:00:00.000Z');
-    expect(cloudRepo.upsertSlotEvaluation).toHaveBeenCalledWith({
-      ...evaluation,
+    expect(localRepo.writeRecoveredProgress).toHaveBeenCalledWith('profile-1', {
       childId: 'remote-1',
+      currentMineScore: 230,
+      streak: 3,
+      updatedAt: '2099-01-01T00:00:05.000Z',
     });
     expect(localRepo.markEvaluationSynced).toHaveBeenCalledWith(
       'profile-1',
       '2026-08-23',
       'evening',
-      '2026-08-25T00:00:00.000Z',
+      '2099-01-01T00:00:05.000Z',
     );
   });
 
-  it('pushChild skips a clean score (current == last synced)', async () => {
-    const localRepo = local(); // snapshot() is already clean
+  it('records a completed-outcome evaluation as plain history', async () => {
+    const localRepo = local({
+      readUnsyncedEvaluations: jest.fn().mockResolvedValue([
+        {
+          localDayKey: '2026-08-23',
+          period: 'morning',
+          outcome: 'completed',
+          penaltyMine: 0,
+          appliedPenaltyMine: 0,
+          evaluatedAt: '2026-08-24T00:00:00.000Z',
+        },
+      ]),
+    });
     const cloudRepo = cloud();
     await new ChildDataSyncUseCases(localRepo, cloudRepo).pushChild('profile-1');
-    expect(cloudRepo.upsertProgress).not.toHaveBeenCalled();
-  });
-
-  it('does not overwrite a cloud row that advanced past this device since its last sync', async () => {
-    const localRepo = local({
-      readProgressSnapshot: jest.fn().mockResolvedValue(
-        snapshot({
-          currentMineScore: 260, // dirty local edit
-          syncedScore: 240,
-          syncedStreak: 3,
-          streak: 3,
-          syncedAt: '2026-08-20T00:00:00.000Z',
-        }),
-      ),
-    });
-    const cloudRepo = cloud({
-      // Another device pushed 300 after our last sync at 2026-08-20.
-      getProgress: jest.fn().mockResolvedValue({
-        childId: 'remote-1',
-        currentMineScore: 300,
-        streak: 4,
-        updatedAt: '2026-08-24T00:00:00.000Z',
-      }),
-    });
-    await new ChildDataSyncUseCases(localRepo, cloudRepo).pushProgress('profile-1');
-    expect(cloudRepo.upsertProgress).not.toHaveBeenCalled();
-    expect(localRepo.markProgressSynced).not.toHaveBeenCalled();
-  });
-
-  it('still pushes when the cloud row has not advanced past our last sync', async () => {
-    const localRepo = local({
-      readProgressSnapshot: jest.fn().mockResolvedValue(
-        snapshot({ currentMineScore: 260, syncedScore: 240, syncedAt: '2026-08-24T00:00:00.000Z' }),
-      ),
-    });
-    const cloudRepo = cloud({
-      getProgress: jest.fn().mockResolvedValue({
-        childId: 'remote-1',
-        currentMineScore: 240,
-        streak: 3,
-        updatedAt: '2026-08-20T00:00:00.000Z', // older than our syncedAt
-      }),
-    });
-    await new ChildDataSyncUseCases(localRepo, cloudRepo).pushProgress('profile-1');
-    expect(cloudRepo.upsertProgress).toHaveBeenCalledWith({
-      childId: 'remote-1',
-      currentMineScore: 260,
-      streak: 3,
-    });
+    expect(cloudRepo.applySlotPenalty).not.toHaveBeenCalled();
+    expect(cloudRepo.upsertSlotEvaluation).toHaveBeenCalledTimes(1);
   });
 });
 
-describe('ChildDataSyncUseCases — progress recovery (multi-device)', () => {
+describe('ChildDataSyncUseCases — progress recovery is PULL-ONLY and cloud-authoritative', () => {
   const cloudRow: CloudChildProgress = {
     childId: 'remote-1',
     currentMineScore: 640,
     streak: 5,
-    updatedAt: '2026-08-25T00:00:00.000Z',
+    updatedAt: '2099-01-01T00:00:09.000Z',
   };
+
+  it('overwrites the local cache with the cloud row unconditionally — even a dirtier / newer local value', async () => {
+    const localRepo = local({
+      // A stale device whose local row is defaulted / dirty / "newer": IRRELEVANT now.
+      readProgressSnapshot: jest.fn().mockResolvedValue({
+        currentMineScore: 0,
+        streak: 0,
+        syncedAt: null,
+        syncedScore: null,
+        syncedStreak: null,
+      }),
+    });
+    await new ChildDataSyncUseCases(
+      localRepo,
+      cloud({ listOwnedProgress: jest.fn().mockResolvedValue([cloudRow]) }),
+    ).recoverProgress();
+    expect(localRepo.writeRecoveredProgress).toHaveBeenCalledWith('profile-1', cloudRow);
+  });
 
   it('hydrates when there is no local progress row', async () => {
     const localRepo = local({ readProgressSnapshot: jest.fn().mockResolvedValue(null) });
-    await new ChildDataSyncUseCases(localRepo, cloud({ listOwnedProgress: jest.fn().mockResolvedValue([cloudRow]) })).recoverProgress();
-    expect(localRepo.writeRecoveredProgress).toHaveBeenCalledWith('profile-1', cloudRow);
-  });
-
-  it('refreshes a clean local row when the cloud row is newer', async () => {
-    const localRepo = local({
-      readProgressSnapshot: jest.fn().mockResolvedValue(
-        snapshot({
-          currentMineScore: 600,
-          streak: 4,
-          syncedScore: 600,
-          syncedStreak: 4,
-          syncedAt: '2026-08-20T00:00:00.000Z',
-        }),
-      ),
-    });
     await new ChildDataSyncUseCases(
       localRepo,
       cloud({ listOwnedProgress: jest.fn().mockResolvedValue([cloudRow]) }),
@@ -213,31 +237,8 @@ describe('ChildDataSyncUseCases — progress recovery (multi-device)', () => {
     expect(localRepo.writeRecoveredProgress).toHaveBeenCalledWith('profile-1', cloudRow);
   });
 
-  it('never overwrites a local row that holds unpushed edits', async () => {
-    const localRepo = local({
-      readProgressSnapshot: jest.fn().mockResolvedValue(
-        snapshot({ currentMineScore: 660, syncedScore: 640, syncedStreak: 5, streak: 5 }),
-      ),
-    });
-    await new ChildDataSyncUseCases(
-      localRepo,
-      cloud({ listOwnedProgress: jest.fn().mockResolvedValue([cloudRow]) }),
-    ).recoverProgress();
-    expect(localRepo.writeRecoveredProgress).not.toHaveBeenCalled();
-  });
-
-  it('does nothing when the cloud row is not newer than this device', async () => {
-    const localRepo = local({
-      readProgressSnapshot: jest.fn().mockResolvedValue(
-        snapshot({
-          currentMineScore: 640,
-          streak: 5,
-          syncedScore: 640,
-          syncedStreak: 5,
-          syncedAt: '2026-08-26T00:00:00.000Z',
-        }),
-      ),
-    });
+  it('skips a cloud row with no matching local profile', async () => {
+    const localRepo = local({ findProfileByRemoteChildId: jest.fn().mockResolvedValue(null) });
     await new ChildDataSyncUseCases(
       localRepo,
       cloud({ listOwnedProgress: jest.fn().mockResolvedValue([cloudRow]) }),
@@ -273,7 +274,9 @@ describe('ChildDataSyncUseCases — brushing history recovery', () => {
     const localRepo = local({
       findProfileByRemoteChildId: jest
         .fn()
-        .mockImplementation((id: string) => Promise.resolve(id === 'remote-a' ? 'profile-a' : 'profile-b')),
+        .mockImplementation((id: string) =>
+          Promise.resolve(id === 'remote-a' ? 'profile-a' : 'profile-b'),
+        ),
     });
     await new ChildDataSyncUseCases(
       localRepo,
@@ -289,16 +292,14 @@ describe('ChildDataSyncUseCases — brushing history recovery', () => {
 });
 
 describe('ChildDataSyncUseCases — pushAllPending', () => {
-  it('flushes every synced child', async () => {
+  it('flushes every synced child through the per-slot claims', async () => {
     const localRepo = local({
       listSyncedProfileIds: jest.fn().mockResolvedValue(['profile-a', 'profile-b']),
       resolveRemoteChildId: jest.fn().mockResolvedValue('remote-x'),
-      readProgressSnapshot: jest
-        .fn()
-        .mockResolvedValue(snapshot({ currentMineScore: 300, syncedScore: 240 })),
+      readUnsyncedSessions: jest.fn().mockResolvedValue([completedSession()]),
     });
     const cloudRepo = cloud();
     await new ChildDataSyncUseCases(localRepo, cloudRepo).pushAllPending();
-    expect(cloudRepo.upsertProgress).toHaveBeenCalledTimes(2);
+    expect(cloudRepo.claimBrushingSlot).toHaveBeenCalledTimes(2);
   });
 });

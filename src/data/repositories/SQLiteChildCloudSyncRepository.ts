@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { toLocalDateKey } from '@/domain/brushing';
 import { levelForXp } from '@/domain/rewards';
 import type {
   CloudBrushingPeriod,
@@ -219,6 +220,60 @@ export class SQLiteChildCloudSyncRepository implements LocalChildCloudSyncReposi
       session.rewardMine,
       session.updatedAt ?? new Date().toISOString(),
     );
+
+    // Project the completion onto the denormalized `daily_progress` cache so
+    // every device — not just the one the child brushed on — agrees on which
+    // slots are done. Home reads `profile_progress` (a same-day mirror of
+    // `daily_progress`); without this backfill a hydrated device shows the
+    // slot as still open, re-enables the card and lets the child "brush"
+    // again. This is a projection of history, NOT a reward re-run: score and
+    // streak stay derived from their own sources (`writeRecoveredProgress`
+    // and `deriveStreak`), and `streak_after_day` is deliberately left as-is.
+    if (completed === 1 && period !== null) {
+      await this.database.runAsync(
+        `INSERT OR IGNORE INTO daily_progress(child_profile_id, local_day_key) VALUES (?, ?)`,
+        profileId,
+        session.localDayKey,
+      );
+      await this.database.runAsync(
+        `UPDATE daily_progress SET
+          morning_completed = CASE WHEN ? = 'morning' THEN 1 ELSE morning_completed END,
+          evening_completed = CASE WHEN ? = 'evening' THEN 1 ELSE evening_completed END,
+          full_day_completed = CASE
+            WHEN (CASE WHEN ? = 'morning' THEN 1 ELSE morning_completed END) = 1
+             AND (CASE WHEN ? = 'evening' THEN 1 ELSE evening_completed END) = 1
+            THEN 1 ELSE full_day_completed END
+         WHERE child_profile_id = ? AND local_day_key = ?`,
+        period,
+        period,
+        period,
+        period,
+        profileId,
+        session.localDayKey,
+      );
+      // Only the current local day is mirrored into `profile_progress`; other
+      // days there are irrelevant (Home only ever shows today's two slots).
+      if (session.localDayKey === toLocalDateKey(new Date())) {
+        await this.database.runAsync(
+          `INSERT OR IGNORE INTO profile_progress (child_profile_id, status_date) VALUES (?, ?)`,
+          profileId,
+          session.localDayKey,
+        );
+        await this.database.runAsync(
+          `UPDATE profile_progress SET
+            morning_completed = (SELECT morning_completed FROM daily_progress
+              WHERE child_profile_id = ? AND local_day_key = ?),
+            evening_completed = (SELECT evening_completed FROM daily_progress
+              WHERE child_profile_id = ? AND local_day_key = ?)
+           WHERE child_profile_id = ?`,
+          profileId,
+          session.localDayKey,
+          profileId,
+          session.localDayKey,
+          profileId,
+        );
+      }
+    }
   }
 
   // ---- slot evaluations -----------------------------------------------

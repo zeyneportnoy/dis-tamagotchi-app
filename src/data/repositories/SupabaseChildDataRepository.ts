@@ -1,12 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type {
+  AuthoritativeProgress,
+  BrushingSlotClaim,
   CloudBrushingPeriod,
   CloudBrushingSession,
   CloudBrushingSessionStatus,
   CloudChildDataRepository,
   CloudChildProgress,
   CloudSlotEvaluation,
+  SlotPenaltyClaim,
 } from '@/domain/sync';
 
 type ProgressRow = {
@@ -40,6 +43,31 @@ type EvaluationRow = {
   updated_at: string | null;
 };
 
+/** Shape returned by the `claim_brushing_slot` / `apply_slot_penalty` RPCs. */
+type AuthoritativeRow = {
+  child_id: string;
+  xp_granted: number;
+  penalty_applied: number;
+  current_mine_score: number;
+  streak: number;
+  morning_completed: boolean;
+  evening_completed: boolean;
+  already_resolved: boolean;
+  updated_at: string;
+};
+
+const mapAuthoritative = (row: AuthoritativeRow): AuthoritativeProgress => ({
+  childId: row.child_id,
+  xpGranted: row.xp_granted === 20 ? 20 : 0,
+  penaltyApplied: Math.max(-10, Math.min(0, row.penalty_applied)),
+  currentMineScore: Math.max(0, row.current_mine_score),
+  streak: Math.max(0, row.streak),
+  morningCompleted: row.morning_completed === true,
+  eveningCompleted: row.evening_completed === true,
+  alreadyResolved: row.already_resolved === true,
+  updatedAt: row.updated_at,
+});
+
 const mapProgress = (row: ProgressRow): CloudChildProgress => ({
   childId: row.child_id,
   currentMineScore: row.current_mine_score,
@@ -67,35 +95,52 @@ const mapEvaluation = (row: EvaluationRow): CloudSlotEvaluation => ({
   outcome: row.outcome,
   penaltyMine: row.penalty_mine === -10 ? -10 : 0,
   appliedPenaltyMine:
-    row.applied_penalty_mine === null
-      ? null
-      : Math.max(-10, Math.min(0, row.applied_penalty_mine)),
+    row.applied_penalty_mine === null ? null : Math.max(-10, Math.min(0, row.applied_penalty_mine)),
   evaluatedAt: row.evaluated_at,
   updatedAt: row.updated_at ?? undefined,
 });
 
 /**
- * Writes the child's Mine Puan progress, brushing sessions and slot evaluations
- * to Supabase. Every write is an idempotent upsert keyed on the same identity
- * the local tables use, so retries never create duplicate rows or a second
- * reward/penalty. RLS already scopes every row to the owning parent.
+ * Cloud data access for a child's Mine Puan progress, brushing sessions and
+ * slot evaluations.
+ *
+ * The absolute `current_mine_score` / `streak` are OWNED BY THE SERVER: the
+ * client holds no `child_progress` write grant and this class exposes no method
+ * that sends an absolute score. Score changes go only through the atomic,
+ * idempotent RPCs `claim_brushing_slot` / `apply_slot_penalty`, which return the
+ * new authoritative values. History rows (interrupted / off-slot sessions, slot
+ * evaluations) are still plain idempotent upserts keyed on their stable id.
  */
 export class SupabaseChildDataRepository implements CloudChildDataRepository {
   constructor(private readonly client: SupabaseClient) {}
 
-  async upsertProgress(progress: CloudChildProgress): Promise<string> {
-    const updatedAt = new Date().toISOString();
-    const { error } = await this.client.from('child_progress').upsert(
-      {
-        child_id: progress.childId,
-        current_mine_score: progress.currentMineScore,
-        streak: progress.streak,
-        updated_at: updatedAt,
-      },
-      { onConflict: 'child_id' },
-    );
-    if (error) throw new Error('CLOUD_PROGRESS_UPSERT_FAILED');
-    return updatedAt;
+  async claimBrushingSlot(claim: BrushingSlotClaim): Promise<AuthoritativeProgress> {
+    const { data, error } = await this.client
+      .rpc('claim_brushing_slot', {
+        p_child_id: claim.childId,
+        p_session_id: claim.sessionId,
+        p_local_day_key: claim.localDayKey,
+        p_period: claim.period,
+        p_started_at: claim.startedAt,
+        p_completed_at: claim.completedAt,
+        p_timezone_offset_minutes: claim.timezoneOffsetMinutes,
+      })
+      .single();
+    if (error || !data) throw new Error('CLOUD_REWARD_CLAIM_FAILED');
+    return mapAuthoritative(data as AuthoritativeRow);
+  }
+
+  async applySlotPenalty(claim: SlotPenaltyClaim): Promise<AuthoritativeProgress> {
+    const { data, error } = await this.client
+      .rpc('apply_slot_penalty', {
+        p_child_id: claim.childId,
+        p_local_day_key: claim.localDayKey,
+        p_period: claim.period,
+        p_evaluated_at: claim.evaluatedAt,
+      })
+      .single();
+    if (error || !data) throw new Error('CLOUD_SLOT_PENALTY_FAILED');
+    return mapAuthoritative(data as AuthoritativeRow);
   }
 
   async upsertSession(session: CloudBrushingSession): Promise<string> {

@@ -10,6 +10,7 @@ export {
   recoverChildCloudProgress,
   recoverChildBrushingHistory,
   ensureChildDataRecovered,
+  refreshChildCloudData,
   retryPendingCloudSync,
   getChildPreferencesSyncUseCases,
   syncChildPreferences,

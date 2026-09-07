@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getParentAuthUseCases } from '@/application/auth';
 import { getSupabaseClient } from '@/data/auth';
 import { getDatabase } from '@/data/db';
+import type { AuthoritativeProgress } from '@/domain/sync';
 import {
   SQLiteChildCloudSyncRepository,
   SQLiteChildPreferenceSyncRepository,
@@ -42,6 +43,12 @@ let childDataSyncPromise: Promise<ChildDataSyncUseCases | null> | undefined;
 let childPreferencesSyncPromise: Promise<ChildPreferencesSyncUseCases | null> | undefined;
 let childDataRecoveryPromise: Promise<void> | null = null;
 let childPreferencesRecoveryPromise: Promise<void> | null = null;
+// Refresh (re-pull) bookkeeping — distinct from the once-per-session recovery
+// gate above. Lets an already-open device learn about a brushing another
+// device completed while this one stayed foregrounded.
+let childDataRefreshInFlight: Promise<void> | null = null;
+let childDataRefreshedAtMs = 0;
+const CHILD_DATA_REFRESH_MIN_INTERVAL_MS = 10_000;
 
 const childPreferenceAccessors: ChildPreferenceAccessors = {
   readVoice: (parentUserId, childProfileId) =>
@@ -156,6 +163,8 @@ export function resetSessionSyncState(): void {
   lastPushedProgress.clear();
   childDataRecoveryPromise = null;
   childPreferencesRecoveryPromise = null;
+  childDataRefreshInFlight = null;
+  childDataRefreshedAtMs = 0;
 }
 
 /**
@@ -192,11 +201,13 @@ export async function wipeLocalAccountData(parentUserId: string): Promise<void> 
 }
 
 /**
- * Fire-and-forget flush of a child's pending cloud writes (Mine Puan + streak,
- * plus any unsynced sessions / slot evaluations). `snapshot` lets callers skip a
- * redundant call when nothing changed. Every failure is swallowed; the local
- * SQLite sync markers keep the backlog for the next retry. Local data is never
- * rolled back here.
+ * Fire-and-forget flush of a child's pending cloud writes: each unsynced
+ * completed slot is presented to the atomic server reward claim, each missed
+ * slot to the atomic penalty, and the authoritative score/streak they return is
+ * written back into the local cache. NO absolute progress is ever pushed.
+ * `snapshot` lets callers skip a redundant call when nothing changed. Every
+ * failure is swallowed; the local SQLite sync markers keep the backlog for the
+ * next retry. Local data is never rolled back here.
  */
 export async function syncChildCloudProgress(
   profileId: string,
@@ -215,27 +226,34 @@ export async function syncChildCloudProgress(
 }
 
 /**
- * Fire-and-forget flush after a brushing session finishes. Pushes every unsynced
- * session (stable local UUID → cloud upsert on `id`, so an offline session
- * reaches the cloud under the same id and never grants a second +20), its slot
- * evaluations and progress.
+ * Fire-and-forget flush after a brushing session finishes: presents the new
+ * completed slot to the atomic server reward claim (idempotent on the stable
+ * session id AND on `(child, day, period)`, so a retry or a second device never
+ * earns a second +20) and writes the authoritative score/streak it returns into
+ * the local cache.
  */
 export async function syncChildBrushingSession(
   profileId: string,
-  _sessionId: string,
-): Promise<void> {
+  sessionId: string,
+): Promise<AuthoritativeProgress | null> {
   try {
     const sync = await getChildDataSyncUseCases();
-    await sync?.pushChild(profileId);
+    if (!sync) return null;
+    const claims = await sync.pushChild(profileId);
+    return claims.get(sessionId) ?? null;
   } catch {
-    // Swallowed: local session + reward already committed.
+    // Swallowed: local session + reward already committed; the next
+    // retryPendingCloudSync() reconciles it against the server.
+    return null;
   }
 }
 
 /**
- * On app/session restore: multi-device recovery of Mine Puan progress. Hydrates
- * when local is missing or clean-and-stale; never overwrites local unpushed
- * edits.
+ * On app/session restore (and every foreground / focus / profile-switch
+ * refresh): PULL the authoritative Mine Puan progress for every owned child
+ * from the cloud into the local cache. The cloud row always wins — a local row
+ * that is stale, dirty, defaulted to 0 or unhydrated is overwritten, never
+ * pushed. This is pull-only; there is no path back to an absolute cloud write.
  */
 export async function recoverChildCloudProgress(): Promise<void> {
   try {
@@ -283,8 +301,46 @@ export function ensureChildDataRecovered(): Promise<void> {
   childDataRecoveryPromise ??= (async () => {
     await recoverChildCloudProgress();
     await recoverChildBrushingHistory();
+    // The first full recovery counts as the most recent refresh, so the very
+    // next getProgress() does not immediately re-pull the same data.
+    childDataRefreshedAtMs = Date.now();
   })();
   return childDataRecoveryPromise;
+}
+
+/**
+ * Re-pull authoritative Mine Puan progress + brushing/evaluation history from
+ * the cloud for a session whose first recovery has ALREADY completed. This is
+ * how a device that stayed open (foreground, Home re-focus, active-profile
+ * switch) learns about a brushing another device completed in the meantime —
+ * `ensureChildDataRecovered()` is memoised once per session and never re-pulls.
+ *
+ * Ordering is preserved: it awaits the one-time recovery gate first, then runs
+ * the SAME steps in the SAME order (progress, then history), so missed-slot
+ * reconciliation still never sees an unhydrated table. Every write underneath
+ * is a conflict-safe newer-wins upsert / idempotent `INSERT OR IGNORE`, so
+ * repeated calls never duplicate a row or re-run a reward or penalty.
+ *
+ * Coalesced (concurrent callers share one in-flight pull) and throttled to at
+ * most once per `CHILD_DATA_REFRESH_MIN_INTERVAL_MS`; `force: true` (foreground,
+ * profile switch) bypasses only the throttle, never the ordering gate.
+ */
+export async function refreshChildCloudData(options?: { force?: boolean }): Promise<void> {
+  await ensureChildDataRecovered();
+  if (childDataRefreshInFlight) return childDataRefreshInFlight;
+  if (!options?.force && Date.now() - childDataRefreshedAtMs < CHILD_DATA_REFRESH_MIN_INTERVAL_MS) {
+    return;
+  }
+  childDataRefreshInFlight = (async () => {
+    try {
+      await recoverChildCloudProgress();
+      await recoverChildBrushingHistory();
+      childDataRefreshedAtMs = Date.now();
+    } finally {
+      childDataRefreshInFlight = null;
+    }
+  })();
+  return childDataRefreshInFlight;
 }
 
 /**

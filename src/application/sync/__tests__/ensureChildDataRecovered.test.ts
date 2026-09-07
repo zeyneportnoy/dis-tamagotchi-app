@@ -53,7 +53,11 @@ jest.mock('../ChildDataSyncUseCases', () => ({
   })),
 }));
 
-import { ensureChildDataRecovered, resetSessionSyncState } from '../services';
+import {
+  ensureChildDataRecovered,
+  refreshChildCloudData,
+  resetSessionSyncState,
+} from '../services';
 
 describe('ensureChildDataRecovered', () => {
   beforeEach(() => {
@@ -99,5 +103,96 @@ describe('ensureChildDataRecovered', () => {
 
     expect(mockRecoverProgress).toHaveBeenCalledTimes(2);
     expect(mockRecoverBrushingHistory).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('refreshChildCloudData — already-open device re-pull', () => {
+  let nowMs = 1_000_000;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    resetSessionSyncState();
+    nowMs = 1_000_000;
+    jest.spyOn(Date, 'now').mockImplementation(() => nowMs);
+  });
+
+  afterEach(() => {
+    (Date.now as jest.Mock).mockRestore();
+  });
+
+  it('awaits the one-time recovery gate first, then re-pulls progress before history', async () => {
+    const order: string[] = [];
+    mockRecoverProgress.mockImplementation(async () => {
+      order.push('progress');
+    });
+    mockRecoverBrushingHistory.mockImplementation(async () => {
+      order.push('history');
+    });
+
+    await refreshChildCloudData({ force: true });
+
+    // One pass for the recovery gate, one for the forced refresh — always
+    // progress before history.
+    expect(order).toEqual(['progress', 'history', 'progress', 'history']);
+  });
+
+  it('the first getProgress-style call right after recovery is throttled (no immediate re-pull)', async () => {
+    await ensureChildDataRecovered();
+    expect(mockRecoverProgress).toHaveBeenCalledTimes(1);
+
+    await refreshChildCloudData(); // within the throttle window of the recovery
+    expect(mockRecoverProgress).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-pulls once the throttle interval has elapsed', async () => {
+    await ensureChildDataRecovered();
+    expect(mockRecoverProgress).toHaveBeenCalledTimes(1);
+
+    nowMs += 9_000;
+    await refreshChildCloudData();
+    expect(mockRecoverProgress).toHaveBeenCalledTimes(1); // still throttled
+
+    nowMs += 2_000; // now > 10s since the recovery
+    await refreshChildCloudData();
+    expect(mockRecoverProgress).toHaveBeenCalledTimes(2); // pulled
+  });
+
+  it('force bypasses the throttle but never the ordering gate', async () => {
+    await ensureChildDataRecovered();
+    expect(mockRecoverProgress).toHaveBeenCalledTimes(1);
+
+    await refreshChildCloudData({ force: true });
+    expect(mockRecoverProgress).toHaveBeenCalledTimes(2);
+    await refreshChildCloudData({ force: true });
+    expect(mockRecoverProgress).toHaveBeenCalledTimes(3);
+  });
+
+  it('coalesces concurrent callers onto a single in-flight pull', async () => {
+    await ensureChildDataRecovered();
+    mockRecoverProgress.mockClear();
+    mockRecoverBrushingHistory.mockClear();
+    mockRecoverProgress.mockImplementation(
+      () => new Promise<void>((resolve) => setTimeout(resolve, 10)),
+    );
+
+    await Promise.all([
+      refreshChildCloudData({ force: true }),
+      refreshChildCloudData({ force: true }),
+      refreshChildCloudData({ force: true }),
+    ]);
+
+    // Three concurrent callers, exactly one underlying pull.
+    expect(mockRecoverProgress).toHaveBeenCalledTimes(1);
+    expect(mockRecoverBrushingHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it('resetSessionSyncState clears the refresh throttle so the next session re-pulls', async () => {
+    await ensureChildDataRecovered();
+    await refreshChildCloudData(); // throttled
+    expect(mockRecoverProgress).toHaveBeenCalledTimes(1);
+
+    resetSessionSyncState();
+    await refreshChildCloudData({ force: true }); // new session: gate + refresh
+    expect(mockRecoverProgress).toHaveBeenCalledTimes(3);
   });
 });

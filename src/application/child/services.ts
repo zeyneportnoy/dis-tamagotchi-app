@@ -1,6 +1,7 @@
 import { getParentAuthUseCases } from '@/application/auth';
 import {
   ensureChildDataRecovered,
+  refreshChildCloudData,
   syncChildBrushingSession,
   syncChildCloudProgress,
   syncChildPreferences,
@@ -35,6 +36,13 @@ export class CloudAwareChildExperienceUseCases extends ChildExperienceUseCases {
     // memoized per session, so this is a no-op await once recovery has
     // already completed.
     await ensureChildDataRecovered();
+    // A device that stayed open also has to pick up a brushing another device
+    // completed in the meantime. This re-pulls the latest cloud history +
+    // authoritative progress (throttled + coalesced, so screen focus / progress
+    // events don't spam the network) BEFORE reconcile + read run below, so the
+    // two never race and Home/Tasks/streak/Mine all reflect the same freshly
+    // hydrated canonical state.
+    await refreshChildCloudData();
     // getProgress also runs missed-slot reconciliation; pushing here catches any
     // resulting -10 penalty and its slot evaluation.
     const progress = await super.getProgress(profileId);
@@ -51,8 +59,19 @@ export class CloudAwareChildExperienceUseCases extends ChildExperienceUseCases {
     startedAt: string,
   ): Promise<BrushingRewardResult> {
     const result = await super.completeBrushingSession(sessionId, profileId, startedAt);
-    void syncChildBrushingSession(profileId, sessionId);
-    return result;
+    // Present the completed slot to the ATOMIC server reward claim and wait for
+    // the verdict, so the completion screen (evolution + Mine total) renders the
+    // authoritative score — never the local optimistic guess, and never a value
+    // that could reset a valid cloud score. Offline / RPC-down: keep the local
+    // optimistic result; `retryPendingCloudSync()` reconciles it later.
+    const authoritative = await syncChildBrushingSession(profileId, sessionId);
+    if (!authoritative) return result;
+    const progress = await super.getProgress(profileId); // local cache == server truth now
+    return {
+      ...result,
+      xpGranted: authoritative.xpGranted,
+      progress,
+    };
   }
 
   override async abandonBrushingSession(

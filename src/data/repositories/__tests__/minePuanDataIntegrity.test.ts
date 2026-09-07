@@ -4,12 +4,15 @@ import { ChildExperienceUseCases } from '@/application/child';
 import { ChildDataSyncUseCases } from '@/application/sync';
 import { migrateDatabase } from '@/data/db';
 import { starterAvatarKeys, type StarterAvatarKey } from '@/domain/family';
-import { growthStageForXp } from '@/domain/rewards';
+import { deriveStreak, growthStageForXp } from '@/domain/rewards';
 import type {
+  AuthoritativeProgress,
+  BrushingSlotClaim,
   CloudBrushingSession,
   CloudChildDataRepository,
   CloudChildProgress,
   CloudSlotEvaluation,
+  SlotPenaltyClaim,
 } from '@/domain/sync';
 import { NodeSQLiteDatabase } from '@/test/NodeSQLiteDatabase';
 
@@ -84,26 +87,170 @@ async function readScore(database: NodeSQLiteDatabase, profileId: string): Promi
   return row.total_xp;
 }
 
-/** Deterministic, fully in-memory stand-in for Supabase — no network involved. */
+/**
+ * Deterministic, fully in-memory stand-in for Supabase — no network involved.
+ * Models migration m10's server-authoritative contract: the ONLY things that
+ * change `current_mine_score` / `streak` are the atomic, idempotent per-slot
+ * operations `claimBrushingSlot` / `applySlotPenalty`, each keyed on
+ * `(childId, localDayKey, period)`. There is no absolute-score writer.
+ */
 class FakeCloudChildDataRepository implements CloudChildDataRepository {
   readonly progress = new Map<string, CloudChildProgress>();
   readonly sessions = new Map<string, CloudBrushingSession>();
   readonly evaluations = new Map<string, CloudSlotEvaluation>();
+  private readonly rewardedSlots = new Set<string>();
+  private seq = 0;
 
-  async upsertProgress(progress: CloudChildProgress): Promise<string> {
-    const updatedAt = new Date().toISOString();
-    this.progress.set(progress.childId, { ...progress, updatedAt });
-    return updatedAt;
+  private stamp(): string {
+    this.seq += 1;
+    return new Date(Date.UTC(2099, 0, 1) + this.seq * 1000).toISOString();
+  }
+
+  private ensureRow(childId: string): CloudChildProgress {
+    let row = this.progress.get(childId);
+    if (!row) {
+      row = { childId, currentMineScore: 0, streak: 0, updatedAt: this.stamp() };
+      this.progress.set(childId, row);
+    }
+    return row;
+  }
+
+  private fullDayKeys(childId: string, asOf: string): string[] {
+    const byDay = new Map<string, Set<string>>();
+    for (const s of this.sessions.values()) {
+      if (
+        s.childId === childId &&
+        s.status === 'completed' &&
+        s.period !== 'off_slot' &&
+        s.localDayKey <= asOf
+      ) {
+        const set = byDay.get(s.localDayKey) ?? new Set<string>();
+        set.add(s.period);
+        byDay.set(s.localDayKey, set);
+      }
+    }
+    return [...byDay.entries()].filter(([, p]) => p.size === 2).map(([k]) => k);
+  }
+
+  private completion(childId: string, localDayKey: string) {
+    const done = (period: 'morning' | 'evening'): boolean =>
+      [...this.sessions.values()].some(
+        (s) =>
+          s.childId === childId &&
+          s.localDayKey === localDayKey &&
+          s.period === period &&
+          s.status === 'completed',
+      );
+    return { morningCompleted: done('morning'), eveningCompleted: done('evening') };
+  }
+
+  async claimBrushingSlot(claim: BrushingSlotClaim): Promise<AuthoritativeProgress> {
+    const slotKey = `${claim.childId}:${claim.localDayKey}:${claim.period}`;
+    if (!this.sessions.has(claim.sessionId)) {
+      this.sessions.set(claim.sessionId, {
+        id: claim.sessionId,
+        childId: claim.childId,
+        localDayKey: claim.localDayKey,
+        period: claim.period,
+        startedAt: claim.startedAt,
+        completedAt: claim.completedAt,
+        status: 'completed',
+        rewardMine: 0,
+        timezoneOffsetMinutes: claim.timezoneOffsetMinutes,
+        updatedAt: this.stamp(),
+      });
+    }
+    const won = !this.rewardedSlots.has(slotKey);
+    if (won) {
+      this.rewardedSlots.add(slotKey);
+      const s = this.sessions.get(claim.sessionId);
+      if (s) this.sessions.set(claim.sessionId, { ...s, rewardMine: 20 });
+    }
+    const row = this.ensureRow(claim.childId);
+    const currentMineScore = won ? row.currentMineScore + 20 : row.currentMineScore;
+    const streak = deriveStreak(
+      this.fullDayKeys(claim.childId, claim.localDayKey),
+      claim.localDayKey,
+    );
+    const updatedAt = this.stamp();
+    this.progress.set(claim.childId, {
+      childId: claim.childId,
+      currentMineScore,
+      streak,
+      updatedAt,
+    });
+    return {
+      childId: claim.childId,
+      xpGranted: won ? 20 : 0,
+      penaltyApplied: 0,
+      currentMineScore,
+      streak,
+      ...this.completion(claim.childId, claim.localDayKey),
+      alreadyResolved: !won,
+      updatedAt,
+    };
+  }
+
+  async applySlotPenalty(claim: SlotPenaltyClaim): Promise<AuthoritativeProgress> {
+    const evalKey = `${claim.childId}:${claim.localDayKey}:${claim.period}`;
+    const completed = [...this.sessions.values()].some(
+      (s) =>
+        s.childId === claim.childId &&
+        s.localDayKey === claim.localDayKey &&
+        s.period === claim.period &&
+        s.status === 'completed',
+    );
+    const won = !this.evaluations.has(evalKey);
+    const row = this.ensureRow(claim.childId);
+    let penaltyApplied = 0;
+    let currentMineScore = row.currentMineScore;
+    if (won && !completed) {
+      currentMineScore = Math.max(0, row.currentMineScore - 10);
+      penaltyApplied = currentMineScore - row.currentMineScore;
+    }
+    if (won) {
+      this.evaluations.set(evalKey, {
+        childId: claim.childId,
+        localDayKey: claim.localDayKey,
+        period: claim.period,
+        outcome: completed ? 'completed' : 'missed',
+        penaltyMine: completed ? 0 : -10,
+        appliedPenaltyMine: completed ? 0 : penaltyApplied,
+        evaluatedAt: claim.evaluatedAt,
+        updatedAt: this.stamp(),
+      });
+    }
+    const streak = deriveStreak(
+      this.fullDayKeys(claim.childId, claim.localDayKey),
+      claim.localDayKey,
+    );
+    const updatedAt = this.stamp();
+    this.progress.set(claim.childId, {
+      childId: claim.childId,
+      currentMineScore,
+      streak,
+      updatedAt,
+    });
+    return {
+      childId: claim.childId,
+      xpGranted: 0,
+      penaltyApplied,
+      currentMineScore,
+      streak,
+      ...this.completion(claim.childId, claim.localDayKey),
+      alreadyResolved: !won,
+      updatedAt,
+    };
   }
 
   async upsertSession(session: CloudBrushingSession): Promise<string> {
-    const updatedAt = new Date().toISOString();
-    this.sessions.set(session.id, { ...session, updatedAt });
+    const updatedAt = this.stamp();
+    this.sessions.set(session.id, { ...session, rewardMine: 0, updatedAt });
     return updatedAt;
   }
 
   async upsertSlotEvaluation(evaluation: CloudSlotEvaluation): Promise<string> {
-    const updatedAt = new Date().toISOString();
+    const updatedAt = this.stamp();
     this.evaluations.set(`${evaluation.childId}:${evaluation.localDayKey}:${evaluation.period}`, {
       ...evaluation,
       updatedAt,
@@ -128,7 +275,11 @@ class FakeCloudChildDataRepository implements CloudChildDataRepository {
   }
 }
 
-function makeHarness(database: NodeSQLiteDatabase, clock: { current: Date }, parentId = 'parent-1') {
+function makeHarness(
+  database: NodeSQLiteDatabase,
+  clock: { current: Date },
+  parentId = 'parent-1',
+) {
   const sessions = new SQLiteBrushingSessionRepository(
     database as unknown as SQLiteDatabase,
     undefined,
@@ -172,7 +323,9 @@ describe('growth stage thresholds — all 8 characters', () => {
       const profileId = `${avatarId}-${score}`;
       await seedProfile(database, profileId, avatarId, '2026-08-01T00:00:00.000Z');
       await seedScore(database, profileId, score);
-      const progressRepo = new SQLiteProfileProgressRepository(database as unknown as SQLiteDatabase);
+      const progressRepo = new SQLiteProfileProgressRepository(
+        database as unknown as SQLiteDatabase,
+      );
       const row = await progressRepo.get(profileId);
       expect(row.totalXp).toBe(score);
       expect(growthStageForXp(row.totalXp)).toBe(expectedStage);
@@ -257,7 +410,9 @@ describe('root cause: missed-slot reconciliation before history hydration', () =
     // (recreated by progress recovery) — real history has NOT been hydrated yet.
     await database.runAsync(`DELETE FROM brushing_sessions WHERE profile_id = 'kid-1'`);
     await database.runAsync(`DELETE FROM daily_progress WHERE child_profile_id = 'kid-1'`);
-    await database.runAsync(`DELETE FROM brushing_slot_evaluations WHERE child_profile_id = 'kid-1'`);
+    await database.runAsync(
+      `DELETE FROM brushing_slot_evaluations WHERE child_profile_id = 'kid-1'`,
+    );
     await database.runAsync(`DELETE FROM brushing_session_attempts WHERE profile_id = 'kid-1'`);
     // profile_progress already holds the correct 200 from progress recovery.
 
@@ -325,7 +480,9 @@ describe('root cause: missed-slot reconciliation before history hydration', () =
     // bootstrap order.
     await database.runAsync(`DELETE FROM brushing_sessions WHERE profile_id = 'kid-1'`);
     await database.runAsync(`DELETE FROM daily_progress WHERE child_profile_id = 'kid-1'`);
-    await database.runAsync(`DELETE FROM brushing_slot_evaluations WHERE child_profile_id = 'kid-1'`);
+    await database.runAsync(
+      `DELETE FROM brushing_slot_evaluations WHERE child_profile_id = 'kid-1'`,
+    );
     await database.runAsync(`DELETE FROM brushing_session_attempts WHERE profile_id = 'kid-1'`);
     await database.runAsync(`DELETE FROM profile_progress WHERE child_profile_id = 'kid-1'`);
 
@@ -853,7 +1010,12 @@ describe('30-day simulation with independently computed exact scores', () => {
       const pattern = pattern30Days[day];
 
       if (pattern === 'both' || pattern === 'morningOnly') {
-        clock.current = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate(), 8);
+        clock.current = new Date(
+          dayStart.getFullYear(),
+          dayStart.getMonth(),
+          dayStart.getDate(),
+          8,
+        );
         sessionCounter += 1;
         await sessions.finish({
           sessionId: `s-${sessionCounter}`,
@@ -864,7 +1026,12 @@ describe('30-day simulation with independently computed exact scores', () => {
         expectedScore += 20;
       }
       if (pattern === 'both' || pattern === 'eveningOnly') {
-        clock.current = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate(), 19);
+        clock.current = new Date(
+          dayStart.getFullYear(),
+          dayStart.getMonth(),
+          dayStart.getDate(),
+          19,
+        );
         sessionCounter += 1;
         await sessions.finish({
           sessionId: `s-${sessionCounter}`,
@@ -877,7 +1044,12 @@ describe('30-day simulation with independently computed exact scores', () => {
       if (pattern === 'interrupted') {
         // Attempted but abandoned morning session: no reward, no penalty yet
         // (the slot only becomes "missed" once it closes without completion).
-        clock.current = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate(), 8);
+        clock.current = new Date(
+          dayStart.getFullYear(),
+          dayStart.getMonth(),
+          dayStart.getDate(),
+          8,
+        );
         sessionCounter += 1;
         await sessions.finish({
           sessionId: `s-${sessionCounter}`,
@@ -888,7 +1060,12 @@ describe('30-day simulation with independently computed exact scores', () => {
       }
       if (pattern === 'offSlot') {
         // Outside both slot windows (15:00): never rewarded, never penalized.
-        clock.current = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate(), 15);
+        clock.current = new Date(
+          dayStart.getFullYear(),
+          dayStart.getMonth(),
+          dayStart.getDate(),
+          15,
+        );
         sessionCounter += 1;
         await sessions.finish({
           sessionId: `s-${sessionCounter}`,
@@ -901,14 +1078,28 @@ describe('30-day simulation with independently computed exact scores', () => {
       // Missed slots incur -10 once the slot actually closes: morning at 12:00,
       // evening at the next midnight. Both 'interrupted' and 'offSlot' days miss
       // BOTH real slots since neither produces a qualifying completion.
-      const missesMorning = pattern === 'eveningOnly' || pattern === 'neither' || pattern === 'interrupted' || pattern === 'offSlot';
-      const missesEvening = pattern === 'morningOnly' || pattern === 'neither' || pattern === 'interrupted' || pattern === 'offSlot';
+      const missesMorning =
+        pattern === 'eveningOnly' ||
+        pattern === 'neither' ||
+        pattern === 'interrupted' ||
+        pattern === 'offSlot';
+      const missesEvening =
+        pattern === 'morningOnly' ||
+        pattern === 'neither' ||
+        pattern === 'interrupted' ||
+        pattern === 'offSlot';
       if (missesMorning) expectedScore = Math.max(0, expectedScore - 10);
       if (missesEvening) expectedScore = Math.max(0, expectedScore - 10);
 
       // Reconciliation is called repeatedly through the day (foreground,
       // background, sync retries) — must still land on the same exact score.
-      clock.current = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate() + 1, 0, 0);
+      clock.current = new Date(
+        dayStart.getFullYear(),
+        dayStart.getMonth(),
+        dayStart.getDate() + 1,
+        0,
+        0,
+      );
       await sessions.reconcileMissedSlots('kid-1');
       await sessions.reconcileMissedSlots('kid-1');
       await sessions.reconcileMissedSlots('kid-1');
@@ -1019,13 +1210,19 @@ describe('soak: repeated bootstrap / recovery / sync cycles never change score',
 });
 
 // ---------------------------------------------------------------------------
-// Sections 6 (K/L) and 17 — stale-vs-newer multi-device conflict resolution.
+// Server-authoritative conflict resolution (m10): the cloud row is ALWAYS the
+// source of truth for the absolute score. A local value that is newer, dirty,
+// defaulted or unhydrated is a cache and is overwritten on recovery — it can
+// never be pushed back as an absolute (there is no client method to do so).
 // ---------------------------------------------------------------------------
-describe('stale-cloud / stale-local conflict resolution never loses the authoritative value', () => {
-  it('a stale cloud row never overwrites a newer unsynced local score', async () => {
+describe('recovery is pull-only: the authoritative cloud score always wins', () => {
+  it('overwrites a higher local value with the cloud value — the local delta is re-applied later only via a slot claim', async () => {
     const database = new NodeSQLiteDatabase();
     await migrateDatabase(database as unknown as SQLiteDatabase);
     await seedProfile(database, 'kid-1', 'inci', new Date(2026, 7, 1, 8).toISOString());
+    // Local cache reads 260; the authoritative cloud row is 240. In the new
+    // model 260 could only be a not-yet-claimed optimistic +20 — recovery
+    // pulls it down to 240 and the pending claim (pushChild) re-adds it.
     await database.runAsync(
       `INSERT INTO profile_progress
         (child_profile_id, status_date, total_xp, synced_at, synced_score, synced_streak)
@@ -1034,31 +1231,23 @@ describe('stale-cloud / stale-local conflict resolution never loses the authorit
     const clock = { current: new Date(2026, 7, 8, 8) };
     const { cloudLocal } = makeHarness(database, clock);
     const cloud = new FakeCloudChildDataRepository();
-    await cloud.upsertProgress({
-      childId: 'kid-1',
-      currentMineScore: 100, // stale, older device value
-      streak: 1,
-    });
-    // Force an old updatedAt, strictly before this device's last sync.
     cloud.progress.set('kid-1', {
       childId: 'kid-1',
-      currentMineScore: 100,
-      streak: 1,
-      updatedAt: '2026-08-01T00:00:00.000Z',
+      currentMineScore: 240,
+      streak: 3,
+      updatedAt: '2099-01-01T00:00:00.000Z',
     });
     const cloudSync = new ChildDataSyncUseCases(cloudLocal, cloud);
 
     await cloudSync.recoverProgress();
-    expect(await readScore(database, 'kid-1')).toBe(260); // unsynced local wins
+    expect(await readScore(database, 'kid-1')).toBe(240); // cloud is authoritative
     database.close();
   });
 
-  it('a stale local snapshot is replaced by a genuinely newer authoritative cloud value', async () => {
+  it('overwrites a stale local value with a higher authoritative cloud value', async () => {
     const database = new NodeSQLiteDatabase();
     await migrateDatabase(database as unknown as SQLiteDatabase);
     await seedProfile(database, 'kid-1', 'inci', new Date(2026, 7, 1, 8).toISOString());
-    // Genuinely clean: current_streak matches synced_streak, total_xp matches
-    // synced_score — this local row has nothing unpushed.
     await database.runAsync(
       `INSERT INTO profile_progress
         (child_profile_id, status_date, total_xp, current_streak,
@@ -1070,14 +1259,43 @@ describe('stale-cloud / stale-local conflict resolution never loses the authorit
     const cloud = new FakeCloudChildDataRepository();
     cloud.progress.set('kid-1', {
       childId: 'kid-1',
-      currentMineScore: 640, // another device progressed further, and pushed
+      currentMineScore: 640, // another device claimed slots; cloud advanced
       streak: 5,
-      updatedAt: '2026-08-10T00:00:00.000Z', // newer than our last sync
+      updatedAt: '2099-01-01T00:00:00.000Z',
     });
     const cloudSync = new ChildDataSyncUseCases(cloudLocal, cloud);
 
     await cloudSync.recoverProgress();
     expect(await readScore(database, 'kid-1')).toBe(640);
+    database.close();
+  });
+
+  it('a defaulted local 0 can NEVER be sent as authoritative — repeated recovery + push leaves the cloud untouched', async () => {
+    const database = new NodeSQLiteDatabase();
+    await migrateDatabase(database as unknown as SQLiteDatabase);
+    await seedProfile(database, 'kid-1', 'inci', new Date(2026, 7, 1, 8).toISOString());
+    // Fresh device: local row created at the default 0, never synced.
+    await database.runAsync(
+      `INSERT INTO profile_progress (child_profile_id, status_date, total_xp) VALUES ('kid-1', '2026-08-08', 0)`,
+    );
+    const clock = { current: new Date(2026, 7, 8, 8) };
+    const { cloudLocal } = makeHarness(database, clock);
+    const cloud = new FakeCloudChildDataRepository();
+    cloud.progress.set('kid-1', {
+      childId: 'kid-1',
+      currentMineScore: 160,
+      streak: 3,
+      updatedAt: '2099-01-01T00:00:00.000Z',
+    });
+    const cloudSync = new ChildDataSyncUseCases(cloudLocal, cloud);
+
+    for (let i = 0; i < 10; i += 1) {
+      await cloudSync.recoverProgress();
+      await cloudSync.pushChild('kid-1');
+      await cloudSync.recoverBrushingHistory();
+    }
+    expect(cloud.progress.get('kid-1')?.currentMineScore).toBe(160); // cloud never moved
+    expect(await readScore(database, 'kid-1')).toBe(160); // local converged
     database.close();
   });
 
@@ -1121,201 +1339,12 @@ describe('stale-cloud / stale-local conflict resolution never loses the authorit
 });
 
 // ---------------------------------------------------------------------------
-// Cloud round-trip preserves the ACTUAL clamped applied-penalty delta
-// (`appliedPenaltyMine`), so a second device (or a reinstalled Device A) can
-// repair a completed-vs-missed conflict EXACTLY after hydrating it from the
-// cloud — not just when the corrupted row was created on the same device.
+// Server-authoritative reward / penalty round-trip (m10). The client no longer
+// computes an absolute score or an applied-penalty delta and pushes it — the
+// server owns both. These assert the new contract end to end.
 // ---------------------------------------------------------------------------
-describe('cloud round-trip preserves the exact applied penalty delta', () => {
-  /**
-   * Seeds Device A with a genuine completed+rewarded session AND a corrupted
-   * "missed" evaluation for that same slot (the shape a device running an
-   * older, pre-fix build already wrote and already pushed to production),
-   * then pushes it to the shared cloud AS-IS — Device A's own local repair is
-   * never run here, so the round-trip through the cloud is what is under
-   * test, not same-device self-healing.
-   */
-  async function seedAndPushCorruptedDeviceA(
-    cloud: FakeCloudChildDataRepository,
-    startScore: number,
-  ): Promise<{ scoreAfterPenalty: number }> {
-    const database = new NodeSQLiteDatabase();
-    await migrateDatabase(database as unknown as SQLiteDatabase);
-    await seedProfile(database, 'kid-1', 'inci', new Date(2026, 7, 8, 4).toISOString());
-    const scoreAfterPenalty = Math.max(0, startScore - 10);
-    await seedScore(database, 'kid-1', scoreAfterPenalty); // production's current (corrupted) value
-    await database.runAsync(
-      `INSERT INTO brushing_sessions
-        (id, profile_id, started_at, completed_at, duration_seconds, completed, period,
-         created_at, local_day_key, reward_granted_at, xp_granted)
-       VALUES ('legit-session', 'kid-1', '2026-08-08T08:00:00.000Z', '2026-08-08T08:02:00.000Z', 120, 1,
-               'morning', '2026-08-08T08:02:00.000Z', '2026-08-08', '2026-08-08T08:02:00.000Z', 20)`,
-    );
-    await database.runAsync(
-      `INSERT INTO brushing_slot_evaluations
-        (child_profile_id, local_day_key, period, outcome, penalty_amount,
-         score_before, score_after, evaluated_at)
-       VALUES ('kid-1', '2026-08-08', 'morning', 'missed', -10, ?, ?, '2026-08-08T12:00:00.000Z')`,
-      startScore,
-      scoreAfterPenalty,
-    );
-    const clock = { current: new Date(2026, 7, 8, 12, 30) };
-    const { cloudLocal } = makeHarness(database, clock);
-    await new ChildDataSyncUseCases(cloudLocal, cloud).pushChild('kid-1');
-    database.close();
-    return { scoreAfterPenalty };
-  }
-
-  it.each([0, 5, 10, 100])(
-    'A/B) score %i -> false -10 hydrated on a fresh Device B repairs to exactly %i',
-    async (startScore) => {
-      const cloud = new FakeCloudChildDataRepository();
-      await seedAndPushCorruptedDeviceA(cloud, startScore);
-
-      // The pushed evaluation carries the real, floor-clamped delta.
-      const pushedEval = cloud.evaluations.get('kid-1:2026-08-08:morning');
-      // `|| 0` normalizes -0 (from e.g. `-Math.min(10, 0)`) to +0 for `toBe`'s
-      // Object.is comparison.
-      expect(pushedEval?.appliedPenaltyMine).toBe(-Math.min(10, startScore) || 0);
-
-      // Device B: fresh install, nothing local yet.
-      const deviceB = new NodeSQLiteDatabase();
-      await migrateDatabase(deviceB as unknown as SQLiteDatabase);
-      await seedProfile(deviceB, 'kid-1', 'inci', new Date(2026, 7, 8, 4).toISOString());
-      const clockB = { current: new Date(2026, 7, 8, 12, 30) };
-      const { sessions, cloudLocal } = makeHarness(deviceB, clockB);
-      const cloudSyncB = new ChildDataSyncUseCases(cloudLocal, cloud);
-
-      await cloudSyncB.recoverProgress();
-      await cloudSyncB.recoverBrushingHistory();
-      await sessions.reconcileMissedSlots('kid-1');
-
-      expect(await readScore(deviceB, 'kid-1')).toBe(startScore);
-      const evaluation = await deviceB.getFirstAsync<{ outcome: string; penalty_amount: number }>(
-        `SELECT outcome, penalty_amount FROM brushing_slot_evaluations
-         WHERE child_profile_id = 'kid-1' AND local_day_key = '2026-08-08' AND period = 'morning'`,
-      );
-      expect(evaluation).toEqual({ outcome: 'completed', penalty_amount: 0 });
-      deviceB.close();
-    },
-  );
-
-  it('C) two cloud-hydrated false-missed evaluations stacked after floor=0: exact result, no over-credit', async () => {
-    const cloud = new FakeCloudChildDataRepository();
-    // Device A: true pre-corruption score was 5. Morning false -10 floors it
-    // to 0 (real loss 5); evening false -10 is then computed against the
-    // already-corrupted 0 (real loss 0). Both pushed with their real deltas.
-    const deviceA = new NodeSQLiteDatabase();
-    await migrateDatabase(deviceA as unknown as SQLiteDatabase);
-    await seedProfile(deviceA, 'kid-1', 'inci', new Date(2026, 7, 8, 4).toISOString());
-    await seedScore(deviceA, 'kid-1', 0);
-    await deviceA.runAsync(
-      `INSERT INTO brushing_sessions
-        (id, profile_id, started_at, completed_at, duration_seconds, completed, period,
-         created_at, local_day_key, reward_granted_at, xp_granted)
-       VALUES ('legit-session-1', 'kid-1', '2026-08-08T08:00:00.000Z', '2026-08-08T08:02:00.000Z', 120, 1,
-               'morning', '2026-08-08T08:02:00.000Z', '2026-08-08', '2026-08-08T08:02:00.000Z', 20)`,
-    );
-    await deviceA.runAsync(
-      `INSERT INTO brushing_slot_evaluations
-        (child_profile_id, local_day_key, period, outcome, penalty_amount,
-         score_before, score_after, evaluated_at)
-       VALUES ('kid-1', '2026-08-08', 'morning', 'missed', -10, 5, 0, '2026-08-08T12:00:00.000Z')`,
-    );
-    await deviceA.runAsync(
-      `INSERT INTO brushing_sessions
-        (id, profile_id, started_at, completed_at, duration_seconds, completed, period,
-         created_at, local_day_key, reward_granted_at, xp_granted)
-       VALUES ('legit-session-2', 'kid-1', '2026-08-08T19:00:00.000Z', '2026-08-08T19:02:00.000Z', 120, 1,
-               'evening', '2026-08-08T19:02:00.000Z', '2026-08-08', '2026-08-08T19:02:00.000Z', 20)`,
-    );
-    await deviceA.runAsync(
-      `INSERT INTO brushing_slot_evaluations
-        (child_profile_id, local_day_key, period, outcome, penalty_amount,
-         score_before, score_after, evaluated_at)
-       VALUES ('kid-1', '2026-08-08', 'evening', 'missed', -10, 0, 0, '2026-08-09T00:00:00.000Z')`,
-    );
-    const clockA = { current: new Date(2026, 7, 9, 0, 1) };
-    const { cloudLocal: cloudLocalA } = makeHarness(deviceA, clockA);
-    await new ChildDataSyncUseCases(cloudLocalA, cloud).pushChild('kid-1');
-    deviceA.close();
-
-    expect(cloud.evaluations.get('kid-1:2026-08-08:morning')?.appliedPenaltyMine).toBe(-5);
-    expect(cloud.evaluations.get('kid-1:2026-08-08:evening')?.appliedPenaltyMine).toBe(0);
-
-    // Device B: fresh install hydrates both, then repairs both.
-    const deviceB = new NodeSQLiteDatabase();
-    await migrateDatabase(deviceB as unknown as SQLiteDatabase);
-    await seedProfile(deviceB, 'kid-1', 'inci', new Date(2026, 7, 8, 4).toISOString());
-    const clockB = { current: new Date(2026, 7, 9, 0, 1) };
-    const { sessions, cloudLocal: cloudLocalB } = makeHarness(deviceB, clockB);
-    const cloudSyncB = new ChildDataSyncUseCases(cloudLocalB, cloud);
-    await cloudSyncB.recoverProgress();
-    await cloudSyncB.recoverBrushingHistory();
-    await sessions.reconcileMissedSlots('kid-1');
-
-    expect(await readScore(deviceB, 'kid-1')).toBe(5); // never 15, never 20
-    deviceB.close();
-  });
-
-  it('D) a legacy cloud row with no known delta hydrates as zero known loss — never invents a +10 refund', async () => {
-    const cloud = new FakeCloudChildDataRepository();
-    // A row pushed by a build that predates this field: penaltyMine=-10 but
-    // appliedPenaltyMine is null (the column did not exist yet).
-    cloud.evaluations.set('kid-1:2026-08-08:morning', {
-      childId: 'kid-1',
-      localDayKey: '2026-08-08',
-      period: 'morning',
-      outcome: 'missed',
-      penaltyMine: -10,
-      appliedPenaltyMine: null,
-      evaluatedAt: '2026-08-08T12:00:00.000Z',
-      updatedAt: '2026-08-08T12:00:01.000Z',
-    });
-    cloud.sessions.set('legit-session', {
-      id: 'legit-session',
-      childId: 'kid-1',
-      localDayKey: '2026-08-08',
-      period: 'morning',
-      startedAt: '2026-08-08T08:00:00.000Z',
-      completedAt: '2026-08-08T08:02:00.000Z',
-      status: 'completed',
-      rewardMine: 20,
-      timezoneOffsetMinutes: -180,
-      updatedAt: '2026-08-08T08:02:01.000Z',
-    });
-    cloud.progress.set('kid-1', {
-      childId: 'kid-1',
-      currentMineScore: 37, // whatever the cloud's authoritative value is
-      streak: 0,
-      updatedAt: '2026-08-08T12:00:01.000Z',
-    });
-
-    const deviceB = new NodeSQLiteDatabase();
-    await migrateDatabase(deviceB as unknown as SQLiteDatabase);
-    await seedProfile(deviceB, 'kid-1', 'inci', new Date(2026, 7, 8, 4).toISOString());
-    const clockB = { current: new Date(2026, 7, 8, 12, 30) };
-    const { sessions, cloudLocal } = makeHarness(deviceB, clockB);
-    const cloudSyncB = new ChildDataSyncUseCases(cloudLocal, cloud);
-
-    await cloudSyncB.recoverProgress();
-    await cloudSyncB.recoverBrushingHistory();
-    await sessions.reconcileMissedSlots('kid-1');
-
-    // Deterministic safe behavior: the outcome/label is still corrected (so it
-    // stops permanently blocking re-evaluation and stops mis-reporting history),
-    // but NOT a single artificial Mine is credited — score is exactly what was
-    // hydrated, unchanged.
-    expect(await readScore(deviceB, 'kid-1')).toBe(37);
-    const evaluation = await deviceB.getFirstAsync<{ outcome: string; penalty_amount: number }>(
-      `SELECT outcome, penalty_amount FROM brushing_slot_evaluations
-       WHERE child_profile_id = 'kid-1' AND local_day_key = '2026-08-08' AND period = 'morning'`,
-    );
-    expect(evaluation).toEqual({ outcome: 'completed', penalty_amount: 0 });
-    deviceB.close();
-  });
-
-  it('E) 30-day cloud round-trip: Device A history -> cloud -> fresh Device B -> recovery/reconcile, exact score equality', async () => {
+describe('server-authoritative reward / penalty round-trip', () => {
+  it('E) 30-day history on Device A → cloud → fresh Device B: identical authoritative score', async () => {
     const cloud = new FakeCloudChildDataRepository();
     const start = new Date(2026, 6, 1, 4);
 
@@ -1354,12 +1383,13 @@ describe('cloud round-trip preserves the exact applied penalty delta', () => {
       await sessionsA.reconcileMissedSlots('kid-1');
       if (!completesMorning) expectedScore = Math.max(0, expectedScore - 10);
       if (!completesEvening) expectedScore = Math.max(0, expectedScore - 10);
-      await cloudSyncA.pushChild('kid-1');
+      await cloudSyncA.pushChild('kid-1'); // per-slot claims + penalties → cloud
     }
+    // Local cache == the authoritative cloud value the claims produced.
     expect(await readScore(deviceA, 'kid-1')).toBe(expectedScore);
+    expect(cloud.progress.get('kid-1')?.currentMineScore).toBe(expectedScore);
     deviceA.close();
 
-    // Fresh Device B, same account, recovers everything from the cloud.
     const deviceB = new NodeSQLiteDatabase();
     await migrateDatabase(deviceB as unknown as SQLiteDatabase);
     await seedProfile(deviceB, 'kid-1', 'inci', start.toISOString());
@@ -1369,29 +1399,64 @@ describe('cloud round-trip preserves the exact applied penalty delta', () => {
     await cloudSyncB.recoverProgress();
     await cloudSyncB.recoverBrushingHistory();
     await sessionsB.reconcileMissedSlots('kid-1');
+    await cloudSyncB.pushChild('kid-1');
 
     expect(await readScore(deviceB, 'kid-1')).toBe(expectedScore);
+    expect(cloud.progress.get('kid-1')?.currentMineScore).toBe(expectedScore); // B never moved it
     deviceB.close();
   });
 
-  it('F) repeated fresh-install recovery (20x) never drifts the score', async () => {
+  it('F) a slot that has a completed session is never penalised — outcome completed, 0 Mine lost', async () => {
     const cloud = new FakeCloudChildDataRepository();
-    await seedAndPushCorruptedDeviceA(cloud, 5); // pushes the real -5 delta
+    cloud.progress.set('kid-1', {
+      childId: 'kid-1',
+      currentMineScore: 60,
+      streak: 0,
+      updatedAt: '2099-01-01T00:00:00.000Z',
+    });
+    cloud.sessions.set('done', {
+      id: 'done',
+      childId: 'kid-1',
+      localDayKey: '2026-08-08',
+      period: 'morning',
+      startedAt: '2026-08-08T08:00:00.000Z',
+      completedAt: '2026-08-08T08:02:00.000Z',
+      status: 'completed',
+      rewardMine: 20,
+      timezoneOffsetMinutes: 0,
+      updatedAt: '2099-01-01T00:00:00.000Z',
+    });
 
-    const deviceB = new NodeSQLiteDatabase();
-    await migrateDatabase(deviceB as unknown as SQLiteDatabase);
-    await seedProfile(deviceB, 'kid-1', 'inci', new Date(2026, 7, 8, 4).toISOString());
-    const clockB = { current: new Date(2026, 7, 8, 12, 30) };
-    const { sessions, cloudLocal } = makeHarness(deviceB, clockB);
-    const cloudSyncB = new ChildDataSyncUseCases(cloudLocal, cloud);
+    const result = await cloud.applySlotPenalty({
+      childId: 'kid-1',
+      localDayKey: '2026-08-08',
+      period: 'morning',
+      evaluatedAt: '2026-08-08T12:00:00.000Z',
+    });
+    expect(result.penaltyApplied).toBe(0);
+    expect(result.currentMineScore).toBe(60); // unchanged
+    expect(cloud.evaluations.get('kid-1:2026-08-08:morning')?.outcome).toBe('completed');
+  });
 
-    for (let i = 0; i < 20; i += 1) {
-      await cloudSyncB.recoverProgress();
-      await cloudSyncB.recoverBrushingHistory();
-      await sessions.reconcileMissedSlots('kid-1');
-      expect(await readScore(deviceB, 'kid-1')).toBe(5); // repaired once, stable forever after
+  it('G) the same missed slot synced repeatedly removes 10 exactly once, never below 0', async () => {
+    const cloud = new FakeCloudChildDataRepository();
+    cloud.progress.set('kid-1', {
+      childId: 'kid-1',
+      currentMineScore: 12,
+      streak: 0,
+      updatedAt: '2099-01-01T00:00:00.000Z',
+    });
+    const claim = {
+      childId: 'kid-1',
+      localDayKey: '2026-08-08',
+      period: 'evening' as const,
+      evaluatedAt: '2026-08-09T00:00:00.000Z',
+    };
+    for (let i = 0; i < 6; i += 1) {
+      const r = await cloud.applySlotPenalty(claim);
+      expect(r.currentMineScore).toBe(2);
+      expect(r.penaltyApplied).toBe(i === 0 ? -10 : 0);
     }
-    deviceB.close();
   });
 });
 
@@ -1494,17 +1559,25 @@ describe('avatar_id is never progress identity', () => {
 // Section 13 — a real new profile always starts at 0 (production default).
 // ---------------------------------------------------------------------------
 describe('production default: a brand-new profile always starts at 0 Mine Puan', () => {
-  it.each(ALL_CHARACTERS)('%s: a freshly created profile has 0 Mine Puan before any brushing', async (avatarId) => {
-    const database = new NodeSQLiteDatabase();
-    await migrateDatabase(database as unknown as SQLiteDatabase);
-    await seedProfile(database, `${avatarId}-fresh`, avatarId, new Date(2026, 7, 8, 8).toISOString());
-    const progressRepo = new SQLiteProfileProgressRepository(
-      database as unknown as SQLiteDatabase,
-      () => new Date(2026, 7, 8, 8),
-    );
-    const progress = await progressRepo.get(`${avatarId}-fresh`);
-    expect(progress.totalXp).toBe(0);
-    expect(growthStageForXp(progress.totalXp)).toBe(0);
-    database.close();
-  });
+  it.each(ALL_CHARACTERS)(
+    '%s: a freshly created profile has 0 Mine Puan before any brushing',
+    async (avatarId) => {
+      const database = new NodeSQLiteDatabase();
+      await migrateDatabase(database as unknown as SQLiteDatabase);
+      await seedProfile(
+        database,
+        `${avatarId}-fresh`,
+        avatarId,
+        new Date(2026, 7, 8, 8).toISOString(),
+      );
+      const progressRepo = new SQLiteProfileProgressRepository(
+        database as unknown as SQLiteDatabase,
+        () => new Date(2026, 7, 8, 8),
+      );
+      const progress = await progressRepo.get(`${avatarId}-fresh`);
+      expect(progress.totalXp).toBe(0);
+      expect(growthStageForXp(progress.totalXp)).toBe(0);
+      database.close();
+    },
+  );
 });

@@ -1,22 +1,26 @@
 import type {
+  AuthoritativeProgress,
   CloudChildDataRepository,
   CloudChildProgress,
   LocalChildCloudSyncRepository,
-  LocalProgressSnapshot,
 } from '@/domain/sync';
 
 /**
  * Orchestrates multi-device cloud sync for a child's Mine Puan progress,
- * brushing session history and slot evaluations. It never computes score — the
- * local SQLite transaction has already produced the truth, and hydration only
- * restores past results (no reward/penalty re-run).
+ * brushing-session history and slot evaluations.
  *
- * Conflict rule (deterministic):
- *  - local has unpushed edits (current values != last-synced snapshot) → keep
- *    local, push it to the cloud; never let an older cloud value overwrite it.
- *  - local is clean and the cloud row is newer than this device's last sync →
- *    hydrate the cloud value into local.
- *  - already equal → do nothing.
+ * Authority model (this is the fix for the "a stale device zeroed every child's
+ * cloud score" incident):
+ *
+ *  - The CLOUD owns the absolute `current_mine_score` / `streak`. This class
+ *    NEVER sends an absolute score. A completed slot is claimed with
+ *    `cloud.claimBrushingSlot(...)` and a missed slot with
+ *    `cloud.applySlotPenalty(...)`; both are atomic + idempotent per
+ *    `(child, local day, period)` and RETURN the new authoritative values,
+ *    which are written straight into the local cache.
+ *  - Recovery/refresh is PULL ONLY: `recoverProgress()` copies the cloud row
+ *    into local `profile_progress` unconditionally — local can never "win" by
+ *    being newer, dirty, defaulted or unhydrated.
  */
 export class ChildDataSyncUseCases {
   constructor(
@@ -24,68 +28,87 @@ export class ChildDataSyncUseCases {
     private readonly cloud: CloudChildDataRepository,
   ) {}
 
-  private static isProgressDirty(snapshot: LocalProgressSnapshot): boolean {
-    return (
-      snapshot.syncedScore === null ||
-      snapshot.syncedStreak === null ||
-      snapshot.currentMineScore !== snapshot.syncedScore ||
-      snapshot.streak !== snapshot.syncedStreak
-    );
+  private toCloudProgress(authoritative: AuthoritativeProgress): CloudChildProgress {
+    return {
+      childId: authoritative.childId,
+      currentMineScore: authoritative.currentMineScore,
+      streak: authoritative.streak,
+      updatedAt: authoritative.updatedAt,
+    };
   }
 
-  async pushProgress(profileId: string): Promise<void> {
+  /**
+   * Flush this child's unsynced completed/interrupted brushing sessions.
+   * Completed morning/evening slots go through the atomic reward claim; the
+   * authoritative score/streak it returns replaces the local optimistic cache.
+   * Interrupted / off-slot rows are plain append-only history (no reward).
+   *
+   * Returns the authoritative result keyed by session id for every slot it
+   * actually claimed, so a caller (the completion screen) can render the
+   * server's verdict instead of the local optimistic guess.
+   */
+  async pushUnsyncedSessions(
+    profileId: string,
+  ): Promise<ReadonlyMap<string, AuthoritativeProgress>> {
+    const claims = new Map<string, AuthoritativeProgress>();
     const childId = await this.local.resolveRemoteChildId(profileId);
-    if (!childId) return;
-    const snapshot = await this.local.readProgressSnapshot(profileId);
-    if (!snapshot) return;
-
-    // Concurrent-write guard: if the cloud row advanced past this device's last
-    // sync (another device wrote), do NOT blind-overwrite it with our possibly
-    // stale value. recoverProgress() (bootstrap / foreground) merges instead.
-    const cloudRow = await this.cloud.getProgress(childId);
-    if (
-      cloudRow &&
-      cloudRow.updatedAt &&
-      snapshot.syncedAt &&
-      cloudRow.updatedAt > snapshot.syncedAt &&
-      (cloudRow.currentMineScore !== snapshot.syncedScore ||
-        cloudRow.streak !== snapshot.syncedStreak)
-    ) {
-      return;
-    }
-
-    const updatedAt = await this.cloud.upsertProgress({
-      childId,
-      currentMineScore: snapshot.currentMineScore,
-      streak: snapshot.streak,
-    });
-    await this.local.markProgressSynced(
-      profileId,
-      snapshot.currentMineScore,
-      snapshot.streak,
-      updatedAt,
-    );
-  }
-
-  private async pushProgressIfDirty(profileId: string): Promise<void> {
-    const snapshot = await this.local.readProgressSnapshot(profileId);
-    if (!snapshot || !ChildDataSyncUseCases.isProgressDirty(snapshot)) return;
-    await this.pushProgress(profileId);
-  }
-
-  async pushUnsyncedSessions(profileId: string): Promise<void> {
-    const childId = await this.local.resolveRemoteChildId(profileId);
-    if (!childId) return;
+    if (!childId) return claims;
     for (const session of await this.local.readUnsyncedSessions(profileId)) {
+      // Only a slot this device believes it completed FIRST (local optimistic
+      // +20) is presented for a reward claim; the server arbitrates and grants
+      // +0 if another device already claimed it. Everything else — interrupted,
+      // off-slot, or a local duplicate re-brush (rewardMine 0) — is plain
+      // append-only history.
+      if (
+        session.status === 'completed' &&
+        session.period !== 'off_slot' &&
+        session.rewardMine === 20
+      ) {
+        const authoritative = await this.cloud.claimBrushingSlot({
+          childId,
+          sessionId: session.id,
+          localDayKey: session.localDayKey,
+          period: session.period,
+          startedAt: session.startedAt,
+          completedAt: session.completedAt,
+          timezoneOffsetMinutes: session.timezoneOffsetMinutes,
+        });
+        await this.local.writeRecoveredProgress(profileId, this.toCloudProgress(authoritative));
+        await this.local.markSessionSynced(session.id, authoritative.updatedAt);
+        claims.set(session.id, authoritative);
+        continue;
+      }
       const updatedAt = await this.cloud.upsertSession({ ...session, childId });
       await this.local.markSessionSynced(session.id, updatedAt);
     }
+    return claims;
   }
 
+  /**
+   * Flush this child's unsynced slot evaluations. A `missed` evaluation goes
+   * through the atomic penalty; `completed` evaluations are recorded as plain
+   * history (their score effect, if any, was the reward path).
+   */
   async pushUnsyncedEvaluations(profileId: string): Promise<void> {
     const childId = await this.local.resolveRemoteChildId(profileId);
     if (!childId) return;
     for (const evaluation of await this.local.readUnsyncedEvaluations(profileId)) {
+      if (evaluation.outcome === 'missed') {
+        const authoritative = await this.cloud.applySlotPenalty({
+          childId,
+          localDayKey: evaluation.localDayKey,
+          period: evaluation.period,
+          evaluatedAt: evaluation.evaluatedAt,
+        });
+        await this.local.writeRecoveredProgress(profileId, this.toCloudProgress(authoritative));
+        await this.local.markEvaluationSynced(
+          profileId,
+          evaluation.localDayKey,
+          evaluation.period,
+          authoritative.updatedAt,
+        );
+        continue;
+      }
       const updatedAt = await this.cloud.upsertSlotEvaluation({ ...evaluation, childId });
       await this.local.markEvaluationSynced(
         profileId,
@@ -96,12 +119,17 @@ export class ChildDataSyncUseCases {
     }
   }
 
-  /** Flush every locally pending write for one child (post-write / retry path). */
-  async pushChild(profileId: string): Promise<void> {
-    if (!(await this.local.resolveRemoteChildId(profileId))) return;
-    await this.pushProgressIfDirty(profileId);
-    await this.pushUnsyncedSessions(profileId);
+  /**
+   * Flush every locally pending write for one child (post-write / retry path).
+   * Returns the authoritative reward result per claimed session id.
+   */
+  async pushChild(profileId: string): Promise<ReadonlyMap<string, AuthoritativeProgress>> {
+    if (!(await this.local.resolveRemoteChildId(profileId))) {
+      return new Map();
+    }
+    const claims = await this.pushUnsyncedSessions(profileId);
     await this.pushUnsyncedEvaluations(profileId);
+    return claims;
   }
 
   /** Retry path: flush every synced child's pending writes. */
@@ -112,28 +140,18 @@ export class ChildDataSyncUseCases {
   }
 
   /**
-   * Multi-device recovery for Mine Puan progress. Hydrates when local is missing
-   * or clean-and-stale; keeps local when it holds unpushed edits.
+   * Pull authoritative Mine Puan progress for every owned child into the local
+   * cache. The cloud row ALWAYS wins: a local row that is newer, dirty,
+   * defaulted to 0 or never hydrated is overwritten, so a stale device can
+   * never keep — let alone propagate — a wrong score. A child with a pending
+   * unclaimed reward has no cloud row yet; that child is simply skipped here
+   * and its claim creates the row on the next `pushChild`.
    */
   async recoverProgress(): Promise<void> {
     for (const row of await this.cloud.listOwnedProgress()) {
       const profileId = await this.local.findProfileByRemoteChildId(row.childId);
       if (!profileId) continue;
-      const snapshot = await this.local.readProgressSnapshot(profileId);
-
-      if (!snapshot) {
-        await this.local.writeRecoveredProgress(profileId, row);
-        continue;
-      }
-      if (ChildDataSyncUseCases.isProgressDirty(snapshot)) continue; // local wins; pushed later
-
-      const cloudNewer =
-        !snapshot.syncedAt || (row.updatedAt ? row.updatedAt > snapshot.syncedAt : false);
-      const valueDiffers =
-        row.currentMineScore !== snapshot.currentMineScore || row.streak !== snapshot.streak;
-      if (cloudNewer && valueDiffers) {
-        await this.local.writeRecoveredProgress(profileId, row);
-      }
+      await this.local.writeRecoveredProgress(profileId, row);
     }
   }
 

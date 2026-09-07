@@ -23,7 +23,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.distamagotchi.app",
-      "buildNumber": "2",
+      "buildNumber": "7",
       "infoPlist": {
         "CFBundleDisplayName": "DentHero",
         "CFBundleName": "DentHero"

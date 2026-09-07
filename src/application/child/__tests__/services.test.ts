@@ -1,15 +1,24 @@
-import type { BrushingSessionRepository, ProfileProgress, ProfileProgressRepository } from '@/domain/family';
+import type {
+  BrushingSessionRepository,
+  ProfileProgress,
+  ProfileProgressRepository,
+} from '@/domain/family';
 import type { InventoryRepository, RewardSessionRepository } from '@/domain/rewards';
 
 jest.mock('@/application/sync', () => ({
   ensureChildDataRecovered: jest.fn().mockResolvedValue(undefined),
+  refreshChildCloudData: jest.fn().mockResolvedValue(undefined),
   syncChildBrushingSession: jest.fn().mockResolvedValue(undefined),
   syncChildCloudProgress: jest.fn().mockResolvedValue(undefined),
   syncChildPreferences: jest.fn().mockResolvedValue(undefined),
 }));
 
 // eslint-disable-next-line import/order
-import { ensureChildDataRecovered, syncChildPreferences } from '@/application/sync';
+import {
+  ensureChildDataRecovered,
+  refreshChildCloudData,
+  syncChildPreferences,
+} from '@/application/sync';
 
 import { CloudAwareChildExperienceUseCases } from '../services';
 
@@ -73,6 +82,39 @@ describe('CloudAwareChildExperienceUseCases.getProgress', () => {
     expect(callOrder).toEqual(['recovered', 'reconciled']);
   });
 
+  it('re-pulls fresh cloud history/progress after the recovery gate and before reconciliation, on every getProgress', async () => {
+    const callOrder: string[] = [];
+    (ensureChildDataRecovered as jest.Mock).mockImplementation(async () => {
+      callOrder.push('recovered');
+    });
+    (refreshChildCloudData as jest.Mock).mockImplementation(async () => {
+      callOrder.push('refreshed');
+    });
+    const sessionsRepo = sessions();
+    sessionsRepo.reconcileMissedSlots.mockImplementation(async () => {
+      callOrder.push('reconciled');
+      return [];
+    });
+
+    const useCases = new CloudAwareChildExperienceUseCases(
+      progressRepo(),
+      sessionsRepo,
+      inventory(),
+    );
+    await useCases.getProgress('profile-1');
+    await useCases.getProgress('profile-1');
+
+    expect(callOrder).toEqual([
+      'recovered',
+      'refreshed',
+      'reconciled',
+      'recovered',
+      'refreshed',
+      'reconciled',
+    ]);
+    expect(refreshChildCloudData).toHaveBeenCalledTimes(2);
+  });
+
   it('every call to getProgress re-checks the (memoized) recovery gate — no screen can bypass it', async () => {
     const sessionsRepo = sessions();
     const useCases = new CloudAwareChildExperienceUseCases(
@@ -116,11 +158,7 @@ describe('CloudAwareChildExperienceUseCases.getProgress', () => {
     // push, unlike the separate AsyncStorage-only __DEV__ override path. This
     // asserts the one fact that guarantee rests on: equipItem always pushes,
     // regardless of whether a screen or internal reconciliation called it.
-    const useCases = new CloudAwareChildExperienceUseCases(
-      progressRepo(),
-      sessions(),
-      inventory(),
-    );
+    const useCases = new CloudAwareChildExperienceUseCases(progressRepo(), sessions(), inventory());
 
     await useCases.equipItem('profile-1', 'classic-brush' as never);
 

@@ -2,7 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { toLocalDateKey } from '@/domain/brushing';
 import type { BrushingPeriod, ProfileProgress, ProfileProgressRepository } from '@/domain/family';
-import { previousLocalDayKey } from '@/domain/rewards';
+import { deriveStreak } from '@/domain/rewards';
 
 type ProgressRow = {
   child_profile_id: string;
@@ -66,26 +66,28 @@ export class SQLiteProfileProgressRepository implements ProfileProgressRepositor
       today,
       profileId,
     );
-    // A streak is only alive while the last full-day-completed day is today or
-    // yesterday. If a whole calendar day has since ended without both brushings,
-    // the streak is broken and must read as 0 (the next full day restarts it at
-    // 1 via previousLocalDayKey in the brushing repository). Only applied when
-    // this child has local full-day history, so a cloud-recovered streak with no
-    // local daily_progress rows yet is left untouched.
-    await this.database.runAsync(
-      `UPDATE profile_progress SET current_streak = 0
-       WHERE child_profile_id = ?
-         AND current_streak > 0
-         AND EXISTS (SELECT 1 FROM daily_progress
-                     WHERE child_profile_id = ? AND full_day_completed = 1)
-         AND NOT EXISTS (SELECT 1 FROM daily_progress
-                         WHERE child_profile_id = ? AND full_day_completed = 1
-                           AND local_day_key >= ?)`,
+    // Streak is a pure derivation of the full-day history this device holds:
+    // the count of consecutive local calendar days (ending today or yesterday)
+    // with both slots completed. Recomputed here from the row SET — never a
+    // running counter, never a session count — so it is identical on every
+    // device once brushing history has hydrated, and it both drops a stale
+    // streak to 0 and repairs one left wrongly low by out-of-order hydration.
+    // Skipped entirely while this child still has NO local full-day rows, so a
+    // freshly cloud-recovered streak whose history has not been hydrated yet
+    // this session is left intact.
+    const fullDays = await this.database.getAllAsync<{ local_day_key: string }>(
+      `SELECT local_day_key FROM daily_progress
+       WHERE child_profile_id = ? AND full_day_completed = 1`,
       profileId,
-      profileId,
-      profileId,
-      previousLocalDayKey(today),
     );
+    if (fullDays.length > 0) {
+      const keys = fullDays.map((row) => row.local_day_key);
+      await this.database.runAsync(
+        `UPDATE profile_progress SET current_streak = ? WHERE child_profile_id = ?`,
+        deriveStreak(keys, today),
+        profileId,
+      );
+    }
   }
 
   async get(profileId: string): Promise<ProfileProgress> {
