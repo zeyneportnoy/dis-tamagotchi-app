@@ -41,11 +41,11 @@ import {
 import {
   CharacterRoomScene,
   emptyCustomizationState,
-  isCharacterSceneEffectKey,
   loadCustomizationState,
   presentCustomizationInventory,
   roomMaterialsForTheme,
   saveItemPlacement,
+  sceneEffectKeyForDisplay,
   type CustomizationItemKey,
   type CustomizationState,
   type ItemPlacement,
@@ -225,13 +225,14 @@ export default function ChildHomeScreen() {
       ? equippedBackground
       : undefined;
   const roomEffect = equipped.find((item) => item.slot === 'effect');
-  // Same as the background: a re-locked effect stops showing until Collection
-  // reverts the selection to the always-open default.
-  const roomEffectKey =
-    isCharacterSceneEffectKey(roomEffect?.key) &&
-    isEffectUnlockedForScore(roomEffect.key, progress.totalXp)
+  // The scene always shows a real effect. A re-locked pick, or the visual-less
+  // legacy `bubble-glow` seed, or nothing equipped, all resolve to the
+  // always-open default (`rainbow-light`) — never "no effect".
+  const roomEffectKey = sceneEffectKeyForDisplay(
+    roomEffect && isEffectUnlockedForScore(roomEffect.key, progress.totalXp)
       ? roomEffect.key
-      : null;
+      : undefined,
+  );
   const selectedRoomMaterials = roomMaterialsForTheme(roomBackground?.key).filter((item) =>
     customization.selectedRoomMaterials.includes(item.key),
   );

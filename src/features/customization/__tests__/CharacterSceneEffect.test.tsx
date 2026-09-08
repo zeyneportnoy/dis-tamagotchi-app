@@ -6,9 +6,36 @@ import { tr } from '@/i18n/resources/tr';
 
 import {
   CharacterSceneEffect,
+  DEFAULT_SCENE_EFFECT_KEY,
   EffectCardPreview,
   characterSceneEffectKeys,
+  sceneEffectKeyForDisplay,
 } from '../CharacterSceneEffect';
+
+describe('sceneEffectKeyForDisplay — the scene never renders with no effect', () => {
+  it('keeps a real, recognised scene-effect key as-is', () => {
+    for (const key of characterSceneEffectKeys) {
+      expect(sceneEffectKeyForDisplay(key)).toBe(key);
+    }
+  });
+
+  it('falls back to the always-open default for the visual-less legacy bubble-glow seed', () => {
+    // `bubble-glow` is a real inventory row (seeded at profile creation) but has
+    // no visual and is not in `rewardCatalog`; the scene must still show something.
+    expect(sceneEffectKeyForDisplay('bubble-glow' as never)).toBe('rainbow-light');
+    expect(DEFAULT_SCENE_EFFECT_KEY).toBe('rainbow-light');
+  });
+
+  it('falls back to the default when nothing is equipped (null / undefined)', () => {
+    expect(sceneEffectKeyForDisplay(null)).toBe(DEFAULT_SCENE_EFFECT_KEY);
+    expect(sceneEffectKeyForDisplay(undefined)).toBe(DEFAULT_SCENE_EFFECT_KEY);
+  });
+
+  it('falls back to the default for any other unrecognised key', () => {
+    expect(sceneEffectKeyForDisplay('heart-flight' as never)).toBe(DEFAULT_SCENE_EFFECT_KEY);
+    expect(sceneEffectKeyForDisplay('star-brush' as never)).toBe(DEFAULT_SCENE_EFFECT_KEY);
+  });
+});
 
 describe('CharacterSceneEffect', () => {
   it('exposes exactly the six product effects with their current Mine Puan thresholds', () => {

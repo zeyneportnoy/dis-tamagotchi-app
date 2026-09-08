@@ -33,12 +33,13 @@ export const rewardCatalog = [
   { key: 'moon-lamp', icon: '🌙', slot: 'decor', unlockXp: 840 },
   { key: 'dino-brush', icon: '🦕', slot: 'brush', unlockXp: 1520 },
   { key: 'magic-dust', icon: '◯', slot: 'effect', unlockXp: 1200 },
-  { key: 'night-room', icon: '🌌', slot: 'background', unlockXp: 960 },
   { key: 'color-pillow', icon: '🟣', slot: 'decor', unlockXp: 1000 },
   { key: 'space-brush', icon: '🚀', slot: 'brush', unlockXp: 2320 },
   { key: 'cloud-effect', icon: '✦', slot: 'effect', unlockXp: 2000 },
-  { key: 'forest-room', icon: '🌲', slot: 'background', unlockXp: 1120 },
   { key: 'heart-brush', icon: '💗', slot: 'brush', unlockXp: 3200 },
+  // Backgrounds are exactly the 6 room themes: pastel-playroom(0) cloud-room(160)
+  // rainbow-room(640) space-room(1280) undersea-room(2200) rainbow-cape(3600) —
+  // matching `collectionBackgroundKeys` / `roomThemeKeys`. No other background keys.
 ] as const;
 
 export type RewardItemKey = (typeof rewardCatalog)[number]['key'];

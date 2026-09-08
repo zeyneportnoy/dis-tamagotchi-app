@@ -59,6 +59,7 @@ import {
   loadCustomizationState,
   presentCustomizationInventory,
   placementAfterBoundedDrag,
+  sceneEffectKeyForDisplay,
   roomMaterialsForTheme,
   saveDeveloperEquippedItem,
   saveItemPlacement,
@@ -389,9 +390,9 @@ export default function CollectionScreen() {
   const resolvedBrushKey = isBrushRewardKey(candidateBrushKey) ? candidateBrushKey : DEFAULT_BRUSH_KEY;
   const isBrushFallbackActive = resolvedBrushKey !== selectedBrush?.key;
   const selectedEffect = items.find((item) => item.equipped && item.slot === 'effect');
-  const selectedSceneEffectKey = isCharacterSceneEffectKey(selectedEffect?.key)
-    ? selectedEffect.key
-    : null;
+  // Whatever is equipped in the DB (incl. the visual-less legacy `bubble-glow`
+  // seed, or nothing), the preview always renders a real scene effect.
+  const selectedSceneEffectKey = sceneEffectKeyForDisplay(selectedEffect?.key);
   const roomMaterials = roomMaterialsForTheme(selectedBackground?.key);
   const selectedRoomMaterials = roomMaterials.filter(
     (item) =>
@@ -466,13 +467,11 @@ export default function CollectionScreen() {
               { bottom: collectionPreviewBottomForStage(growthStage) },
             ]}
           >
-            {selectedSceneEffectKey ? (
-              <CharacterSceneEffect
-                animated={process.env.NODE_ENV !== 'test'}
-                effectKey={selectedSceneEffectKey}
-                testID="collection-preview-effect"
-              />
-            ) : null}
+            <CharacterSceneEffect
+              animated={process.env.NODE_ENV !== 'test'}
+              effectKey={selectedSceneEffectKey}
+              testID="collection-preview-effect"
+            />
             <CharacterAvatar
               characterKey={profile.avatarId}
               growthStage={growthStage}

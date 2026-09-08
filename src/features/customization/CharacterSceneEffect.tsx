@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/design-system';
-import type { RewardItemKey } from '@/domain/rewards';
+import { DEFAULT_EFFECT_KEY, type RewardItemKey } from '@/domain/rewards';
 
 export const characterSceneEffectKeys = [
   'rainbow-light',
@@ -21,6 +21,28 @@ export function isCharacterSceneEffectKey(
   key: RewardItemKey | null | undefined,
 ): key is CharacterSceneEffectKey {
   return Boolean(key && characterSceneEffectKeySet.has(key));
+}
+
+/**
+ * The always-open scene effect — the reward domain's `DEFAULT_EFFECT_KEY`, which
+ * is `unlockXp: 0` and therefore never score-gated. Typed as a
+ * `CharacterSceneEffectKey` so a future change that makes the two disagree is a
+ * compile error.
+ */
+export const DEFAULT_SCENE_EFFECT_KEY: CharacterSceneEffectKey = DEFAULT_EFFECT_KEY;
+
+/**
+ * The scene effect a screen should actually RENDER for a child's equipped-effect
+ * key. Any key that is missing, or is not one of the six real scene effects —
+ * e.g. the legacy always-on `bubble-glow` inventory seed, which has no visual —
+ * resolves to `DEFAULT_SCENE_EFFECT_KEY` so the scene NEVER renders with no
+ * effect at all. Whatever is stored in the DB is left untouched; this is a pure
+ * display resolution, mirroring `displayBackgroundKey` for backgrounds.
+ */
+export function sceneEffectKeyForDisplay(
+  equippedKey: RewardItemKey | null | undefined,
+): CharacterSceneEffectKey {
+  return isCharacterSceneEffectKey(equippedKey) ? equippedKey : DEFAULT_SCENE_EFFECT_KEY;
 }
 
 type Props = Readonly<{

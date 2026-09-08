@@ -104,7 +104,6 @@ export function rewardIconName(key: RewardItemKey, slot: AccessorySlot): Charact
     key === 'color-glasses'
   )
     return 'rainbow-room';
-  if (key === 'night-room' || key === 'moon-lamp' || key === 'space-room' || key === 'space-brush')
-    return 'night-room';
+  if (key === 'moon-lamp' || key === 'space-room' || key === 'space-brush') return 'night-room';
   return categoryIconName(slot);
 }

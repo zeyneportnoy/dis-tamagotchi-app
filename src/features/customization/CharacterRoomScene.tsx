@@ -27,7 +27,8 @@ type Props = Readonly<{
   backgroundKey?: RewardItemKey;
   characterKey: StarterAvatarKey;
   editable?: boolean;
-  effectKey: CharacterSceneEffectKey | null;
+  /** Always a real scene effect — resolve with `sceneEffectKeyForDisplay` upstream. */
+  effectKey: CharacterSceneEffectKey;
   growthStage: CharacterGrowthStage;
   mood: CharacterMood;
   onPlacementChange?: (itemKey: RoomMaterialKey, placement: ItemPlacement) => void;
@@ -123,13 +124,11 @@ export function CharacterRoomScene({
       <Text style={[styles.sceneSparkle, styles.sceneSparkleLeft]}>✦</Text>
       <Text style={[styles.sceneSparkle, styles.sceneSparkleRight]}>✦</Text>
       <View pointerEvents="none" style={styles.heroCharacter}>
-        {effectKey ? (
-          <CharacterSceneEffect
-            animated={process.env.NODE_ENV !== 'test'}
-            effectKey={effectKey}
-            testID={effectTestID}
-          />
-        ) : null}
+        <CharacterSceneEffect
+          animated={process.env.NODE_ENV !== 'test'}
+          effectKey={effectKey}
+          testID={effectTestID}
+        />
         <CharacterAvatar
           characterKey={characterKey}
           growthStage={growthStage}

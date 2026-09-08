@@ -26,12 +26,12 @@ const inventory: readonly InventoryItem[] = [
   },
   {
     equipped: false,
-    icon: '🌙',
-    key: 'night-room',
+    icon: '🚀',
+    key: 'space-room',
     slot: 'background',
     unlocked: false,
     unlockedAt: null,
-    unlockXp: 960,
+    unlockXp: 1280,
   },
   {
     equipped: false,
@@ -102,15 +102,15 @@ describe('customization state', () => {
   });
 
   it('unlocks and equips through a DEV-only view without changing production inventory', async () => {
-    const state = await saveDeveloperEquippedItem('child-a', 'background', 'night-room');
+    const state = await saveDeveloperEquippedItem('child-a', 'background', 'space-room');
     const developerItems = presentCustomizationInventory(inventory, state, true);
     const productionItems = presentCustomizationInventory(inventory, state, false);
 
-    expect(developerItems.find((item) => item.key === 'night-room')).toMatchObject({
+    expect(developerItems.find((item) => item.key === 'space-room')).toMatchObject({
       equipped: true,
       unlocked: true,
     });
-    expect(productionItems.find((item) => item.key === 'night-room')).toMatchObject({
+    expect(productionItems.find((item) => item.key === 'space-room')).toMatchObject({
       equipped: false,
       unlocked: false,
     });

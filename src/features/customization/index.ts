@@ -2,9 +2,11 @@ export { RoomMaterialItem } from './RoomMaterialItem';
 export { CharacterRoomScene } from './CharacterRoomScene';
 export {
   CharacterSceneEffect,
+  DEFAULT_SCENE_EFFECT_KEY,
   EffectCardPreview,
   characterSceneEffectKeys,
   isCharacterSceneEffectKey,
+  sceneEffectKeyForDisplay,
 } from './CharacterSceneEffect';
 export type { CharacterSceneEffectKey } from './CharacterSceneEffect';
 export {

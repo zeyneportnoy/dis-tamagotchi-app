@@ -22,6 +22,6 @@ describe('character icon themes', () => {
   it('provides themed navigation, category and reward icon sources', () => {
     expect(characterIconSource('inci', 'home')).toBeDefined();
     expect(characterIconSource('kaan', categoryIconName('decor'))).toBeDefined();
-    expect(characterIconSource('milo', rewardIconName('night-room', 'background'))).toBeDefined();
+    expect(characterIconSource('milo', rewardIconName('space-room', 'background'))).toBeDefined();
   });
 });

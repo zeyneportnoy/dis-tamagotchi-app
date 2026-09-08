@@ -31,10 +31,10 @@ import {
 import { CharacterScreenBackdrop, sceneBackgroundForCharacter } from '@/features/character';
 import {
   CharacterRoomScene,
-  isCharacterSceneEffectKey,
   loadCustomizationState,
   presentCustomizationInventory,
   roomMaterialsForTheme,
+  sceneEffectKeyForDisplay,
   type CharacterSceneEffectKey,
   type CustomizationState,
   type RoomMaterial,
@@ -47,7 +47,7 @@ type ProfileData = Readonly<{
   growthStage: CharacterGrowthStage;
   roomBackground: InventoryItem | undefined;
   displayBackgroundKey: RewardItemKey;
-  roomEffectKey: CharacterSceneEffectKey | null;
+  roomEffectKey: CharacterSceneEffectKey;
   equippedItems: readonly InventoryItem[];
   selectedRoomMaterials: readonly RoomMaterial[];
   customization: CustomizationState;
@@ -91,11 +91,14 @@ async function readProfileData(): Promise<ProfileData | null> {
   // display computation: writes nothing.
   const displayBackgroundKey = resolveDisplayBackgroundKey(equippedBackground?.key);
   const equippedEffect = equippedItems.find((item) => item.slot === 'effect');
-  const roomEffectKey =
-    isCharacterSceneEffectKey(equippedEffect?.key) &&
-    isEffectUnlockedForScore(equippedEffect.key, totalXp)
+  // The scene always shows a real effect. A re-locked pick, or the visual-less
+  // legacy `bubble-glow` seed, or nothing equipped, all resolve to the
+  // always-open default (`rainbow-light`) — never "no effect".
+  const roomEffectKey = sceneEffectKeyForDisplay(
+    equippedEffect && isEffectUnlockedForScore(equippedEffect.key, totalXp)
       ? equippedEffect.key
-      : null;
+      : undefined,
+  );
   const selectedRoomMaterials = roomMaterialsForTheme(roomBackground?.key).filter((material) =>
     customization.selectedRoomMaterials.includes(material.key),
   );

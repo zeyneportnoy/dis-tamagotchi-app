@@ -48,8 +48,6 @@ jest.mock('@/application/child', () => ({
             'space-room',
             'undersea-room',
             'rainbow-cape',
-            'night-room',
-            'forest-room',
           ].map((key, index) => ({
             equipped: false,
             icon: '🌄',
