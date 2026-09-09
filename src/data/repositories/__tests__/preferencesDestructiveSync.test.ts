@@ -236,9 +236,14 @@ class FakePreferenceAccessors implements ChildPreferenceAccessors {
     this.reminders.set(this.key(parentUserId, childProfileId), values);
   }
 
+  /** Advancing "last successful reminder sync" clock, mirrors markSynced()'s toISOString(). */
+  private remindersSyncedAt = new Map<string, string>();
+
   async markRemindersSynced(parentUserId: string, childProfileId: string): Promise<void> {
     const current = await this.readReminders(parentUserId, childProfileId);
-    this.remindersSyncedFingerprint.set(this.key(parentUserId, childProfileId), JSON.stringify(current));
+    const k = this.key(parentUserId, childProfileId);
+    this.remindersSyncedFingerprint.set(k, JSON.stringify(current));
+    this.remindersSyncedAt.set(k, new Date().toISOString());
   }
 
   async readRemindersSyncMeta(
@@ -249,7 +254,10 @@ class FakePreferenceAccessors implements ChildPreferenceAccessors {
     if (!this.reminders.has(k)) return { syncedAt: null, dirty: false };
     const synced = this.remindersSyncedFingerprint.get(k);
     const current = JSON.stringify(this.reminders.get(k));
-    return { syncedAt: synced ? '2026-01-01T00:00:00.000Z' : null, dirty: synced !== current };
+    return {
+      syncedAt: synced ? (this.remindersSyncedAt.get(k) ?? null) : null,
+      dirty: synced !== current,
+    };
   }
 
   /** Directly seed reminders as "the cloud already knows this" for a fixture. */
@@ -257,9 +265,21 @@ class FakePreferenceAccessors implements ChildPreferenceAccessors {
     parentUserId: string,
     childProfileId: string,
     values: Readonly<{ morning: CloudReminderPreference; evening: CloudReminderPreference }>,
+    syncedAt = '2026-01-01T00:00:00.000Z',
+  ): void {
+    const k = this.key(parentUserId, childProfileId);
+    this.reminders.set(k, values);
+    this.remindersSyncedFingerprint.set(k, JSON.stringify(values));
+    this.remindersSyncedAt.set(k, syncedAt);
+  }
+
+  /** Seed a record with NO recorded sync (seed-on-read / legacy / old code). */
+  seedRemindersWithoutSyncMark(
+    parentUserId: string,
+    childProfileId: string,
+    values: Readonly<{ morning: CloudReminderPreference; evening: CloudReminderPreference }>,
   ): void {
     this.reminders.set(this.key(parentUserId, childProfileId), values);
-    this.remindersSyncedFingerprint.set(this.key(parentUserId, childProfileId), JSON.stringify(values));
   }
 
   async applyRecoveredDentist(
@@ -362,8 +382,9 @@ async function seedCloudPreferences(
   // Written straight onto the row: this fixture represents cloud state a
   // device accumulated across earlier sessions — customization/voice/dentist
   // via the whole-row upsert AND reminder columns via prior real
-  // `patch_child_reminders` edits. The real `upsert()` has no reminder write
-  // grant, so seeding reminders through it would silently drop them.
+  // `patch_child_preferences` (reminder-key-only) edits. The real `upsert()`
+  // never sends reminder columns, so seeding reminders through it would
+  // silently drop them.
   cloud.rows.set(childId, {
     childId,
     selectedBrushId: 'classic-brush',
@@ -935,8 +956,117 @@ describe('cross-device: a stale device never reverts another device’s reminder
       morning: { enabled: true, time: '07:15' },
       evening: { enabled: false, time: '20:30' },
     });
+    // ...and Device B has CONVERGED to the cloud value (its stale 08:00 is gone).
+    expect(await deviceB.accessors.readReminders('parent-1', 'child-1')).toEqual({
+      morning: { enabled: true, time: '07:15' },
+      evening: { enabled: false, time: '20:30' },
+    });
 
     deviceA.db.close();
+    deviceB.db.close();
+  });
+
+  it('Device B with a CLEAN synced stale record (08:00/20:30) converges to the cloud 08:01/20:31 on recover, and stays converged across reopen / profile-switch, without ever writing the cloud', async () => {
+    const cloud = new FakeCloudPreferences();
+    // Device A edited both reminder slots; the cloud row carries the real
+    // values with a fresh updated_at (a later edit than Device B ever synced).
+    await seedCloudPreferences(cloud, 'child-1', {
+      morningReminder: { enabled: true, time: '08:01' },
+      eveningReminder: { enabled: true, time: '20:31' },
+      updatedAt: '2026-09-09T09:48:06.000Z',
+    });
+
+    const deviceB = await makeDevice(cloud);
+    // B holds a real, previously-synced record — NOT dirty — but stale: it was
+    // last synced on 2026-09-01, before Device A's 2026-09-09 edit.
+    deviceB.accessors.seedReminders(
+      'parent-1',
+      'child-1',
+      { morning: { enabled: false, time: '08:00' }, evening: { enabled: false, time: '20:30' } },
+      '2026-09-01T00:00:00.000Z',
+    );
+
+    // First open on B.
+    {
+      const b = makeHarness(deviceB.db, cloud, deviceB.accessors);
+      await b.useCases.recover();
+    }
+    expect(await deviceB.accessors.readReminders('parent-1', 'child-1')).toEqual({
+      morning: { enabled: true, time: '08:01' },
+      evening: { enabled: true, time: '20:31' },
+    });
+    expect(cloud.reminderPatchCalls).toHaveLength(0);
+    expect(cloud.upsertCalls).toHaveLength(0);
+    const cloudAfterFirst = await cloud.get('child-1');
+
+    // Reopen, profile-switch, foreground → each just calls recover() again.
+    for (let i = 0; i < 10; i += 1) {
+      const b = makeHarness(deviceB.db, cloud, deviceB.accessors);
+      await b.useCases.recover();
+    }
+    expect(await deviceB.accessors.readReminders('parent-1', 'child-1')).toEqual({
+      morning: { enabled: true, time: '08:01' },
+      evening: { enabled: true, time: '20:31' },
+    });
+    // Cloud row is byte-for-byte unchanged by any amount of recovery.
+    expect(await cloud.get('child-1')).toEqual(cloudAfterFirst);
+    expect(cloud.reminderPatchCalls).toHaveLength(0);
+    expect(cloud.upsertCalls).toHaveLength(0);
+
+    deviceB.db.close();
+  });
+
+  it('Device B with a seed-on-read record (no recorded sync) also converges to the cloud value', async () => {
+    const cloud = new FakeCloudPreferences();
+    await seedCloudPreferences(cloud, 'child-1', {
+      morningReminder: { enabled: true, time: '08:01' },
+      eveningReminder: { enabled: true, time: '20:31' },
+      updatedAt: '2026-09-09T09:48:06.000Z',
+    });
+    const deviceB = await makeDevice(cloud);
+    // A record exists (seeded by ReminderSettingsService.get() reading the
+    // legacy key) but markSynced was never called → syncedAt is null.
+    deviceB.accessors.seedRemindersWithoutSyncMark('parent-1', 'child-1', {
+      morning: { enabled: false, time: '08:00' },
+      evening: { enabled: false, time: '20:30' },
+    });
+
+    const b = makeHarness(deviceB.db, cloud, deviceB.accessors);
+    await b.useCases.recover();
+
+    expect(await deviceB.accessors.readReminders('parent-1', 'child-1')).toEqual({
+      morning: { enabled: true, time: '08:01' },
+      evening: { enabled: true, time: '20:31' },
+    });
+    expect(cloud.reminderPatchCalls).toHaveLength(0);
+    deviceB.db.close();
+  });
+
+  it('does NOT clobber a reminder value this device synced more recently than the cloud row (its own not-yet-propagated edit)', async () => {
+    const cloud = new FakeCloudPreferences();
+    // Cloud still has the older value; Device B edited locally afterwards and
+    // recorded the sync at a LATER time than the cloud row's updated_at.
+    await seedCloudPreferences(cloud, 'child-1', {
+      morningReminder: { enabled: true, time: '08:00' },
+      eveningReminder: { enabled: true, time: '20:30' },
+      updatedAt: '2026-09-01T00:00:00.000Z',
+    });
+    const deviceB = await makeDevice(cloud);
+    deviceB.accessors.seedReminders(
+      'parent-1',
+      'child-1',
+      { morning: { enabled: true, time: '07:05' }, evening: { enabled: true, time: '21:45' } },
+      '2026-09-09T10:00:00.000Z',
+    );
+
+    const b = makeHarness(deviceB.db, cloud, deviceB.accessors);
+    await b.useCases.recover();
+
+    expect(await deviceB.accessors.readReminders('parent-1', 'child-1')).toEqual({
+      morning: { enabled: true, time: '07:05' },
+      evening: { enabled: true, time: '21:45' },
+    });
+    expect(cloud.reminderPatchCalls).toHaveLength(0);
     deviceB.db.close();
   });
 

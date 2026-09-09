@@ -61,10 +61,16 @@ const mapRow = (row: PreferencesRow): CloudChildPreferences => ({
  * preference values.
  *
  * The four `*_reminder_*` columns are intentionally excluded from the whole-row
- * upsert: the client holds no write grant for them (migration m11), and a
- * snapshot rebuilt from ambient local state (`defaultReminderSettings`, the
- * legacy seed, seed-on-read) must never be able to revert a real custom time on
- * a foreground sync. Genuine reminder edits go through `patchReminders()`.
+ * upsert: a snapshot rebuilt from ambient local state (`defaultReminderSettings`,
+ * the legacy seed, seed-on-read) must never be able to revert a real custom time
+ * on a foreground sync. Every genuine reminder edit goes through
+ * `patchReminders()`, which is the ONLY path that writes a reminder column and
+ * only ever sends the field(s) the parent actually changed.
+ *
+ * (A follow-up migration will additionally revoke the client's column-level
+ * INSERT/UPDATE grant on the four reminder columns as defense in depth, once the
+ * reminder-only client is verified on real devices. `patch_child_preferences`
+ * already exists in production as of migration m11 Phase 1.)
  */
 export class SupabaseChildPreferencesRepository implements CloudChildPreferencesRepository {
   constructor(private readonly client: SupabaseClient) {}
@@ -89,9 +95,17 @@ export class SupabaseChildPreferencesRepository implements CloudChildPreferences
     if (error) throw new Error('CLOUD_PREFERENCES_UPSERT_FAILED');
   }
 
+  /**
+   * Field-scoped write of a genuine parent reminder edit via the production
+   * `patch_child_preferences(child_id, patch)` RPC (migration m11 Phase 1). Only
+   * the reminder key(s) present in `patch` are sent — every one is on that RPC's
+   * whitelist — and the RPC updates only those columns, leaving every other
+   * column and every other child untouched. An empty patch is never sent (the
+   * RPC rejects `{}` with `bad_patch`).
+   */
   async patchReminders(childId: string, patch: ChildReminderPatch): Promise<void> {
     if (Object.keys(patch).length === 0) return;
-    const { error } = await this.client.rpc('patch_child_reminders', {
+    const { error } = await this.client.rpc('patch_child_preferences', {
       p_child_id: childId,
       p_patch: patch,
     });

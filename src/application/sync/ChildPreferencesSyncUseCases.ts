@@ -250,17 +250,44 @@ export class ChildPreferencesSyncUseCases {
         }
       }
 
-      // Reminder times: the local per-child record is authoritative. The cloud
-      // only seeds a child that has NO saved reminder record yet on this device
-      // (a genuinely new child). Once a child has any saved record, recovery
-      // never touches it again — no stale / default / null / clock-skewed cloud
-      // value can revert a user's custom HH:mm hours after they set it.
-      if (!(await this.prefs.hasStoredReminders(parentUserId, profileId))) {
-        await this.prefs.applyRecoveredReminders(parentUserId, profileId, {
-          morning: reminderValues(row.morningReminder, '08:00'),
-          evening: reminderValues(row.eveningReminder, '20:30'),
-        });
-        await this.prefs.markRemindersSynced(parentUserId, profileId);
+      // Reminder times: the cloud row is authoritative now that the write side
+      // is field-scoped (`patch_child_preferences` only ever carries a value a
+      // parent explicitly chose, and bumps `updated_at` only then). This device
+      // converges to the cloud value whenever the cloud carries a real reminder
+      // value AND this device has not itself synced a newer one:
+      //   - `!stored`            → a genuinely new child on this device (seed).
+      //   - `meta.syncedAt null` → a plain seed / default / legacy /
+      //                            seed-on-read record that never recorded a
+      //                            real sync — it must yield to a real cloud
+      //                            value, never win over it.
+      //   - cloud row is newer than our last recorded sync → another device
+      //                            edited it; converge.
+      // A record changed since its last sync is kept as a pending local edit.
+      // A clean record synced more recently than the cloud row is also kept. `applyRecoveredReminders` +
+      // `markRemindersSynced` write LOCAL storage only — recover() never calls
+      // the cloud. The `08:00 / 20:30` fallback below applies ONLY when the
+      // cloud genuinely has no reminder value for a slot.
+      const cloudHasReminderValue =
+        row.morningReminder.enabled ||
+        row.eveningReminder.enabled ||
+        row.morningReminder.time !== null ||
+        row.eveningReminder.time !== null;
+      if (cloudHasReminderValue) {
+        const storedReminders = await this.prefs.hasStoredReminders(parentUserId, profileId);
+        const reminderMeta = storedReminders
+          ? await this.prefs.readRemindersSyncMeta(parentUserId, profileId)
+          : { syncedAt: null, dirty: false };
+        const cloudSupersedesLocal =
+          !storedReminders ||
+          reminderMeta.syncedAt === null ||
+          (!reminderMeta.dirty && cloudReminderIsNewer(row.updatedAt, reminderMeta.syncedAt));
+        if (cloudSupersedesLocal) {
+          await this.prefs.applyRecoveredReminders(parentUserId, profileId, {
+            morning: reminderValues(row.morningReminder, '08:00'),
+            evening: reminderValues(row.eveningReminder, '20:30'),
+          });
+          await this.prefs.markRemindersSynced(parentUserId, profileId);
+        }
       }
 
       // Nickname personalization (brushing says the child's name): same
@@ -311,3 +338,22 @@ const cloudRowNewerThan = (
   cloudUpdatedAt: string | undefined,
   localSyncedAt: string | null,
 ): boolean => Boolean(cloudUpdatedAt && localSyncedAt && cloudUpdatedAt > localSyncedAt);
+
+/**
+ * Reminder-only staleness check. Unlike `cloudRowNewerThan` (voice / nickname),
+ * this parses both timestamps to epoch millis before comparing: the cloud
+ * `updated_at` (Postgres, e.g. `2026-09-09T09:48:06.751945+00:00`) and the local
+ * `syncedAt` (`Date#toISOString`, e.g. `2026-09-09T09:48:06.751Z`) use different
+ * text formats, so a lexical `>` would misorder same-day values. Returns false
+ * when either side is missing/unparseable — an unknown cloud age never
+ * supersedes a local value on its own.
+ */
+const cloudReminderIsNewer = (
+  cloudUpdatedAt: string | undefined,
+  localSyncedAt: string | null,
+): boolean => {
+  if (!cloudUpdatedAt || !localSyncedAt) return false;
+  const cloudMs = Date.parse(cloudUpdatedAt);
+  const localMs = Date.parse(localSyncedAt);
+  return Number.isFinite(cloudMs) && Number.isFinite(localMs) && cloudMs > localMs;
+};
