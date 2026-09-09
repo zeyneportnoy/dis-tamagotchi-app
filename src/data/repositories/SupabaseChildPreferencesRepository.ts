@@ -14,6 +14,17 @@ const asVoiceGuide = (value: unknown): CloudVoiceGuide | null =>
     ? (value as CloudVoiceGuide)
     : null;
 
+/**
+ * Postgres `time` columns serialize as `HH:MM:SS` (e.g. `08:05:00`). Everything
+ * downstream — `ReminderSettingsService.sanitizeTime`'s `HH:MM` regex, the local
+ * AsyncStorage record, the reminder screen, the grouped scheduler — expects
+ * `HH:MM`. Without this trim, `sanitizeTime` rejects the `HH:MM:SS` string and
+ * silently substitutes the 08:00 / 20:30 default, so recover() can never make a
+ * device converge to a real cloud reminder time.
+ */
+const toHHmm = (time: string | null): string | null =>
+  time == null ? null : /^\d{2}:\d{2}/.test(time) ? time.slice(0, 5) : time;
+
 type PreferencesRow = {
   child_id: string;
   selected_brush_id: string | null;
@@ -41,11 +52,11 @@ const mapRow = (row: PreferencesRow): CloudChildPreferences => ({
   voiceGuide: asVoiceGuide(row.voice_guide),
   morningReminder: {
     enabled: row.morning_reminder_enabled === true,
-    time: row.morning_reminder_time,
+    time: toHHmm(row.morning_reminder_time),
   },
   eveningReminder: {
     enabled: row.evening_reminder_enabled === true,
-    time: row.evening_reminder_time,
+    time: toHHmm(row.evening_reminder_time),
   },
   dentistReminderEnabled: row.dentist_reminder_enabled === true,
   dentistLastVisitDate: row.dentist_last_visit_date,

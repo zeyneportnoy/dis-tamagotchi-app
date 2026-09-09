@@ -157,7 +157,11 @@ export class ChildPreferencesSyncUseCases {
       if (snapshot.voiceGuide) {
         await this.prefs.markVoiceSynced(parentUserId, profileId, snapshot.voiceGuide);
       }
-      await this.prefs.markRemindersSynced(parentUserId, profileId);
+      // NOTE: no markRemindersSynced here. This whole-row upsert deliberately
+      // excludes the four reminder columns (they go through patch_child_preferences
+      // only), so stamping "reminders synced now" on every foreground would be a
+      // lie — and it used to defeat recover()'s cloud-vs-local staleness check,
+      // pinning a second device to its stale value.
       if (snapshot.nicknamePersonalizationEnabled !== null) {
         await this.prefs.markNicknamePersonalizationSynced(
           parentUserId,
@@ -250,43 +254,38 @@ export class ChildPreferencesSyncUseCases {
         }
       }
 
-      // Reminder times: the cloud row is authoritative now that the write side
-      // is field-scoped (`patch_child_preferences` only ever carries a value a
-      // parent explicitly chose, and bumps `updated_at` only then). This device
-      // converges to the cloud value whenever the cloud carries a real reminder
-      // value AND this device has not itself synced a newer one:
-      //   - `!stored`            → a genuinely new child on this device (seed).
-      //   - `meta.syncedAt null` → a plain seed / default / legacy /
-      //                            seed-on-read record that never recorded a
-      //                            real sync — it must yield to a real cloud
-      //                            value, never win over it.
-      //   - cloud row is newer than our last recorded sync → another device
-      //                            edited it; converge.
-      // A record changed since its last sync is kept as a pending local edit.
-      // A clean record synced more recently than the cloud row is also kept. `applyRecoveredReminders` +
-      // `markRemindersSynced` write LOCAL storage only — recover() never calls
-      // the cloud. The `08:00 / 20:30` fallback below applies ONLY when the
-      // cloud genuinely has no reminder value for a slot.
+      // Reminder times: the cloud row is authoritative. Whenever the cloud
+      // carries a real reminder value that DIFFERS from what this device
+      // currently holds, converge the local record to it. recover() writes
+      // LOCAL storage only — it never calls the cloud. The `08:00 / 20:30`
+      // fallback is used ONLY when the cloud has no value for a slot, so a
+      // default / seed / legacy / seed-on-read local value can never win over a
+      // real cloud one.
+      //
+      // There is deliberately NO "synced once" / timestamp guard here. The
+      // earlier `syncedAt` + `cloudRowNewerThan` gate meant a device that had
+      // merely FOREGROUNDED since another device's edit (its own whole-row push
+      // stamps a fresh `syncedAt`) would refuse to pull that edit forever. The
+      // field-scoped write path (`patch_child_preferences`, real edits only)
+      // makes the cloud value trustworthy enough to just take verbatim.
       const cloudHasReminderValue =
         row.morningReminder.enabled ||
         row.eveningReminder.enabled ||
         row.morningReminder.time !== null ||
         row.eveningReminder.time !== null;
       if (cloudHasReminderValue) {
-        const storedReminders = await this.prefs.hasStoredReminders(parentUserId, profileId);
-        const reminderMeta = storedReminders
-          ? await this.prefs.readRemindersSyncMeta(parentUserId, profileId)
-          : { syncedAt: null, dirty: false };
-        const cloudSupersedesLocal =
-          !storedReminders ||
-          reminderMeta.syncedAt === null ||
-          (!reminderMeta.dirty && cloudReminderIsNewer(row.updatedAt, reminderMeta.syncedAt));
-        if (cloudSupersedesLocal) {
-          await this.prefs.applyRecoveredReminders(parentUserId, profileId, {
-            morning: reminderValues(row.morningReminder, '08:00'),
-            evening: reminderValues(row.eveningReminder, '20:30'),
-          });
-          await this.prefs.markRemindersSynced(parentUserId, profileId);
+        const cloudReminders = {
+          morning: reminderValues(row.morningReminder, '08:00'),
+          evening: reminderValues(row.eveningReminder, '20:30'),
+        };
+        const localReminders = await this.prefs.readReminders(parentUserId, profileId);
+        const converged =
+          localReminders.morning.enabled === cloudReminders.morning.enabled &&
+          localReminders.morning.time === cloudReminders.morning.time &&
+          localReminders.evening.enabled === cloudReminders.evening.enabled &&
+          localReminders.evening.time === cloudReminders.evening.time;
+        if (!converged) {
+          await this.prefs.applyRecoveredReminders(parentUserId, profileId, cloudReminders);
         }
       }
 
@@ -338,22 +337,3 @@ const cloudRowNewerThan = (
   cloudUpdatedAt: string | undefined,
   localSyncedAt: string | null,
 ): boolean => Boolean(cloudUpdatedAt && localSyncedAt && cloudUpdatedAt > localSyncedAt);
-
-/**
- * Reminder-only staleness check. Unlike `cloudRowNewerThan` (voice / nickname),
- * this parses both timestamps to epoch millis before comparing: the cloud
- * `updated_at` (Postgres, e.g. `2026-09-09T09:48:06.751945+00:00`) and the local
- * `syncedAt` (`Date#toISOString`, e.g. `2026-09-09T09:48:06.751Z`) use different
- * text formats, so a lexical `>` would misorder same-day values. Returns false
- * when either side is missing/unparseable — an unknown cloud age never
- * supersedes a local value on its own.
- */
-const cloudReminderIsNewer = (
-  cloudUpdatedAt: string | undefined,
-  localSyncedAt: string | null,
-): boolean => {
-  if (!cloudUpdatedAt || !localSyncedAt) return false;
-  const cloudMs = Date.parse(cloudUpdatedAt);
-  const localMs = Date.parse(localSyncedAt);
-  return Number.isFinite(cloudMs) && Number.isFinite(localMs) && cloudMs > localMs;
-};

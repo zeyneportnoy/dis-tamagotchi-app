@@ -1042,16 +1042,16 @@ describe('cross-device: a stale device never reverts another device’s reminder
     deviceB.db.close();
   });
 
-  it('does NOT clobber a reminder value this device synced more recently than the cloud row (its own not-yet-propagated edit)', async () => {
+  it('cloud-authoritative: a local reminder value that differs from the cloud converges to the cloud on recover, regardless of local sync markers/timestamps', async () => {
     const cloud = new FakeCloudPreferences();
-    // Cloud still has the older value; Device B edited locally afterwards and
-    // recorded the sync at a LATER time than the cloud row's updated_at.
     await seedCloudPreferences(cloud, 'child-1', {
       morningReminder: { enabled: true, time: '08:00' },
       eveningReminder: { enabled: true, time: '20:30' },
       updatedAt: '2026-09-01T00:00:00.000Z',
     });
     const deviceB = await makeDevice(cloud);
+    // Local holds a different value AND a very recent sync stamp — the old
+    // `syncedAt`/`cloudRowNewerThan` gate would have kept the local value.
     deviceB.accessors.seedReminders(
       'parent-1',
       'child-1',
@@ -1062,11 +1062,13 @@ describe('cross-device: a stale device never reverts another device’s reminder
     const b = makeHarness(deviceB.db, cloud, deviceB.accessors);
     await b.useCases.recover();
 
+    // Converged to the cloud value; recover() never wrote the cloud.
     expect(await deviceB.accessors.readReminders('parent-1', 'child-1')).toEqual({
-      morning: { enabled: true, time: '07:05' },
-      evening: { enabled: true, time: '21:45' },
+      morning: { enabled: true, time: '08:00' },
+      evening: { enabled: true, time: '20:30' },
     });
     expect(cloud.reminderPatchCalls).toHaveLength(0);
+    expect(cloud.upsertCalls).toHaveLength(0);
     deviceB.db.close();
   });
 

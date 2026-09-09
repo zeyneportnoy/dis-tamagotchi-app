@@ -295,6 +295,11 @@ describe('ChildPreferencesSyncUseCases', () => {
       const prefAccessors = prefs({
         hasStoredVoice: jest.fn().mockResolvedValue(true),
         hasStoredReminders: jest.fn().mockResolvedValue(true),
+        // local reminders already equal the cloud row → nothing to converge.
+        readReminders: jest.fn().mockResolvedValue({
+          morning: { enabled: true, time: '07:15' },
+          evening: { enabled: true, time: '21:00' },
+        }),
       });
       // cloudRow has no updatedAt → not newer.
       await new ChildPreferencesSyncUseCases(localRepo, cloud([cloudRow]), prefAccessors).recover();
@@ -353,68 +358,85 @@ describe('ChildPreferencesSyncUseCases', () => {
       expect(dirty.writeVoice).not.toHaveBeenCalled();
     });
 
-    it('converges a clean stored reminder record to the cloud value when the cloud row is newer (second device catches a remote edit)', async () => {
+    it('converges a stored reminder record to the cloud value whenever it differs — even if this device stamped a fresh "synced" marker by foregrounding since', async () => {
       const localRepo = local({ hasLocalCustomization: jest.fn().mockResolvedValue(true) });
-      // Device A edited reminders in the cloud at 08:25; this device last synced
-      // its (now stale) record at 08:20.
-      const newerRow = { ...cloudRow, updatedAt: '2026-08-25T00:00:00.000Z' };
+      const cloudRepo = cloud([
+        {
+          ...cloudRow,
+          morningReminder: { enabled: true, time: '08:05' },
+          eveningReminder: { enabled: true, time: '20:35' },
+        },
+      ]);
       const stored = prefs({
-        hasStoredVoice: jest.fn().mockResolvedValue(true),
-        hasStoredReminders: jest.fn().mockResolvedValue(true),
+        readReminders: jest.fn().mockResolvedValue({
+          morning: { enabled: false, time: '08:00' },
+          evening: { enabled: false, time: '20:30' },
+        }),
         readRemindersSyncMeta: jest
           .fn()
-          .mockResolvedValue({ syncedAt: '2026-08-20T00:00:00.000Z', dirty: false }),
+          .mockResolvedValue({ syncedAt: new Date().toISOString(), dirty: false }),
       });
-      const cloudRepo = cloud([newerRow]);
       await new ChildPreferencesSyncUseCases(localRepo, cloudRepo, stored).recover();
 
       expect(stored.applyRecoveredReminders).toHaveBeenCalledWith('parent-1', 'profile-1', {
-        morning: { enabled: true, time: '07:15' },
-        evening: { enabled: true, time: '21:00' },
+        morning: { enabled: true, time: '08:05' },
+        evening: { enabled: true, time: '20:35' },
       });
-      expect(stored.markRemindersSynced).toHaveBeenCalledWith('parent-1', 'profile-1');
-      // recover() is pull-only — it never writes the cloud.
       expect(cloudRepo.upsert).not.toHaveBeenCalled();
       expect(cloudRepo.patchReminders).not.toHaveBeenCalled();
     });
 
-    it('converges a seeded reminder record with no recorded sync (seed-on-read / legacy) to the cloud value', async () => {
+    it('leaves the local reminder record alone when it already matches the cloud (no redundant write)', async () => {
       const localRepo = local({ hasLocalCustomization: jest.fn().mockResolvedValue(true) });
+      const row = {
+        ...cloudRow,
+        morningReminder: { enabled: true, time: '08:05' },
+        eveningReminder: { enabled: true, time: '20:35' },
+      };
       const stored = prefs({
-        hasStoredReminders: jest.fn().mockResolvedValue(true),
-        // A record exists but was never `markSynced` — syncedAt is null.
-        readRemindersSyncMeta: jest.fn().mockResolvedValue({ syncedAt: null, dirty: true }),
+        readReminders: jest.fn().mockResolvedValue({
+          morning: { enabled: true, time: '08:05' },
+          evening: { enabled: true, time: '20:35' },
+        }),
       });
-      // No updatedAt on the row at all — a null-syncedAt local record must still
-      // yield to a real cloud value.
-      await new ChildPreferencesSyncUseCases(localRepo, cloud([cloudRow]), stored).recover();
-      expect(stored.applyRecoveredReminders).toHaveBeenCalledWith('parent-1', 'profile-1', {
-        morning: { enabled: true, time: '07:15' },
-        evening: { enabled: true, time: '21:00' },
-      });
-    });
-
-    it('keeps a stored reminder record this device synced more recently than the cloud row (its own un-propagated edit)', async () => {
-      const localRepo = local({ hasLocalCustomization: jest.fn().mockResolvedValue(true) });
-      const olderRow = { ...cloudRow, updatedAt: '2026-08-10T00:00:00.000Z' };
-      const stored = prefs({
-        hasStoredReminders: jest.fn().mockResolvedValue(true),
-        readRemindersSyncMeta: jest
-          .fn()
-          .mockResolvedValue({ syncedAt: '2026-08-20T00:00:00.000Z', dirty: false }),
-      });
-      await new ChildPreferencesSyncUseCases(localRepo, cloud([olderRow]), stored).recover();
+      await new ChildPreferencesSyncUseCases(localRepo, cloud([row]), stored).recover();
       expect(stored.applyRecoveredReminders).not.toHaveBeenCalled();
-      expect(stored.markRemindersSynced).not.toHaveBeenCalled();
     });
 
-    it('persists recovered times across service recreation and profile switch, then protects a real local edit', async () => {
+    it('converges a device with NO local reminder record to the cloud value', async () => {
+      const localRepo = local({ hasLocalCustomization: jest.fn().mockResolvedValue(true) });
+      const row = {
+        ...cloudRow,
+        morningReminder: { enabled: true, time: '08:05' },
+        eveningReminder: { enabled: true, time: '20:35' },
+      };
+      const fresh = prefs({
+        readReminders: jest.fn().mockResolvedValue({
+          morning: { enabled: false, time: '08:00' },
+          evening: { enabled: false, time: '20:30' },
+        }),
+      });
+      await new ChildPreferencesSyncUseCases(localRepo, cloud([row]), fresh).recover();
+      expect(fresh.applyRecoveredReminders).toHaveBeenCalledWith('parent-1', 'profile-1', {
+        morning: { enabled: true, time: '08:05' },
+        evening: { enabled: true, time: '20:35' },
+      });
+    });
+
+    it('end to end (storage-backed): a stale 08:00/20:30 record with a fresh sync marker still converges to the cloud, stays converged across service recreation, and recover never writes the cloud', async () => {
       const values = new Map<string, string>();
       const storage = {
         getItem: async (key: string) => values.get(key) ?? null,
         setItem: async (key: string, value: string) => {
           values.set(key, value);
         },
+      };
+      const notifications = {
+        cancel: jest.fn().mockResolvedValue(undefined),
+        getPermission: jest.fn().mockResolvedValue('granted' as const),
+        requestPermission: jest.fn().mockResolvedValue('granted' as const),
+        schedule: jest.fn().mockResolvedValue('unused'),
+        scheduleTest: jest.fn().mockResolvedValue('unused'),
       };
       const row = {
         ...cloudRow,
@@ -425,6 +447,8 @@ describe('ChildPreferencesSyncUseCases', () => {
       const before = JSON.stringify(row);
       const cloudRepo = cloud([row]);
       const key = 'parent:parent-1:child:profile-1:brushing-reminders:v1';
+
+      const seedSvc = new ReminderSettingsService(storage, notifications);
       values.set(
         key,
         JSON.stringify({
@@ -432,72 +456,39 @@ describe('ChildPreferencesSyncUseCases', () => {
           evening: { enabled: false, time: '20:30' },
         }),
       );
-      const notifications = {
-        cancel: jest.fn().mockResolvedValue(undefined),
-        getPermission: jest.fn().mockResolvedValue('granted'),
-        requestPermission: jest.fn().mockResolvedValue('granted'),
-        schedule: jest.fn().mockResolvedValue('unused'),
-        scheduleTest: jest.fn().mockResolvedValue('unused'),
-      };
+      await seedSvc.markSynced('parent-1', 'profile-1');
+      expect(await seedSvc.readSyncMeta('parent-1', 'profile-1')).toMatchObject({ dirty: false });
+
       const recover = async (service: ReminderSettingsService) => {
         const accessors = prefs({
-          hasStoredReminders: (p, c) => service.hasStoredSettings(p, c),
-          readRemindersSyncMeta: (p, c) => service.readSyncMeta(p, c),
-          applyRecoveredReminders: (p, c, v) => service.applyRecoveredPreferences(p, c, v),
-          markRemindersSynced: (p, c) => service.markSynced(p, c),
+          readReminders: jest.fn(async (p: string, c: string) => {
+            const s = await service.get(p, c);
+            return {
+              morning: { enabled: s.morning.enabled, time: s.morning.time as string | null },
+              evening: { enabled: s.evening.enabled, time: s.evening.time as string | null },
+            };
+          }),
+          hasStoredReminders: jest.fn((p: string, c: string) => service.hasStoredSettings(p, c)),
+          applyRecoveredReminders: jest.fn((p: string, c: string, v: Parameters<ReminderSettingsService['applyRecoveredPreferences']>[2]) =>
+            service.applyRecoveredPreferences(p, c, v),
+          ),
+          markRemindersSynced: jest.fn((p: string, c: string) => service.markSynced(p, c)),
         });
         await new ChildPreferencesSyncUseCases(local(), cloudRepo, accessors).recover();
       };
+
       await recover(new ReminderSettingsService(storage, notifications));
       const reopened = new ReminderSettingsService(storage, notifications);
       await reopened.get('parent-1', 'other-profile');
       await recover(reopened);
+
       expect(await reopened.get('parent-1', 'profile-1')).toMatchObject({
         morning: { time: '08:01' },
         evening: { time: '20:31' },
       });
-      await reopened.update('parent-1', 'profile-1', 'morning', { time: '07:05' });
-      expect(await reopened.readSyncMeta('parent-1', 'profile-1')).toMatchObject({ dirty: true });
-      await recover(new ReminderSettingsService(storage, notifications));
-      expect(await reopened.get('parent-1', 'profile-1')).toMatchObject({
-        morning: { time: '07:05' },
-      });
       expect(JSON.stringify(row)).toBe(before);
       expect(cloudRepo.upsert).not.toHaveBeenCalled();
       expect(cloudRepo.patchReminders).not.toHaveBeenCalled();
-    });
-
-    it('preserves a pending local user edit after an earlier successful sync', async () => {
-      const stored = prefs({
-        hasStoredReminders: jest.fn().mockResolvedValue(true),
-        readRemindersSyncMeta: jest.fn().mockResolvedValue({
-          syncedAt: '2026-09-01T00:00:00.000Z',
-          dirty: true,
-        }),
-      });
-      const cloudRepo = cloud([{ ...cloudRow, updatedAt: '2026-09-09T09:00:00.000Z' }]);
-      await new ChildPreferencesSyncUseCases(local(), cloudRepo, stored).recover();
-      expect(stored.applyRecoveredReminders).not.toHaveBeenCalled();
-      expect(stored.markRemindersSynced).not.toHaveBeenCalled();
-      expect(cloudRepo.upsert).not.toHaveBeenCalled();
-      expect(cloudRepo.patchReminders).not.toHaveBeenCalled();
-    });
-
-    it.each([
-      ['2026-09-09T09:48:07+00:00', '2026-09-09T12:48:06+03:00', true],
-      ['2026-09-09T09:48:06.751945+00:00', '2026-09-09T09:48:06.751Z', false],
-      ['invalid', '2026-09-09T09:48:06.751Z', false],
-    ])('compares reminder timestamps as epochs: %s / %s', async (updatedAt, syncedAt, hydrates) => {
-      const stored = prefs({
-        hasStoredReminders: jest.fn().mockResolvedValue(true),
-        readRemindersSyncMeta: jest.fn().mockResolvedValue({ syncedAt, dirty: false }),
-      });
-      await new ChildPreferencesSyncUseCases(
-        local(),
-        cloud([{ ...cloudRow, updatedAt }]),
-        stored,
-      ).recover();
-      expect(stored.applyRecoveredReminders).toHaveBeenCalledTimes(hydrates ? 1 : 0);
     });
 
     it('does not fabricate a local reminder record when the cloud has no reminder value', async () => {
@@ -508,7 +499,7 @@ describe('ChildPreferencesSyncUseCases', () => {
         morningReminder: { enabled: false, time: null },
         eveningReminder: { enabled: false, time: null },
       };
-      const stored = prefs({ hasStoredReminders: jest.fn().mockResolvedValue(false) });
+      const stored = prefs();
       await new ChildPreferencesSyncUseCases(localRepo, cloud([emptyReminderRow]), stored).recover();
       expect(stored.applyRecoveredReminders).not.toHaveBeenCalled();
     });
@@ -522,7 +513,9 @@ describe('ChildPreferencesSyncUseCases', () => {
     );
     expect(localRepo.markCustomizationSynced).toHaveBeenCalledWith('profile-1', roomConfig);
     expect(prefAccessors.markVoiceSynced).toHaveBeenCalledWith('parent-1', 'profile-1', 'samet');
-    expect(prefAccessors.markRemindersSynced).toHaveBeenCalledWith('parent-1', 'profile-1');
+    // The whole-row upsert no longer carries reminder columns, so it no longer
+    // stamps a reminder sync marker (that stale stamp used to block recover()).
+    expect(prefAccessors.markRemindersSynced).not.toHaveBeenCalled();
     expect(prefAccessors.markNicknamePersonalizationSynced).toHaveBeenCalledWith(
       'parent-1',
       'profile-1',
