@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type {
+  ChildReminderPatch,
   CloudChildPreferences,
   CloudChildPreferencesRepository,
   CloudVoiceGuide,
@@ -58,6 +59,12 @@ const mapRow = (row: PreferencesRow): CloudChildPreferences => ({
  * idempotent upsert keyed on `child_id`. RLS scopes every row to the owning
  * parent. Audio assets and notification scheduling are never touched — only the
  * preference values.
+ *
+ * The four `*_reminder_*` columns are intentionally excluded from the whole-row
+ * upsert: the client holds no write grant for them (migration m11), and a
+ * snapshot rebuilt from ambient local state (`defaultReminderSettings`, the
+ * legacy seed, seed-on-read) must never be able to revert a real custom time on
+ * a foreground sync. Genuine reminder edits go through `patchReminders()`.
  */
 export class SupabaseChildPreferencesRepository implements CloudChildPreferencesRepository {
   constructor(private readonly client: SupabaseClient) {}
@@ -71,10 +78,6 @@ export class SupabaseChildPreferencesRepository implements CloudChildPreferences
         selected_effect_id: preferences.selectedEffectId,
         room_configuration: preferences.roomConfiguration ?? null,
         voice_guide: preferences.voiceGuide,
-        morning_reminder_enabled: preferences.morningReminder.enabled,
-        morning_reminder_time: preferences.morningReminder.time,
-        evening_reminder_enabled: preferences.eveningReminder.enabled,
-        evening_reminder_time: preferences.eveningReminder.time,
         dentist_reminder_enabled: preferences.dentistReminderEnabled,
         dentist_last_visit_date: preferences.dentistLastVisitDate,
         dentist_next_appointment_date: preferences.dentistNextAppointmentDate,
@@ -84,6 +87,15 @@ export class SupabaseChildPreferencesRepository implements CloudChildPreferences
       { onConflict: 'child_id' },
     );
     if (error) throw new Error('CLOUD_PREFERENCES_UPSERT_FAILED');
+  }
+
+  async patchReminders(childId: string, patch: ChildReminderPatch): Promise<void> {
+    if (Object.keys(patch).length === 0) return;
+    const { error } = await this.client.rpc('patch_child_reminders', {
+      p_child_id: childId,
+      p_patch: patch,
+    });
+    if (error) throw new Error('CLOUD_REMINDERS_PATCH_FAILED');
   }
 
   async listOwned(): Promise<readonly CloudChildPreferences[]> {

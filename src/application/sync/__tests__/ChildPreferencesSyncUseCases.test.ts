@@ -63,6 +63,7 @@ const cloud = (
   overrides: Partial<jest.Mocked<CloudChildPreferencesRepository>> = {},
 ): jest.Mocked<CloudChildPreferencesRepository> => ({
   upsert: jest.fn().mockResolvedValue(undefined),
+  patchReminders: jest.fn().mockResolvedValue(undefined),
   // Defaults to "no existing cloud row" so a not-fully-resolved local state
   // (the default shape below) still represents the safe, genuinely-new-child
   // case unless a test explicitly overrides it to simulate an EXISTING row.
@@ -150,6 +151,52 @@ describe('ChildPreferencesSyncUseCases', () => {
     expect(cloudRepo.upsert).toHaveBeenCalledTimes(2);
     expect(cloudRepo.upsert.mock.calls[0]?.[0].childId).toBe('remote-a');
     expect(cloudRepo.upsert.mock.calls[1]?.[0].childId).toBe('remote-b');
+  });
+
+  describe('pushReminderEdit — field-scoped reminder write (the only cloud reminder write)', () => {
+    it('sends only the patched reminder key(s) through patchReminders, scoped to the remote child id', async () => {
+      const cloudRepo = cloud();
+      await new ChildPreferencesSyncUseCases(local(), cloudRepo, prefs()).pushReminderEdit(
+        'profile-1',
+        { morning_reminder_enabled: true, morning_reminder_time: '07:00' },
+      );
+      expect(cloudRepo.patchReminders).toHaveBeenCalledWith('child-remote-1', {
+        morning_reminder_enabled: true,
+        morning_reminder_time: '07:00',
+      });
+      // A genuine reminder edit must NEVER go out as a whole-row snapshot.
+      expect(cloudRepo.upsert).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op for an empty patch', async () => {
+      const cloudRepo = cloud();
+      await new ChildPreferencesSyncUseCases(local(), cloudRepo, prefs()).pushReminderEdit(
+        'profile-1',
+        {},
+      );
+      expect(cloudRepo.patchReminders).not.toHaveBeenCalled();
+    });
+
+    it('does not patch until the child profile itself is cloud-synced', async () => {
+      const cloudRepo = cloud();
+      const localRepo = local({ resolveRemoteChildId: jest.fn().mockResolvedValue(null) });
+      await new ChildPreferencesSyncUseCases(localRepo, cloudRepo, prefs()).pushReminderEdit(
+        'profile-1',
+        { evening_reminder_time: '21:30' },
+      );
+      expect(cloudRepo.patchReminders).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('whole-row snapshot push never carries reminder columns', () => {
+    it('pushForProfile does not send reminder values to the cloud (patchReminders only)', async () => {
+      // The Supabase repo drops the reminder columns from the upsert payload
+      // (migration m11 revokes the client grant). Recovery-side reminder
+      // hydration is unchanged and covered by the recover() tests below.
+      const cloudRepo = cloud();
+      await new ChildPreferencesSyncUseCases(local(), cloudRepo, prefs()).pushForProfile('profile-1');
+      expect(cloudRepo.patchReminders).not.toHaveBeenCalled();
+    });
   });
 
   describe('push safety — never overwrite an existing cloud row with unresolved local defaults', () => {

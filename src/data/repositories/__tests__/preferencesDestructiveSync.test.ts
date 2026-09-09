@@ -8,6 +8,7 @@ import {
 import { ProfileSyncUseCases } from '@/application/sync/ProfileSyncUseCases';
 import { migrateDatabase } from '@/data/db';
 import type {
+  ChildReminderPatch,
   CloudChildPreferences,
   CloudChildPreferencesRepository,
   CloudChildProfile,
@@ -67,14 +68,57 @@ async function readDob(database: NodeSQLiteDatabase, profileId: string): Promise
   return row.date_of_birth;
 }
 
+const BLANK_CLOUD_ROW: Omit<CloudChildPreferences, 'childId'> = {
+  selectedBrushId: null,
+  selectedBackgroundId: null,
+  selectedEffectId: null,
+  roomConfiguration: null,
+  voiceGuide: null,
+  morningReminder: { enabled: false, time: null },
+  eveningReminder: { enabled: false, time: null },
+  dentistReminderEnabled: false,
+  dentistLastVisitDate: null,
+  dentistNextAppointmentDate: null,
+  nicknamePersonalizationEnabled: null,
+};
+
 /** In-memory stand-in for the Supabase `child_preferences` table. */
 class FakeCloudPreferences implements CloudChildPreferencesRepository {
   readonly rows = new Map<string, CloudChildPreferences>();
   upsertCalls: CloudChildPreferences[] = [];
+  /** Every field-scoped reminder patch the client sent, in order. */
+  reminderPatchCalls: { childId: string; patch: ChildReminderPatch }[] = [];
 
   async upsert(preferences: CloudChildPreferences): Promise<void> {
     this.upsertCalls.push(preferences);
-    this.rows.set(preferences.childId, { ...preferences, updatedAt: new Date().toISOString() });
+    // Mirror the real repo + migration m11: the whole-row upsert path has NO
+    // write grant for the four reminder columns, so they are never carried by
+    // it. An existing row keeps its reminder values; a brand-new row starts
+    // with them unset (null / false).
+    const existing = this.rows.get(preferences.childId);
+    this.rows.set(preferences.childId, {
+      ...preferences,
+      morningReminder: existing?.morningReminder ?? { enabled: false, time: null },
+      eveningReminder: existing?.eveningReminder ?? { enabled: false, time: null },
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  async patchReminders(childId: string, patch: ChildReminderPatch): Promise<void> {
+    this.reminderPatchCalls.push({ childId, patch });
+    const row = this.rows.get(childId) ?? { childId, ...BLANK_CLOUD_ROW };
+    const morning = { ...row.morningReminder };
+    const evening = { ...row.eveningReminder };
+    if ('morning_reminder_enabled' in patch) morning.enabled = patch.morning_reminder_enabled!;
+    if ('morning_reminder_time' in patch) morning.time = patch.morning_reminder_time ?? null;
+    if ('evening_reminder_enabled' in patch) evening.enabled = patch.evening_reminder_enabled!;
+    if ('evening_reminder_time' in patch) evening.time = patch.evening_reminder_time ?? null;
+    this.rows.set(childId, {
+      ...row,
+      morningReminder: morning,
+      eveningReminder: evening,
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   async get(childId: string): Promise<CloudChildPreferences | null> {
@@ -315,7 +359,12 @@ async function seedCloudPreferences(
   childId: string,
   values: Partial<CloudChildPreferences>,
 ): Promise<void> {
-  await cloud.upsert({
+  // Written straight onto the row: this fixture represents cloud state a
+  // device accumulated across earlier sessions — customization/voice/dentist
+  // via the whole-row upsert AND reminder columns via prior real
+  // `patch_child_reminders` edits. The real `upsert()` has no reminder write
+  // grant, so seeding reminders through it would silently drop them.
+  cloud.rows.set(childId, {
     childId,
     selectedBrushId: 'classic-brush',
     selectedBackgroundId: 'pastel-playroom',
@@ -328,9 +377,11 @@ async function seedCloudPreferences(
     dentistLastVisitDate: null,
     dentistNextAppointmentDate: null,
     nicknamePersonalizationEnabled: null,
+    updatedAt: new Date().toISOString(),
     ...values,
   });
   cloud.upsertCalls = []; // seeding is not part of what a test measures
+  cloud.reminderPatchCalls = [];
 }
 
 beforeEach(async () => {
@@ -406,7 +457,7 @@ describe('root cause: bulk preferences push cannot destroy an unresolved sibling
     db.close();
   });
 
-  it('still allows the push for a genuinely brand-new child with no existing cloud row', async () => {
+  it('still allows the whole-row push for a genuinely brand-new child, and reminders land via the field-scoped patch (onboarding path)', async () => {
     const db = new NodeSQLiteDatabase();
     await migrateDatabase(asDb(db));
     await seedChild(db, 'child-new');
@@ -421,10 +472,25 @@ describe('root cause: bulk preferences push cannot destroy an unresolved sibling
     });
     const { useCases } = makeHarness(db, cloud, accessors);
 
+    // Whole-row push establishes the row (customization/voice/dentist) but
+    // NEVER carries reminder columns — the client has no write grant for them.
     await useCases.pushForAllSyncedChildren();
-
     const pushed = await cloud.get('child-new');
-    expect(pushed?.morningReminder).toEqual({ enabled: true, time: '08:15' });
+    expect(pushed).not.toBeNull();
+    expect(pushed?.morningReminder).toEqual({ enabled: false, time: null });
+    expect(cloud.reminderPatchCalls).toHaveLength(0);
+
+    // Onboarding's own explicit reminder patch (services.ts `syncChildReminders`
+    // -> `pushReminderEdit`) is what lands the chosen times.
+    await useCases.pushReminderEdit('child-new', {
+      morning_reminder_enabled: true,
+      morning_reminder_time: '08:15',
+      evening_reminder_enabled: false,
+      evening_reminder_time: '20:30',
+    });
+    const afterPatch = await cloud.get('child-new');
+    expect(afterPatch?.morningReminder).toEqual({ enabled: true, time: '08:15' });
+    expect(afterPatch?.eveningReminder).toEqual({ enabled: false, time: '20:30' });
     db.close();
   });
 });
@@ -788,5 +854,129 @@ describe('reminder persistence survives 100 repeated bootstrap cycles', () => {
       expect(cloudRow?.eveningReminder).toEqual({ enabled: true, time: '21:17' });
     }
     db.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The reported bug, end to end: Device A changes a reminder time; Device B —
+// which never held that custom time — must NEVER push it back to the default
+// on any number of foreground sync cycles.
+// ---------------------------------------------------------------------------
+describe('cross-device: a stale device never reverts another device’s reminder edit', () => {
+  /** One physical device: its own SQLite db + its own per-parent reminder store. */
+  async function makeDevice(cloud: FakeCloudPreferences): Promise<Harness> {
+    const db = new NodeSQLiteDatabase();
+    await migrateDatabase(asDb(db));
+    await seedChild(db, 'child-1');
+    return makeHarness(db, cloud, new FakePreferenceAccessors(db));
+  }
+
+  it('Device B holding the 08:00 / 20:30 default does not clobber Device A’s 07:15 across 50 foreground cycles', async () => {
+    const cloud = new FakeCloudPreferences();
+    // The child's cloud row already exists (created at onboarding, reminders
+    // still unset — the common shape).
+    cloud.rows.set('child-1', {
+      childId: 'child-1',
+      selectedBrushId: 'classic-brush',
+      selectedBackgroundId: 'pastel-playroom',
+      selectedEffectId: null,
+      roomConfiguration: roomConfigOf('pastel-playroom'),
+      voiceGuide: 'gokce',
+      morningReminder: { enabled: false, time: null },
+      eveningReminder: { enabled: false, time: null },
+      dentistReminderEnabled: true,
+      dentistLastVisitDate: null,
+      dentistNextAppointmentDate: null,
+      nicknamePersonalizationEnabled: null,
+      updatedAt: new Date().toISOString(),
+    });
+
+    const deviceA = await makeDevice(cloud);
+    const deviceB = await makeDevice(cloud);
+
+    // Device B has a stale per-child reminder record: the pre-per-child legacy
+    // seed / recovery placeholder — exactly the 08:00 / 20:30 default that used
+    // to get pushed back over a real edit.
+    deviceB.accessors.seedReminders('parent-1', 'child-1', {
+      morning: { enabled: false, time: '08:00' },
+      evening: { enabled: false, time: '20:30' },
+    });
+
+    // Device A: the parent opens the reminder screen and sets morning 07:15.
+    // (ReminderSettingsService.update writes the local record; the screen then
+    // calls syncChildReminders -> pushReminderEdit with the exact chosen value.)
+    deviceA.accessors.seedReminders('parent-1', 'child-1', {
+      morning: { enabled: true, time: '07:15' },
+      evening: { enabled: false, time: '20:30' },
+    });
+    await deviceA.useCases.pushReminderEdit('child-1', {
+      morning_reminder_enabled: true,
+      morning_reminder_time: '07:15',
+    });
+
+    expect((await cloud.get('child-1'))?.morningReminder).toEqual({ enabled: true, time: '07:15' });
+    cloud.reminderPatchCalls = []; // only Device B's activity matters from here
+
+    // Device B foregrounds 50 times: each cycle recovers, then runs the exact
+    // push retryPendingCloudSync makes. It must never touch the reminder cols.
+    for (let cycle = 0; cycle < 50; cycle += 1) {
+      const b = makeHarness(deviceB.db, cloud, deviceB.accessors);
+      await b.useCases.recover();
+      await b.useCases.pushForAllSyncedChildren();
+
+      const cloudRow = await cloud.get('child-1');
+      expect(cloudRow?.morningReminder).toEqual({ enabled: true, time: '07:15' });
+    }
+
+    // The whole-row push from B never carried a reminder value.
+    expect(cloud.reminderPatchCalls).toHaveLength(0);
+    // Device A's own local record is untouched.
+    expect(await deviceA.accessors.readReminders('parent-1', 'child-1')).toEqual({
+      morning: { enabled: true, time: '07:15' },
+      evening: { enabled: false, time: '20:30' },
+    });
+
+    deviceA.db.close();
+    deviceB.db.close();
+  });
+
+  it('a fresh Device B (no local reminder record) hydrates 07:15 from the cloud and still never pushes a default back', async () => {
+    const cloud = new FakeCloudPreferences();
+    const deviceA = await makeDevice(cloud);
+    const deviceB = await makeDevice(cloud);
+
+    // Device A establishes the row + sets both reminder slots explicitly.
+    await deviceA.useCases.pushForAllSyncedChildren(); // creates the row (no reminder cols)
+    deviceA.accessors.seedReminders('parent-1', 'child-1', {
+      morning: { enabled: true, time: '07:15' },
+      evening: { enabled: true, time: '21:40' },
+    });
+    await deviceA.useCases.pushReminderEdit('child-1', {
+      morning_reminder_enabled: true,
+      morning_reminder_time: '07:15',
+      evening_reminder_enabled: true,
+      evening_reminder_time: '21:40',
+    });
+    cloud.reminderPatchCalls = []; // only Device B's activity matters from here
+
+    for (let cycle = 0; cycle < 20; cycle += 1) {
+      const b = makeHarness(deviceB.db, cloud, deviceB.accessors);
+      await b.useCases.recover();
+      await b.useCases.pushForAllSyncedChildren();
+    }
+
+    // B hydrated the real times locally...
+    expect(await deviceB.accessors.readReminders('parent-1', 'child-1')).toEqual({
+      morning: { enabled: true, time: '07:15' },
+      evening: { enabled: true, time: '21:40' },
+    });
+    // ...and the cloud is still exactly A's edit.
+    const cloudRow = await cloud.get('child-1');
+    expect(cloudRow?.morningReminder).toEqual({ enabled: true, time: '07:15' });
+    expect(cloudRow?.eveningReminder).toEqual({ enabled: true, time: '21:40' });
+    expect(cloud.reminderPatchCalls).toHaveLength(0); // B never patched
+
+    deviceA.db.close();
+    deviceB.db.close();
   });
 });

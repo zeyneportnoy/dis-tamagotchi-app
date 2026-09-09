@@ -15,6 +15,7 @@ export {
   getChildPreferencesSyncUseCases,
   syncChildPreferences,
   syncAllChildPreferences,
+  syncChildReminders,
   recoverChildPreferences,
   ensureChildPreferencesRecovered,
   resetSessionSyncState,

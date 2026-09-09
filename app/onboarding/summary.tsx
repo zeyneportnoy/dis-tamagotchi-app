@@ -5,7 +5,12 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { getFamilyUseCases } from '@/application/family';
-import { getProfileSyncUseCases, syncAllChildPreferences } from '@/application/sync';
+import {
+  getProfileSyncUseCases,
+  syncAllChildPreferences,
+  syncChildReminders,
+} from '@/application/sync';
+import type { ChildReminderPatch } from '@/domain/sync';
 import { Button, Screen, SelectionCard, Text, colors, radii, spacing } from '@/design-system';
 import {
   brushingVoiceCues,
@@ -55,6 +60,10 @@ export default function SummaryScreen() {
         avatarId: draft.avatarId,
       });
       await setBrushingVoiceProfile(parentUserId, profile.id, selectedVoiceProfile);
+      // Captured before `draft.reset()` below; pushed as a field-scoped cloud
+      // reminder patch once the profile is cloud-synced. Only the values the
+      // parent actually chose during onboarding — never a default.
+      let reminderPatch: ChildReminderPatch | null = null;
       if (draft.remindersEnabled) {
         for (const slot of ['morning', 'evening'] as const) {
           await reminderSettingsService
@@ -64,6 +73,12 @@ export default function SummaryScreen() {
             })
             .catch(() => undefined);
         }
+        reminderPatch = {
+          morning_reminder_enabled: true,
+          morning_reminder_time: draft.morningReminderTime,
+          evening_reminder_enabled: true,
+          evening_reminder_time: draft.eveningReminderTime,
+        };
       }
       // Fold this child's brushing reminders into the device's grouped schedule
       // alongside any siblings that already have reminders at the same time.
@@ -96,6 +111,7 @@ export default function SummaryScreen() {
           return undefined;
         })
         .then(() => syncAllChildPreferences())
+        .then(() => (reminderPatch ? syncChildReminders(profile.id, reminderPatch) : undefined))
         .catch(() => {
           // Local profile creation is the offline-first success boundary. Sync retries later.
         });

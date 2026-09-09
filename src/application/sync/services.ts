@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getParentAuthUseCases } from '@/application/auth';
 import { getSupabaseClient } from '@/data/auth';
 import { getDatabase } from '@/data/db';
-import type { AuthoritativeProgress } from '@/domain/sync';
+import type { AuthoritativeProgress, ChildReminderPatch } from '@/domain/sync';
 import {
   SQLiteChildCloudSyncRepository,
   SQLiteChildPreferenceSyncRepository,
@@ -391,7 +391,13 @@ export async function syncChildPreferences(profileId: string): Promise<void> {
 
 /**
  * Fire-and-forget push for every synced child. Used when a per-parent preference
- * (voice guide, reminder settings) changes, since those apply to all children.
+ * (voice guide) changes, since it applies to all children.
+ *
+ * NOTE: this no longer carries reminder times. The whole-row snapshot it pushes
+ * excludes the four reminder columns (no client write grant — migration m11), so
+ * a foreground `retryPendingCloudSync()` can never rebuild an ambient
+ * `defaultReminderSettings` (08:00 / 20:30) over a real custom time. Genuine
+ * reminder edits go through `syncChildReminders()` below.
  */
 export async function syncAllChildPreferences(): Promise<void> {
   try {
@@ -400,6 +406,26 @@ export async function syncAllChildPreferences(): Promise<void> {
     await sync?.pushForAllSyncedChildren();
   } catch {
     // Swallowed: local preference already saved.
+  }
+}
+
+/**
+ * Fire-and-forget field-scoped push of ONE genuine parent reminder edit for one
+ * child. Called only from the reminder settings screen and onboarding finish —
+ * after the local `ReminderSettingsService` write that is the source of truth —
+ * never from recovery / bootstrap / foreground. `patch` holds only the reminder
+ * key(s) that actually changed, with the exact chosen value.
+ */
+export async function syncChildReminders(
+  childProfileId: string,
+  patch: ChildReminderPatch,
+): Promise<void> {
+  try {
+    const sync = await getChildPreferencesSyncUseCases();
+    await sync?.pushReminderEdit(childProfileId, patch);
+  } catch {
+    // Swallowed: the local reminder record is already saved and authoritative;
+    // the cloud patch retries on the next reminder edit.
   }
 }
 

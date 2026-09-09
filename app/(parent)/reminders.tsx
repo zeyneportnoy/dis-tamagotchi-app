@@ -15,7 +15,7 @@ import {
   typography,
 } from '@/design-system';
 import { getFamilyUseCases } from '@/application/family';
-import { syncAllChildPreferences } from '@/application/sync';
+import { syncChildReminders } from '@/application/sync';
 import { useAuth } from '@/features/auth';
 import {
   defaultReminderSettings,
@@ -78,7 +78,18 @@ export default function BrushingRemindersScreen() {
         change,
       );
       setSettings(result.settings);
-      void syncAllChildPreferences();
+      // Field-scoped cloud write of THIS reminder edit only — the exact enabled
+      // + time the parent just chose for this slot. Skipped when the OS denied
+      // permission (nothing was persisted locally in that case).
+      if (!result.permissionDenied) {
+        const saved = result.settings[slot];
+        void syncChildReminders(
+          childProfileId,
+          slot === 'morning'
+            ? { morning_reminder_enabled: saved.enabled, morning_reminder_time: saved.time }
+            : { evening_reminder_enabled: saved.enabled, evening_reminder_time: saved.time },
+        );
+      }
       // Rebuild the device's grouped brushing schedule: children sharing a time
       // collapse into one notification, others stay separate — each child's
       // stored settings above are untouched.

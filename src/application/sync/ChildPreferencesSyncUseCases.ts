@@ -1,4 +1,5 @@
 import type {
+  ChildReminderPatch,
   CloudChildPreferences,
   CloudChildPreferencesRepository,
   CloudReminderPreference,
@@ -179,6 +180,22 @@ export class ChildPreferencesSyncUseCases {
       if (!childId) continue;
       await this.pushSnapshot(profileId, childId);
     }
+  }
+
+  /**
+   * Field-scoped push of ONE genuine parent reminder edit. `patch` carries only
+   * the reminder key(s) the parent actually changed, each with the exact value
+   * they chose — never a `defaultReminderSettings` fallback or any other ambient
+   * local state. This is the only path that writes a cloud reminder value; the
+   * whole-row snapshot push above never does. A child whose profile is not
+   * cloud-synced yet is a no-op — the local reminder record is already the
+   * source of truth and the edit re-flushes on the next call.
+   */
+  async pushReminderEdit(profileId: string, patch: ChildReminderPatch): Promise<void> {
+    if (Object.keys(patch).length === 0) return;
+    const childId = await this.local.resolveRemoteChildId(profileId);
+    if (!childId) return;
+    await this.cloud.patchReminders(childId, patch);
   }
 
   /**

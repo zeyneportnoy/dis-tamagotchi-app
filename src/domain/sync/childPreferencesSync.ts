@@ -16,6 +16,23 @@ export type CloudReminderPreference = Readonly<{
   time: string | null;
 }>;
 
+/**
+ * Field-scoped patch for a child's four brushing-reminder columns — the ONLY
+ * shape the client may use to change a cloud reminder value (via
+ * `patch_child_reminders`). A key that is ABSENT is left untouched; a key set
+ * to `null` clears that column. Carries the exact value the parent chose at
+ * edit time — it is never derived from `defaultReminderSettings` or any other
+ * ambient local state. Keys are the raw `child_preferences` column names.
+ */
+export type ChildReminderPatch = Readonly<
+  Partial<{
+    morning_reminder_enabled: boolean;
+    morning_reminder_time: string | null;
+    evening_reminder_enabled: boolean;
+    evening_reminder_time: string | null;
+  }>
+>;
+
 export type CloudChildPreferences = Readonly<{
   /** public.child_profiles.id of the owned child. */
   childId: string;
@@ -25,6 +42,15 @@ export type CloudChildPreferences = Readonly<{
   /** Opaque JSON mirror of the local CustomizationState (placements + room materials). */
   roomConfiguration: unknown;
   voiceGuide: CloudVoiceGuide | null;
+  /**
+   * Reminder preferences are READ-ONLY on this snapshot type: `recover()` still
+   * hydrates them from the cloud, but the whole-row `upsert()` below never
+   * writes them back (the client has no write grant for the reminder columns —
+   * see migration m11). The only cloud reminder write is `patchReminders()`,
+   * fed by a genuine parent edit. This prevents an ambient
+   * `defaultReminderSettings` (08:00 / 20:30) rebuild from clobbering a real
+   * custom time on a foreground sync.
+   */
   morningReminder: CloudReminderPreference;
   eveningReminder: CloudReminderPreference;
   dentistReminderEnabled: boolean;
@@ -46,7 +72,20 @@ export type CustomizationSyncMeta = Readonly<{
 }>;
 
 export interface CloudChildPreferencesRepository {
+  /**
+   * Whole-row upsert of a child's customization + voice + dentist + nickname
+   * columns. The four `*_reminder_*` columns are deliberately NOT written here
+   * (no client grant; see migration m11) even though they are present on the
+   * `CloudChildPreferences` argument — pass them for recovery/typing only.
+   */
   upsert(preferences: CloudChildPreferences): Promise<void>;
+  /**
+   * Field-scoped write of a genuine parent reminder edit, via
+   * `patch_child_reminders`. Updates only the keys present in `patch`; every
+   * other column and every other child row is untouched. Creates the child's
+   * preference row first if it does not exist yet.
+   */
+  patchReminders(childId: string, patch: ChildReminderPatch): Promise<void>;
   /** Current cloud row for one child, or null when none exists yet. */
   get(childId: string): Promise<CloudChildPreferences | null>;
   listOwned(): Promise<readonly CloudChildPreferences[]>;
