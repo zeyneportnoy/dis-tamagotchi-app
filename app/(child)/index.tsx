@@ -8,6 +8,7 @@ import { getChildExperienceUseCases, subscribeToChildProgressChanges } from '@/a
 import { getFamilyUseCases, type ChildProfileViewModel } from '@/application/family';
 import { syncChildPreferences } from '@/application/sync';
 import { perfMark, perfStep } from '@/config/perf';
+import { trace, traceErr } from '@/debug/traceSink'; // [DIAG]
 import {
   Button,
   ErrorState,
@@ -72,23 +73,35 @@ type HomeData = Readonly<{
 }>;
 
 async function readHomeData(): Promise<HomeData | 'onboarding' | 'age-band-update'> {
-  const familyUseCases = await getFamilyUseCases();
-  const [active, profiles] = await Promise.all([
-    familyUseCases.getActiveProfile(),
-    familyUseCases.listProfiles(),
-  ]);
-  if (!active) return 'onboarding';
-  if (!active.dateOfBirth || isLegacyAgeBand(active.ageBand)) return 'age-band-update';
-  const childUseCases = await getChildExperienceUseCases();
-  const [progress, inventory, customization] = await Promise.all([
-    childUseCases.getProgress(active.id),
-    childUseCases.listInventory(active.id),
-    loadCustomizationState(active.id),
-  ]);
-  const equipped = presentCustomizationInventory(inventory, customization, __DEV__).filter(
-    (item) => item.equipped,
-  );
-  return { active, customization, equipped, profiles, progress };
+  trace('readHomeData/start'); // [DIAG]
+  try {
+    const familyUseCases = await getFamilyUseCases();
+    const [active, profiles] = await Promise.all([
+      familyUseCases.getActiveProfile(),
+      familyUseCases.listProfiles(),
+    ]);
+    trace('readHomeData/family-ok', { activeId: active?.id ?? null, profiles: profiles.length }); // [DIAG]
+    if (!active) return 'onboarding';
+    if (!active.dateOfBirth || isLegacyAgeBand(active.ageBand)) return 'age-band-update';
+    const childUseCases = await getChildExperienceUseCases();
+    trace('readHomeData/usecases-ok'); // [DIAG]
+    const progress = await childUseCases.getProgress(active.id);
+    trace('readHomeData/getProgress-ok', { totalXp: progress.totalXp }); // [DIAG]
+    const inventory = await childUseCases.listInventory(active.id);
+    trace('readHomeData/listInventory-ok', { count: inventory.length }); // [DIAG]
+    const customization = await loadCustomizationState(active.id);
+    trace('readHomeData/loadCustomization-ok'); // [DIAG]
+    const equipped = presentCustomizationInventory(inventory, customization, __DEV__).filter(
+      (item) => item.equipped,
+    );
+    trace('readHomeData/done', {
+      equipped: equipped.map((i) => ({ slot: i.slot, key: i.key })),
+    }); // [DIAG]
+    return { active, customization, equipped, profiles, progress };
+  } catch (err) {
+    traceErr('readHomeData/THROW', err); // [DIAG]
+    throw err;
+  }
 }
 
 function TaskCard({
@@ -209,8 +222,15 @@ export default function ChildHomeScreen() {
     };
   }, [active?.id]);
 
-  if (failed) return <ErrorState />;
-  if (!active || !progress) return <LoadingState />;
+  if (failed) {
+    trace('childHome/render=ErrorState'); // [DIAG]
+    return <ErrorState />;
+  }
+  if (!active || !progress) {
+    trace('childHome/render=LoadingState', { hasActive: !!active, hasProgress: !!progress }); // [DIAG]
+    return <LoadingState />;
+  }
+  trace('childHome/render=full', { activeId: active.id, totalXp: progress.totalXp }); // [DIAG]
   const growth = growthProgressForXp(progress.totalXp);
   const growthStage = growth.currentStage;
   // Slot cards only accept taps inside their real reward window
@@ -225,14 +245,16 @@ export default function ChildHomeScreen() {
       ? equippedBackground
       : undefined;
   const roomEffect = equipped.find((item) => item.slot === 'effect');
-  // The scene always shows a real effect. A re-locked pick, or the visual-less
-  // legacy `bubble-glow` seed, or nothing equipped, all resolve to the
-  // always-open default (`rainbow-light`) — never "no effect".
+  // Nothing equipped (a new profile before its first effect pick) or a
+  // re-locked pick → `null`: no effect rendered. A present-but-invalid record
+  // (the visual-less legacy `bubble-glow` seed) → the always-open default
+  // (`rainbow-light`). See `sceneEffectKeyForDisplay`.
   const roomEffectKey = sceneEffectKeyForDisplay(
     roomEffect && isEffectUnlockedForScore(roomEffect.key, progress.totalXp)
       ? roomEffect.key
       : undefined,
   );
+  trace('childHome/roomEffectKey', { roomEffectRaw: roomEffect?.key ?? null, roomEffectKey }); // [DIAG]
   const selectedRoomMaterials = roomMaterialsForTheme(roomBackground?.key).filter((item) =>
     customization.selectedRoomMaterials.includes(item.key),
   );

@@ -16,6 +16,8 @@ import type {
 } from '@/domain/rewards';
 import { effectiveBackgroundKey, effectiveBrushKey, effectiveEffectKey } from '@/domain/rewards';
 
+import { trace, traceErr } from '@/debug/traceSink'; // [DIAG]
+
 import { notifyChildProgressChanged } from './progressEvents';
 
 export class ChildExperienceUseCases {
@@ -26,11 +28,20 @@ export class ChildExperienceUseCases {
   ) {}
 
   async getProgress(profileId: string): Promise<ProfileProgress> {
-    const evaluations = await this.sessions.reconcileMissedSlots(profileId);
-    const progress = await this.progress.get(profileId);
-    await this.ensureEquippedItemsAreStillUnlocked(profileId, progress.totalXp);
-    if (evaluations.length > 0) notifyChildProgressChanged(progress);
-    return progress;
+    trace('getProgress/start', { profileId }); // [DIAG]
+    try {
+      const evaluations = await this.sessions.reconcileMissedSlots(profileId);
+      trace('getProgress/reconcile-ok', { evaluations: evaluations.length }); // [DIAG]
+      const progress = await this.progress.get(profileId);
+      trace('getProgress/progress-ok', { totalXp: progress.totalXp }); // [DIAG]
+      await this.ensureEquippedItemsAreStillUnlocked(profileId, progress.totalXp);
+      trace('getProgress/ensureEquipped-ok'); // [DIAG]
+      if (evaluations.length > 0) notifyChildProgressChanged(progress);
+      return progress;
+    } catch (err) {
+      traceErr('getProgress/THROW', err); // [DIAG]
+      throw err;
+    }
   }
 
   private async ensureEquippedItemsAreStillUnlocked(
@@ -54,11 +65,16 @@ export class ChildExperienceUseCases {
       [selectedEffect, effectiveEffectKey(selectedEffect, currentMineScore)],
     ] as const;
 
+    trace('ensureEquipped/fallbacks', {
+      fallbacks: fallbacks.map(([s, e]) => ({ selected: s ?? null, effective: e })),
+    }); // [DIAG]
     for (const [selectedKey, effectiveKey] of fallbacks) {
       if (selectedKey && selectedKey !== effectiveKey) {
+        trace('ensureEquipped/reequip', { from: selectedKey, to: effectiveKey }); // [DIAG]
         try {
           await this.equipItem(profileId, effectiveKey as RewardItemKey);
-        } catch {
+        } catch (err) {
+          traceErr('ensureEquipped/reequip-FAILED', err); // [DIAG]
           // Consuming screens also enforce the same effective-key guard. A
           // later progress read retries this durable preference fallback.
         }

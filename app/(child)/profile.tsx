@@ -47,7 +47,7 @@ type ProfileData = Readonly<{
   growthStage: CharacterGrowthStage;
   roomBackground: InventoryItem | undefined;
   displayBackgroundKey: RewardItemKey;
-  roomEffectKey: CharacterSceneEffectKey;
+  roomEffectKey: CharacterSceneEffectKey | null;
   equippedItems: readonly InventoryItem[];
   selectedRoomMaterials: readonly RoomMaterial[];
   customization: CustomizationState;
@@ -91,9 +91,10 @@ async function readProfileData(): Promise<ProfileData | null> {
   // display computation: writes nothing.
   const displayBackgroundKey = resolveDisplayBackgroundKey(equippedBackground?.key);
   const equippedEffect = equippedItems.find((item) => item.slot === 'effect');
-  // The scene always shows a real effect. A re-locked pick, or the visual-less
-  // legacy `bubble-glow` seed, or nothing equipped, all resolve to the
-  // always-open default (`rainbow-light`) — never "no effect".
+  // Nothing equipped (a new profile before its first effect pick) or a
+  // re-locked pick → `null`: no effect rendered. A present-but-invalid record
+  // (the visual-less legacy `bubble-glow` seed) → the always-open default
+  // (`rainbow-light`). See `sceneEffectKeyForDisplay`.
   const roomEffectKey = sceneEffectKeyForDisplay(
     equippedEffect && isEffectUnlockedForScore(equippedEffect.key, totalXp)
       ? equippedEffect.key

@@ -390,8 +390,9 @@ export default function CollectionScreen() {
   const resolvedBrushKey = isBrushRewardKey(candidateBrushKey) ? candidateBrushKey : DEFAULT_BRUSH_KEY;
   const isBrushFallbackActive = resolvedBrushKey !== selectedBrush?.key;
   const selectedEffect = items.find((item) => item.equipped && item.slot === 'effect');
-  // Whatever is equipped in the DB (incl. the visual-less legacy `bubble-glow`
-  // seed, or nothing), the preview always renders a real scene effect.
+  // Nothing equipped → `null`: the preview shows no effect until the child picks
+  // one. A present-but-invalid record (the legacy `bubble-glow` seed) → the
+  // always-open default (`rainbow-light`). See `sceneEffectKeyForDisplay`.
   const selectedSceneEffectKey = sceneEffectKeyForDisplay(selectedEffect?.key);
   const roomMaterials = roomMaterialsForTheme(selectedBackground?.key);
   const selectedRoomMaterials = roomMaterials.filter(

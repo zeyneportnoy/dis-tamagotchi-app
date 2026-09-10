@@ -139,9 +139,11 @@ export class SQLiteChildProfileRepository implements ChildProfileRepository {
         profile.id,
         profile.createdAt,
       );
+      // Brush + Background start auto-equipped with their always-open default;
+      // the Effect slot deliberately starts EMPTY — the child picks an effect
+      // (Gökkuşağı Parıltısı is open from 0 Mine Puan) in Collection themselves.
       for (const [key, slot] of [
         ['pastel-playroom', 'background'],
-        ['bubble-glow', 'effect'],
         ['classic-brush', 'brush'],
       ] as const) {
         await this.database.runAsync(

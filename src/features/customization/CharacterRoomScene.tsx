@@ -27,8 +27,11 @@ type Props = Readonly<{
   backgroundKey?: RewardItemKey;
   characterKey: StarterAvatarKey;
   editable?: boolean;
-  /** Always a real scene effect — resolve with `sceneEffectKeyForDisplay` upstream. */
-  effectKey: CharacterSceneEffectKey;
+  /**
+   * A resolved scene effect, or `null` for "no effect" (nothing rendered).
+   * Resolve with `sceneEffectKeyForDisplay` upstream.
+   */
+  effectKey: CharacterSceneEffectKey | null;
   growthStage: CharacterGrowthStage;
   mood: CharacterMood;
   onPlacementChange?: (itemKey: RoomMaterialKey, placement: ItemPlacement) => void;

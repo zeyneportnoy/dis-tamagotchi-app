@@ -33,21 +33,30 @@ export const DEFAULT_SCENE_EFFECT_KEY: CharacterSceneEffectKey = DEFAULT_EFFECT_
 
 /**
  * The scene effect a screen should actually RENDER for a child's equipped-effect
- * key. Any key that is missing, or is not one of the six real scene effects —
- * e.g. the legacy always-on `bubble-glow` inventory seed, which has no visual —
- * resolves to `DEFAULT_SCENE_EFFECT_KEY` so the scene NEVER renders with no
- * effect at all. Whatever is stored in the DB is left untouched; this is a pure
- * display resolution, mirroring `displayBackgroundKey` for backgrounds.
+ * key. Two cases are deliberately kept apart:
+ *
+ * - Nothing equipped (`null` / `undefined`) → `null`: render NO effect. A child
+ *   with no effect selected sees a clean scene until they pick one in
+ *   Collection (Gökkuşağı Parıltısı is always open at 0 Mine Puan).
+ * - A key that IS set but is not one of the six real scene effects — e.g. the
+ *   legacy visual-less `bubble-glow` inventory seed, or any stale id — →
+ *   `DEFAULT_SCENE_EFFECT_KEY`, so an existing invalid record still shows
+ *   something instead of a broken/empty effect.
+ *
+ * Whatever is stored in the DB is left untouched; this is a pure display
+ * resolution.
  */
 export function sceneEffectKeyForDisplay(
   equippedKey: RewardItemKey | null | undefined,
-): CharacterSceneEffectKey {
+): CharacterSceneEffectKey | null {
+  if (equippedKey == null) return null;
   return isCharacterSceneEffectKey(equippedKey) ? equippedKey : DEFAULT_SCENE_EFFECT_KEY;
 }
 
 type Props = Readonly<{
   animated?: boolean;
-  effectKey: CharacterSceneEffectKey;
+  /** A real scene effect to render, or `null` for "no effect" (renders nothing). */
+  effectKey: CharacterSceneEffectKey | null;
   testID?: string;
 }>;
 
@@ -154,7 +163,7 @@ export function CharacterSceneEffect({ animated = true, effectKey, testID }: Pro
 
   useEffect(() => {
     phase.stopAnimation();
-    if (!animated) {
+    if (!animated || effectKey === null) {
       phase.setValue(0.5);
       return;
     }
@@ -165,6 +174,9 @@ export function CharacterSceneEffect({ animated = true, effectKey, testID }: Pro
     loop.start();
     return () => loop.stop();
   }, [animated, effectKey, phase]);
+
+  // No effect equipped: render nothing at all.
+  if (effectKey === null) return null;
 
   return (
     <View pointerEvents="none" style={styles.effectLayer} testID={testID}>

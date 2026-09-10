@@ -636,9 +636,11 @@ export class SQLiteBrushingSessionRepository
           input.profileId,
           finishedAtIso,
         );
+        // Self-heal the always-open Brush + Background defaults only. The Effect
+        // slot is deliberately left EMPTY until the child picks an effect in
+        // Collection (mirrors SQLiteChildProfileRepository.create).
         for (const [key, slot] of [
           ['pastel-playroom', 'background'],
-          ['bubble-glow', 'effect'],
           ['classic-brush', 'brush'],
         ] as const) {
           await this.database.runAsync(

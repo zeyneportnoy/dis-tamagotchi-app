@@ -12,26 +12,26 @@ import {
   sceneEffectKeyForDisplay,
 } from '../CharacterSceneEffect';
 
-describe('sceneEffectKeyForDisplay — the scene never renders with no effect', () => {
+describe('sceneEffectKeyForDisplay — separates "no effect" from "invalid record"', () => {
   it('keeps a real, recognised scene-effect key as-is', () => {
     for (const key of characterSceneEffectKeys) {
       expect(sceneEffectKeyForDisplay(key)).toBe(key);
     }
   });
 
+  it('returns null when nothing is equipped (null / undefined) — render no effect', () => {
+    expect(sceneEffectKeyForDisplay(null)).toBeNull();
+    expect(sceneEffectKeyForDisplay(undefined)).toBeNull();
+  });
+
   it('falls back to the always-open default for the visual-less legacy bubble-glow seed', () => {
-    // `bubble-glow` is a real inventory row (seeded at profile creation) but has
-    // no visual and is not in `rewardCatalog`; the scene must still show something.
+    // `bubble-glow` is a real (legacy) inventory row but has no visual and is
+    // not in `rewardCatalog`; an existing record must still show something.
     expect(sceneEffectKeyForDisplay('bubble-glow' as never)).toBe('rainbow-light');
     expect(DEFAULT_SCENE_EFFECT_KEY).toBe('rainbow-light');
   });
 
-  it('falls back to the default when nothing is equipped (null / undefined)', () => {
-    expect(sceneEffectKeyForDisplay(null)).toBe(DEFAULT_SCENE_EFFECT_KEY);
-    expect(sceneEffectKeyForDisplay(undefined)).toBe(DEFAULT_SCENE_EFFECT_KEY);
-  });
-
-  it('falls back to the default for any other unrecognised key', () => {
+  it('falls back to the default for any other unrecognised (but present) key', () => {
     expect(sceneEffectKeyForDisplay('heart-flight' as never)).toBe(DEFAULT_SCENE_EFFECT_KEY);
     expect(sceneEffectKeyForDisplay('star-brush' as never)).toBe(DEFAULT_SCENE_EFFECT_KEY);
   });
@@ -85,6 +85,16 @@ describe('CharacterSceneEffect', () => {
       });
     },
   );
+
+  it('renders nothing at all when effectKey is null', async () => {
+    const view = await render(
+      <View style={{ height: 354, width: 320 }}>
+        <CharacterSceneEffect animated={false} effectKey={null} testID="scene-effect" />
+      </View>,
+    );
+
+    expect(view.queryByTestId('scene-effect')).toBeNull();
+  });
 
   it('renders a dedicated card preview for every scene effect', async () => {
     const view = await render(

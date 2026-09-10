@@ -732,7 +732,7 @@ describe('SQLiteBrushingSessionRepository', () => {
       first.getFirstAsync<{ count: number }>(
         `SELECT count(*) AS count FROM inventory_items WHERE child_profile_id = 'profile-a'`,
       ),
-    ).resolves.toEqual({ count: 5 });
+    ).resolves.toEqual({ count: 4 });
     const blockedReward = new SQLiteBrushingSessionRepository(
       first as unknown as SQLiteDatabase,
       undefined,
@@ -778,10 +778,15 @@ describe('SQLiteBrushingSessionRepository', () => {
       expect.arrayContaining([
         expect.objectContaining({ key: 'cozy-scarf', slot: 'decor' }),
         expect.objectContaining({ key: 'pastel-playroom', slot: 'background' }),
-        expect.objectContaining({ key: 'bubble-glow', slot: 'effect' }),
         expect.objectContaining({ key: 'classic-brush', slot: 'brush' }),
       ]),
     );
+    // The Effect slot is never auto-equipped: nothing is seeded for it.
+    await expect(
+      inventoryA
+        .getEquippedItems('profile-a')
+        .then((items) => items.some((item) => item.slot === 'effect')),
+    ).resolves.toBe(false);
     await inventoryA.equip('profile-a', 'sparkle-crown');
     const inventoryB = new SQLiteInventoryRepository(
       first as unknown as SQLiteDatabase,
