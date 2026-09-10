@@ -261,7 +261,14 @@ export class SQLiteChildPreferenceSyncRepository implements LocalChildPreference
     }
 
     // The state we just wrote is, by definition, in sync with what we recovered.
-    await this.markCustomizationSynced(profileId, preferences.roomConfiguration);
+    // Fingerprint the state actually persisted to AsyncStorage — i.e. AFTER the
+    // selected_* columns are overlaid into developerEquipped — not the raw cloud
+    // room_configuration. The raw value omits any selection that lived only in a
+    // dedicated column, so fingerprinting it would leave the device reading back
+    // a different fingerprint than it just stored and reporting dirty: true
+    // immediately after a clean hydrate (forcing a needless customization
+    // re-push on the next foreground).
+    await this.markCustomizationSynced(profileId, state);
   }
 
   async markCustomizationSynced(profileId: string, roomConfiguration: unknown): Promise<void> {

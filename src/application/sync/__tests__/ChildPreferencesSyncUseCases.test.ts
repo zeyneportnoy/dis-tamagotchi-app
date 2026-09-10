@@ -106,23 +106,45 @@ const prefs = (
 });
 
 describe('ChildPreferencesSyncUseCases', () => {
-  it('pushes a full preference snapshot scoped to the remote child id', async () => {
+  it('pushes a full preference snapshot scoped to the remote child id, carrying customization only when the local customization is dirty', async () => {
     const cloudRepo = cloud();
-    await new ChildPreferencesSyncUseCases(local(), cloudRepo, prefs()).pushForProfile('profile-1');
-    expect(cloudRepo.upsert).toHaveBeenCalledWith({
-      childId: 'child-remote-1',
-      selectedBrushId: 'star-brush',
-      selectedBackgroundId: 'cloud-room',
-      selectedEffectId: 'gold-sparkle',
-      roomConfiguration: roomConfig,
-      voiceGuide: 'samet',
-      morningReminder: { enabled: true, time: '07:30' },
-      eveningReminder: { enabled: false, time: '20:00' },
-      dentistReminderEnabled: true,
-      dentistLastVisitDate: null,
-      dentistNextAppointmentDate: null,
-      nicknamePersonalizationEnabled: false,
+    const localRepo = local({
+      readCustomizationSyncMeta: jest
+        .fn()
+        .mockResolvedValue({ syncedAt: '2026-08-20T00:00:00.000Z', dirty: true }),
     });
+    await new ChildPreferencesSyncUseCases(localRepo, cloudRepo, prefs()).pushForProfile('profile-1');
+    expect(cloudRepo.upsert).toHaveBeenCalledWith(
+      {
+        childId: 'child-remote-1',
+        selectedBrushId: 'star-brush',
+        selectedBackgroundId: 'cloud-room',
+        selectedEffectId: 'gold-sparkle',
+        roomConfiguration: roomConfig,
+        voiceGuide: 'samet',
+        morningReminder: { enabled: true, time: '07:30' },
+        eveningReminder: { enabled: false, time: '20:00' },
+        dentistReminderEnabled: true,
+        dentistLastVisitDate: null,
+        dentistNextAppointmentDate: null,
+        nicknamePersonalizationEnabled: false,
+      },
+      { includeCustomization: true },
+    );
+  });
+
+  it('omits customization from the whole-row push when the local customization is clean (stale foreground push must not clobber another device)', async () => {
+    const cloudRepo = cloud();
+    const localRepo = local({
+      readCustomizationSyncMeta: jest
+        .fn()
+        .mockResolvedValue({ syncedAt: '2026-08-20T00:00:00.000Z', dirty: false }),
+    });
+    await new ChildPreferencesSyncUseCases(localRepo, cloudRepo, prefs()).pushForProfile('profile-1');
+    expect(cloudRepo.upsert).toHaveBeenCalledWith(expect.any(Object), {
+      includeCustomization: false,
+    });
+    expect(localRepo.markCustomizationSynced).not.toHaveBeenCalled();
   });
 
   it('reads voice + reminders scoped to the specific child', async () => {
@@ -285,7 +307,7 @@ describe('ChildPreferencesSyncUseCases', () => {
       });
     });
 
-    it('never overwrites local customization / voice / reminders that already exist and are clean-but-not-stale', async () => {
+    it('converges a CLEAN local customization to the cloud row (second device catches another device\'s selection), leaves voice/reminders to their own gates', async () => {
       const localRepo = local({
         hasLocalCustomization: jest.fn().mockResolvedValue(true),
         readCustomizationSyncMeta: jest
@@ -301,23 +323,28 @@ describe('ChildPreferencesSyncUseCases', () => {
           evening: { enabled: true, time: '21:00' },
         }),
       });
-      // cloudRow has no updatedAt → not newer.
-      await new ChildPreferencesSyncUseCases(localRepo, cloud([cloudRow]), prefAccessors).recover();
-      expect(localRepo.hydrateCustomization).not.toHaveBeenCalled();
+      const cloudRepo = cloud([cloudRow]);
+      await new ChildPreferencesSyncUseCases(localRepo, cloudRepo, prefAccessors).recover();
+      // customization: clean local → hydrate the cloud selection.
+      expect(localRepo.hydrateCustomization).toHaveBeenCalledWith('profile-1', cloudRow);
+      // recover() is pull-only — never writes the cloud.
+      expect(cloudRepo.upsert).not.toHaveBeenCalled();
+      // voice/reminders keep their own (unchanged) rules.
       expect(prefAccessors.writeVoice).not.toHaveBeenCalled();
       expect(prefAccessors.applyRecoveredReminders).not.toHaveBeenCalled();
     });
 
-    it('never refreshes customization once local exists, even clean and cloud-newer (the row-wide updated_at also bumps on unrelated voice/reminder writes, so it is not a reliable per-field staleness signal)', async () => {
+    it('refreshes a CLEAN local customization from the cloud by value, without needing a newer updated_at', async () => {
       const localRepo = local({
         hasLocalCustomization: jest.fn().mockResolvedValue(true),
         readCustomizationSyncMeta: jest
           .fn()
           .mockResolvedValue({ syncedAt: '2026-08-20T00:00:00.000Z', dirty: false }),
       });
-      const newerRow = { ...cloudRow, updatedAt: '2026-08-25T00:00:00.000Z' };
-      await new ChildPreferencesSyncUseCases(localRepo, cloud([newerRow]), prefs()).recover();
-      expect(localRepo.hydrateCustomization).not.toHaveBeenCalled();
+      // cloudRow has NO updatedAt — the converge decision is value-based, not
+      // timestamp-based (row-wide updated_at also bumps on unrelated writes).
+      await new ChildPreferencesSyncUseCases(localRepo, cloud([cloudRow]), prefs()).recover();
+      expect(localRepo.hydrateCustomization).toHaveBeenCalledWith('profile-1', cloudRow);
     });
 
     it('keeps local customization when it holds unpushed edits even if the cloud row is newer', async () => {
@@ -505,8 +532,12 @@ describe('ChildPreferencesSyncUseCases', () => {
     });
   });
 
-  it('stamps every sync marker after a successful push', async () => {
-    const localRepo = local();
+  it('stamps every sync marker after a successful push (customization only when it was dirty)', async () => {
+    const localRepo = local({
+      readCustomizationSyncMeta: jest
+        .fn()
+        .mockResolvedValue({ syncedAt: '2026-08-20T00:00:00.000Z', dirty: true }),
+    });
     const prefAccessors = prefs();
     await new ChildPreferencesSyncUseCases(localRepo, cloud(), prefAccessors).pushForProfile(
       'profile-1',
@@ -539,6 +570,7 @@ describe('ChildPreferencesSyncUseCases', () => {
           dentistLastVisitDate: '2026-06-01',
           dentistNextAppointmentDate: '2026-12-01',
         }),
+        expect.objectContaining({ includeCustomization: expect.any(Boolean) }),
       );
     });
 

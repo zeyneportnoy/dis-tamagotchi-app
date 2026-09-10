@@ -151,8 +151,15 @@ export class ChildPreferencesSyncUseCases {
     const parentUserId = await this.local.resolveParentUserId(profileId);
     if (!(await this.isSafeToPush(profileId, childId, parentUserId))) return;
     const snapshot = await this.buildSnapshot(profileId, childId);
-    await this.cloud.upsert(snapshot);
-    await this.local.markCustomizationSynced(profileId, snapshot.roomConfiguration);
+    // Only send the customization columns when THIS device holds an unpushed
+    // customization change. A stale foreground push would otherwise rewrite the
+    // cloud's `selected_*` / `room_configuration` with our older local state and
+    // clobber a selection another device just made.
+    const customizationDirty = (await this.local.readCustomizationSyncMeta(profileId)).dirty;
+    await this.cloud.upsert(snapshot, { includeCustomization: customizationDirty });
+    if (customizationDirty) {
+      await this.local.markCustomizationSynced(profileId, snapshot.roomConfiguration);
+    }
     if (parentUserId) {
       if (snapshot.voiceGuide) {
         await this.prefs.markVoiceSynced(parentUserId, profileId, snapshot.voiceGuide);
@@ -217,7 +224,22 @@ export class ChildPreferencesSyncUseCases {
       const profileId = await this.local.findProfileByRemoteChildId(row.childId);
       if (!profileId) continue;
 
-      if (!(await this.local.hasLocalCustomization(profileId))) {
+      // Customization (brush / background / effect / room layout): the cloud row
+      // is authoritative once this device has no unpushed local change of its
+      // own. Hydrate it whenever we are NOT dirty — a genuinely new child (no
+      // local record) is seeded, an already-resolved but clean device converges
+      // to whatever another device last pushed, and a device with a pending
+      // local edit keeps it (that edit is pushed on the next sync).
+      // `hydrateCustomization` is idempotent when local already equals the cloud.
+      // The old gate here was `if (!hasLocalCustomization)` — seed once, then
+      // never again — which pinned every already-used device to its
+      // first-launch customization and is exactly why selections never
+      // propagated across devices.
+      const hasLocalCustomization = await this.local.hasLocalCustomization(profileId);
+      const customizationClean =
+        !hasLocalCustomization ||
+        !(await this.local.readCustomizationSyncMeta(profileId)).dirty;
+      if (customizationClean) {
         await this.local.hydrateCustomization(profileId, row);
       }
 

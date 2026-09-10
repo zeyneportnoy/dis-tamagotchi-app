@@ -74,12 +74,21 @@ export type CustomizationSyncMeta = Readonly<{
 
 export interface CloudChildPreferencesRepository {
   /**
-   * Whole-row upsert of a child's customization + voice + dentist + nickname
-   * columns. The four `*_reminder_*` columns are deliberately NOT written here
-   * even though they are present on the `CloudChildPreferences` argument — pass
-   * them for recovery/typing only.
+   * Whole-row upsert of a child's voice + dentist + nickname columns. The four
+   * `*_reminder_*` columns are deliberately NOT written here even though they are
+   * present on the `CloudChildPreferences` argument — pass them for
+   * recovery/typing only.
+   *
+   * The customization columns (`selected_brush_id` / `selected_background_id` /
+   * `selected_effect_id` / `room_configuration`) are written ONLY when
+   * `opts.includeCustomization` is true — i.e. when the calling device actually
+   * holds an unpushed customization change. A stale foreground push must not
+   * rewrite them, or it would clobber another device's newer selection.
    */
-  upsert(preferences: CloudChildPreferences): Promise<void>;
+  upsert(
+    preferences: CloudChildPreferences,
+    opts?: Readonly<{ includeCustomization?: boolean }>,
+  ): Promise<void>;
   /**
    * Field-scoped write of a genuine parent reminder edit, routed through the
    * production `patch_child_preferences` RPC with only the reminder key(s) in

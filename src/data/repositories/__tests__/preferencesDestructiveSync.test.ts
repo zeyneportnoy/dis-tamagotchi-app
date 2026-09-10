@@ -89,15 +89,32 @@ class FakeCloudPreferences implements CloudChildPreferencesRepository {
   /** Every field-scoped reminder patch the client sent, in order. */
   reminderPatchCalls: { childId: string; patch: ChildReminderPatch }[] = [];
 
-  async upsert(preferences: CloudChildPreferences): Promise<void> {
+  async upsert(
+    preferences: CloudChildPreferences,
+    opts?: Readonly<{ includeCustomization?: boolean }>,
+  ): Promise<void> {
     this.upsertCalls.push(preferences);
-    // Mirror the real repo + migration m11: the whole-row upsert path has NO
-    // write grant for the four reminder columns, so they are never carried by
-    // it. An existing row keeps its reminder values; a brand-new row starts
-    // with them unset (null / false).
     const existing = this.rows.get(preferences.childId);
+    // Mirror the real repo:
+    //  - reminder columns are NEVER carried by the whole-row upsert (kept from
+    //    the existing row / unset on a new one).
+    //  - customization columns are carried ONLY when includeCustomization is
+    //    true; otherwise the existing row's values are preserved.
+    const includeCustomization = opts?.includeCustomization ?? true;
     this.rows.set(preferences.childId, {
       ...preferences,
+      selectedBrushId: includeCustomization
+        ? preferences.selectedBrushId
+        : (existing?.selectedBrushId ?? null),
+      selectedBackgroundId: includeCustomization
+        ? preferences.selectedBackgroundId
+        : (existing?.selectedBackgroundId ?? null),
+      selectedEffectId: includeCustomization
+        ? preferences.selectedEffectId
+        : (existing?.selectedEffectId ?? null),
+      roomConfiguration: includeCustomization
+        ? preferences.roomConfiguration
+        : (existing?.roomConfiguration ?? null),
       morningReminder: existing?.morningReminder ?? { enabled: false, time: null },
       eveningReminder: existing?.eveningReminder ?? { enabled: false, time: null },
       updatedAt: new Date().toISOString(),
@@ -1109,6 +1126,115 @@ describe('cross-device: a stale device never reverts another device’s reminder
     expect(cloud.reminderPatchCalls).toHaveLength(0); // B never patched
 
     deviceA.db.close();
+    deviceB.db.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Collection selections (brush / background / room layout) must reach every
+// device, and a stale device's foreground push must not clobber them.
+// ---------------------------------------------------------------------------
+describe('cross-device: Collection selections converge and are not clobbered', () => {
+  const CUSTO_KEY = 'customization.profile.child-1.v1';
+
+  const stateWith = (
+    dev: Record<string, string>,
+    placements: Record<string, { x: number; y: number; scale: number }>,
+    materials: string[],
+  ) => ({ version: 1, developerEquipped: dev, placements, selectedRoomMaterials: materials });
+
+  async function makeDevice(cloud: FakeCloudPreferences): Promise<Harness> {
+    const db = new NodeSQLiteDatabase();
+    await migrateDatabase(asDb(db));
+    await seedChild(db, 'child-1');
+    return makeHarness(db, cloud, new FakePreferenceAccessors(db));
+  }
+
+  // The cloud row = "what another device already pushed": star-brush + a room
+  // placement, plus resolved voice / reminders / dentist so recover() fully
+  // resolves this device (isSafeToPush needs all of them).
+  const otherDeviceState = stateWith(
+    { brush: 'star-brush' },
+    { 'pastel-toy-box': { x: 0.4, y: 0.7, scale: 0.9 } },
+    ['pastel-toy-box'],
+  );
+
+  it('Device B converges to another device\'s brush + room layout on recover, and B\'s foreground pushes never clobber it', async () => {
+    const cloud = new FakeCloudPreferences();
+    await seedCloudPreferences(cloud, 'child-1', {
+      selectedBrushId: 'star-brush',
+      selectedBackgroundId: 'pastel-playroom',
+      selectedEffectId: null,
+      roomConfiguration: otherDeviceState,
+      morningReminder: { enabled: true, time: '08:00' },
+      eveningReminder: { enabled: true, time: '20:30' },
+    });
+    const deviceB = await makeDevice(cloud);
+
+    // B holds a DIFFERENT local customization, already marked synced (clean).
+    const bState = stateWith({ brush: 'classic-brush' }, {}, []);
+    await AsyncStorage.setItem(CUSTO_KEY, JSON.stringify(bState));
+    await deviceB.local.markCustomizationSynced('child-1', bState);
+    expect(await deviceB.local.readCustomizationSyncMeta('child-1')).toMatchObject({ dirty: false });
+
+    await deviceB.useCases.recover();
+
+    // B converged to the cloud selection + room layout.
+    const bAfter = JSON.parse((await AsyncStorage.getItem(CUSTO_KEY)) as string);
+    expect(bAfter.developerEquipped.brush).toBe('star-brush');
+    expect(bAfter.placements).toEqual(otherDeviceState.placements);
+    expect(bAfter.selectedRoomMaterials).toEqual(['pastel-toy-box']);
+    expect(await deviceB.local.readCustomizationSyncMeta('child-1')).toMatchObject({ dirty: false });
+
+    // B foregrounds 20 times → recover + whole-row push. It is clean, so every
+    // push omits the customization columns (includeCustomization:false) — the
+    // cloud selection is never rewritten by B's older local state.
+    cloud.upsertCalls = [];
+    for (let i = 0; i < 20; i += 1) {
+      const b = makeHarness(deviceB.db, cloud, deviceB.accessors);
+      await b.useCases.recover();
+      await b.useCases.pushForAllSyncedChildren();
+    }
+    expect(cloud.upsertCalls.length).toBeGreaterThan(0); // B's whole-row push DID run
+    const cloudEnd = await cloud.get('child-1');
+    expect(cloudEnd?.selectedBrushId).toBe('star-brush');
+    expect(cloudEnd?.roomConfiguration).toEqual(otherDeviceState);
+
+    deviceB.db.close();
+  });
+
+  it('a device with a PENDING local Collection edit keeps it through recover, then pushes it to the cloud', async () => {
+    const cloud = new FakeCloudPreferences();
+    await seedCloudPreferences(cloud, 'child-1', {
+      selectedBrushId: 'star-brush',
+      roomConfiguration: otherDeviceState,
+      morningReminder: { enabled: true, time: '08:00' },
+      eveningReminder: { enabled: true, time: '20:30' },
+    });
+    const deviceB = await makeDevice(cloud);
+
+    // First recover resolves the child (voice/reminders/dentist) and converges
+    // customization to the cloud's star-brush.
+    await deviceB.useCases.recover();
+    expect(
+      JSON.parse((await AsyncStorage.getItem(CUSTO_KEY)) as string).developerEquipped.brush,
+    ).toBe('star-brush');
+
+    // Now B picks pink-brush locally and has NOT synced it yet (dirty).
+    const bState = stateWith({ brush: 'pink-brush' }, {}, []);
+    await AsyncStorage.setItem(CUSTO_KEY, JSON.stringify(bState));
+    expect(await deviceB.local.readCustomizationSyncMeta('child-1')).toMatchObject({ dirty: true });
+
+    // recover() must NOT overwrite B's pending edit.
+    await deviceB.useCases.recover();
+    expect(
+      JSON.parse((await AsyncStorage.getItem(CUSTO_KEY)) as string).developerEquipped.brush,
+    ).toBe('pink-brush');
+
+    // B's push carries the customization (it is dirty) → cloud takes B's edit.
+    await deviceB.useCases.pushForProfile('child-1');
+    expect((await cloud.get('child-1'))?.selectedBrushId).toBe('pink-brush');
+
     deviceB.db.close();
   });
 });

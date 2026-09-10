@@ -66,7 +66,7 @@ const mapRow = (row: PreferencesRow): CloudChildPreferences => ({
 });
 
 /**
- * Writes a child's customization + preference snapshot to Supabase as a single
+ * Writes a child's voice + dentist + nickname columns to Supabase as a single
  * idempotent upsert keyed on `child_id`. RLS scopes every row to the owning
  * parent. Audio assets and notification scheduling are never touched — only the
  * preference values.
@@ -78,31 +78,37 @@ const mapRow = (row: PreferencesRow): CloudChildPreferences => ({
  * `patchReminders()`, which is the ONLY path that writes a reminder column and
  * only ever sends the field(s) the parent actually changed.
  *
- * (A follow-up migration will additionally revoke the client's column-level
- * INSERT/UPDATE grant on the four reminder columns as defense in depth, once the
- * reminder-only client is verified on real devices. `patch_child_preferences`
- * already exists in production as of migration m11 Phase 1.)
+ * The customization columns (`selected_*_id`, `room_configuration`) are written
+ * ONLY when `opts.includeCustomization` is true — the caller sets it only when
+ * this device holds an unpushed customization change. Otherwise a stale
+ * foreground push would rewrite (and clobber) another device's newer selection
+ * with our older one.
  */
 export class SupabaseChildPreferencesRepository implements CloudChildPreferencesRepository {
   constructor(private readonly client: SupabaseClient) {}
 
-  async upsert(preferences: CloudChildPreferences): Promise<void> {
-    const { error } = await this.client.from('child_preferences').upsert(
-      {
-        child_id: preferences.childId,
-        selected_brush_id: preferences.selectedBrushId,
-        selected_background_id: preferences.selectedBackgroundId,
-        selected_effect_id: preferences.selectedEffectId,
-        room_configuration: preferences.roomConfiguration ?? null,
-        voice_guide: preferences.voiceGuide,
-        dentist_reminder_enabled: preferences.dentistReminderEnabled,
-        dentist_last_visit_date: preferences.dentistLastVisitDate,
-        dentist_next_appointment_date: preferences.dentistNextAppointmentDate,
-        nickname_personalization_enabled: preferences.nicknamePersonalizationEnabled,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'child_id' },
-    );
+  async upsert(
+    preferences: CloudChildPreferences,
+    opts?: Readonly<{ includeCustomization?: boolean }>,
+  ): Promise<void> {
+    const payload: Record<string, unknown> = {
+      child_id: preferences.childId,
+      voice_guide: preferences.voiceGuide,
+      dentist_reminder_enabled: preferences.dentistReminderEnabled,
+      dentist_last_visit_date: preferences.dentistLastVisitDate,
+      dentist_next_appointment_date: preferences.dentistNextAppointmentDate,
+      nickname_personalization_enabled: preferences.nicknamePersonalizationEnabled,
+      updated_at: new Date().toISOString(),
+    };
+    if (opts?.includeCustomization ?? true) {
+      payload.selected_brush_id = preferences.selectedBrushId;
+      payload.selected_background_id = preferences.selectedBackgroundId;
+      payload.selected_effect_id = preferences.selectedEffectId;
+      payload.room_configuration = preferences.roomConfiguration ?? null;
+    }
+    const { error } = await this.client
+      .from('child_preferences')
+      .upsert(payload, { onConflict: 'child_id' });
     if (error) throw new Error('CLOUD_PREFERENCES_UPSERT_FAILED');
   }
 
