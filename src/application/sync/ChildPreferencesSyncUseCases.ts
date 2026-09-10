@@ -76,6 +76,9 @@ export class ChildPreferencesSyncUseCases {
     private readonly prefs: ChildPreferenceAccessors,
   ) {}
 
+  /** In-flight `recover()` pass, so concurrent callers share one run (see `recover`). */
+  private recoverInFlight: Promise<void> | null = null;
+
   private async buildSnapshot(
     profileId: string,
     childId: string,
@@ -220,103 +223,137 @@ export class ChildPreferencesSyncUseCases {
    * cloud selection can never become active.
    */
   async recover(): Promise<void> {
+    // Single-flight. Bootstrap and every foreground push path funnel through
+    // `recover()` (via `ensureChildPreferencesRecovered`), and they fire as
+    // separate unawaited effects off the same "session ready" signal. Without
+    // this guard two or more recovery passes run concurrently and open
+    // overlapping transactions on the single SQLite connection; expo-sqlite then
+    // throws `cannot rollback - no transaction is active` mid-hydrate, which
+    // aborted the whole pass and starved every child ordered after the failure.
+    this.recoverInFlight ??= this.recoverAllChildren().finally(() => {
+      this.recoverInFlight = null;
+    });
+    return this.recoverInFlight;
+  }
+
+  private async recoverAllChildren(): Promise<void> {
     for (const row of await this.cloud.listOwned()) {
-      const profileId = await this.local.findProfileByRemoteChildId(row.childId);
-      if (!profileId) continue;
-
-      // Customization (brush / background / effect / room layout): the cloud row
-      // is authoritative once this device has no unpushed local change of its
-      // own. Hydrate it whenever we are NOT dirty — a genuinely new child (no
-      // local record) is seeded, an already-resolved but clean device converges
-      // to whatever another device last pushed, and a device with a pending
-      // local edit keeps it (that edit is pushed on the next sync).
-      // `hydrateCustomization` is idempotent when local already equals the cloud.
-      // The old gate here was `if (!hasLocalCustomization)` — seed once, then
-      // never again — which pinned every already-used device to its
-      // first-launch customization and is exactly why selections never
-      // propagated across devices.
-      const hasLocalCustomization = await this.local.hasLocalCustomization(profileId);
-      const customizationClean =
-        !hasLocalCustomization ||
-        !(await this.local.readCustomizationSyncMeta(profileId)).dirty;
-      if (customizationClean) {
-        await this.local.hydrateCustomization(profileId, row);
+      try {
+        await this.recoverChild(row);
+      } catch (err) {
+        // Per-child isolation: one child's failure (e.g. a transient SQLite
+        // contention error) must never stop the remaining children from
+        // recovering. Logged rather than swallowed silently so it is visible.
+        console.warn(`[childPreferencesSync] recover: skipped child ${row.childId}`, err);
       }
+    }
+  }
 
-      // Dentist last-visit / next-appointment dates live purely on the child row
-      // (no per-parent AsyncStorage scoping), so this does not need parentUserId
-      // and must not be skipped by the `continue` below. Only seeds a child with
-      // NO local dentist_reminders row yet (a second device, or a reinstall —
-      // the creating device already has one from profile creation). Persisting
-      // and (re)scheduling both go through the exact same DentistVisitService
-      // path a live parent edit uses, so the routine (+6 months) and
-      // appointment (-1 day) reminders come back correctly without
-      // re-deriving any of that logic here.
-      if (!(await this.local.dentistReminderEnabled(profileId))) {
-        const nickname = await this.local.resolveNickname(profileId);
-        await this.prefs.applyRecoveredDentist(profileId, nickname, {
-          lastVisitDate: row.dentistLastVisitDate,
-          nextAppointmentDate: row.dentistNextAppointmentDate,
-        });
-      }
+  private async recoverChild(row: CloudChildPreferences): Promise<void> {
+    const profileId = await this.local.findProfileByRemoteChildId(row.childId);
+    if (!profileId) return;
 
-      const parentUserId = await this.local.resolveParentUserId(profileId);
-      if (!parentUserId) continue;
+    // Customization (brush / background / effect / room layout): the cloud row
+    // is authoritative once this device has no unpushed local change of its
+    // own. Hydrate it whenever we are NOT dirty — a genuinely new child (no
+    // local record) is seeded, an already-resolved but clean device converges
+    // to whatever another device last pushed, and a device with a pending
+    // local edit keeps it (that edit is pushed on the next sync).
+    // `hydrateCustomization` is idempotent when local already equals the cloud.
+    const hasLocalCustomization = await this.local.hasLocalCustomization(profileId);
+    const customizationClean =
+      !hasLocalCustomization || !(await this.local.readCustomizationSyncMeta(profileId)).dirty;
+    if (customizationClean) {
+      await this.local.hydrateCustomization(profileId, row);
+    }
 
-      if (row.voiceGuide) {
-        if (!(await this.prefs.hasStoredVoice(parentUserId, profileId))) {
+    // Dentist last-visit / next-appointment dates live purely on the child row
+    // (no per-parent AsyncStorage scoping), so this does not need parentUserId
+    // and must not be skipped by the `return` below. Only seeds a child with
+    // NO local dentist_reminders row yet (a second device, or a reinstall —
+    // the creating device already has one from profile creation). Persisting
+    // and (re)scheduling both go through the exact same DentistVisitService
+    // path a live parent edit uses, so the routine (+6 months) and
+    // appointment (-1 day) reminders come back correctly without
+    // re-deriving any of that logic here.
+    if (!(await this.local.dentistReminderEnabled(profileId))) {
+      const nickname = await this.local.resolveNickname(profileId);
+      await this.prefs.applyRecoveredDentist(profileId, nickname, {
+        lastVisitDate: row.dentistLastVisitDate,
+        nextAppointmentDate: row.dentistNextAppointmentDate,
+      });
+    }
+
+    const parentUserId = await this.local.resolveParentUserId(profileId);
+    if (!parentUserId) return;
+
+    if (row.voiceGuide) {
+      if (!(await this.prefs.hasStoredVoice(parentUserId, profileId))) {
+        await this.prefs.writeVoice(parentUserId, profileId, row.voiceGuide);
+        await this.prefs.markVoiceSynced(parentUserId, profileId, row.voiceGuide);
+      } else {
+        const meta = await this.prefs.readVoiceSyncMeta(parentUserId, profileId);
+        if (!meta.dirty && cloudRowNewerThan(row.updatedAt, meta.syncedAt)) {
           await this.prefs.writeVoice(parentUserId, profileId, row.voiceGuide);
           await this.prefs.markVoiceSynced(parentUserId, profileId, row.voiceGuide);
-        } else {
-          const meta = await this.prefs.readVoiceSyncMeta(parentUserId, profileId);
-          if (!meta.dirty && cloudRowNewerThan(row.updatedAt, meta.syncedAt)) {
-            await this.prefs.writeVoice(parentUserId, profileId, row.voiceGuide);
-            await this.prefs.markVoiceSynced(parentUserId, profileId, row.voiceGuide);
-          }
         }
       }
+    }
 
-      // Reminder times: the cloud row is authoritative. Whenever the cloud
-      // carries a real reminder value that DIFFERS from what this device
-      // currently holds, converge the local record to it. recover() writes
-      // LOCAL storage only — it never calls the cloud. The `08:00 / 20:30`
-      // fallback is used ONLY when the cloud has no value for a slot, so a
-      // default / seed / legacy / seed-on-read local value can never win over a
-      // real cloud one.
-      //
-      // There is deliberately NO "synced once" / timestamp guard here. The
-      // earlier `syncedAt` + `cloudRowNewerThan` gate meant a device that had
-      // merely FOREGROUNDED since another device's edit (its own whole-row push
-      // stamps a fresh `syncedAt`) would refuse to pull that edit forever. The
-      // field-scoped write path (`patch_child_preferences`, real edits only)
-      // makes the cloud value trustworthy enough to just take verbatim.
-      const cloudHasReminderValue =
-        row.morningReminder.enabled ||
-        row.eveningReminder.enabled ||
-        row.morningReminder.time !== null ||
-        row.eveningReminder.time !== null;
-      if (cloudHasReminderValue) {
-        const cloudReminders = {
-          morning: reminderValues(row.morningReminder, '08:00'),
-          evening: reminderValues(row.eveningReminder, '20:30'),
-        };
-        const localReminders = await this.prefs.readReminders(parentUserId, profileId);
-        const converged =
-          localReminders.morning.enabled === cloudReminders.morning.enabled &&
-          localReminders.morning.time === cloudReminders.morning.time &&
-          localReminders.evening.enabled === cloudReminders.evening.enabled &&
-          localReminders.evening.time === cloudReminders.evening.time;
-        if (!converged) {
-          await this.prefs.applyRecoveredReminders(parentUserId, profileId, cloudReminders);
-        }
+    // Reminder times: the cloud row is authoritative. Whenever the cloud
+    // carries a real reminder value that DIFFERS from what this device
+    // currently holds, converge the local record to it. recover() writes
+    // LOCAL storage only — it never calls the cloud. The `08:00 / 20:30`
+    // fallback is used ONLY when the cloud has no value for a slot, so a
+    // default / seed / legacy / seed-on-read local value can never win over a
+    // real cloud one.
+    //
+    // There is deliberately NO "synced once" / timestamp guard here. The
+    // earlier `syncedAt` + `cloudRowNewerThan` gate meant a device that had
+    // merely FOREGROUNDED since another device's edit (its own whole-row push
+    // stamps a fresh `syncedAt`) would refuse to pull that edit forever. The
+    // field-scoped write path (`patch_child_preferences`, real edits only)
+    // makes the cloud value trustworthy enough to just take verbatim.
+    const cloudHasReminderValue =
+      row.morningReminder.enabled ||
+      row.eveningReminder.enabled ||
+      row.morningReminder.time !== null ||
+      row.eveningReminder.time !== null;
+    if (cloudHasReminderValue) {
+      const cloudReminders = {
+        morning: reminderValues(row.morningReminder, '08:00'),
+        evening: reminderValues(row.eveningReminder, '20:30'),
+      };
+      const localReminders = await this.prefs.readReminders(parentUserId, profileId);
+      const converged =
+        localReminders.morning.enabled === cloudReminders.morning.enabled &&
+        localReminders.morning.time === cloudReminders.morning.time &&
+        localReminders.evening.enabled === cloudReminders.evening.enabled &&
+        localReminders.evening.time === cloudReminders.evening.time;
+      if (!converged) {
+        await this.prefs.applyRecoveredReminders(parentUserId, profileId, cloudReminders);
       }
+    }
 
-      // Nickname personalization (brushing says the child's name): same
-      // seed-once-then-authoritative rule as voice, since it is exactly the
-      // same shape of preference (a per-child AsyncStorage value with a
-      // fingerprint sync marker).
-      if (row.nicknamePersonalizationEnabled !== null) {
-        if (!(await this.prefs.hasStoredNicknamePersonalization(parentUserId, profileId))) {
+    // Nickname personalization (brushing says the child's name): same
+    // seed-once-then-authoritative rule as voice, since it is exactly the
+    // same shape of preference (a per-child AsyncStorage value with a
+    // fingerprint sync marker).
+    if (row.nicknamePersonalizationEnabled !== null) {
+      if (!(await this.prefs.hasStoredNicknamePersonalization(parentUserId, profileId))) {
+        await this.prefs.writeNicknamePersonalization(
+          parentUserId,
+          profileId,
+          row.nicknamePersonalizationEnabled,
+        );
+        await this.prefs.markNicknamePersonalizationSynced(
+          parentUserId,
+          profileId,
+          row.nicknamePersonalizationEnabled,
+        );
+      } else {
+        const meta = await this.prefs.readNicknamePersonalizationSyncMeta(parentUserId, profileId);
+        if (!meta.dirty && cloudRowNewerThan(row.updatedAt, meta.syncedAt)) {
           await this.prefs.writeNicknamePersonalization(
             parentUserId,
             profileId,
@@ -327,20 +364,6 @@ export class ChildPreferencesSyncUseCases {
             profileId,
             row.nicknamePersonalizationEnabled,
           );
-        } else {
-          const meta = await this.prefs.readNicknamePersonalizationSyncMeta(parentUserId, profileId);
-          if (!meta.dirty && cloudRowNewerThan(row.updatedAt, meta.syncedAt)) {
-            await this.prefs.writeNicknamePersonalization(
-              parentUserId,
-              profileId,
-              row.nicknamePersonalizationEnabled,
-            );
-            await this.prefs.markNicknamePersonalizationSynced(
-              parentUserId,
-              profileId,
-              row.nicknamePersonalizationEnabled,
-            );
-          }
         }
       }
     }

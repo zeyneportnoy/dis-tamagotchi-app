@@ -238,26 +238,37 @@ export class SQLiteChildPreferenceSyncRepository implements LocalChildPreference
     const score = Math.max(0, progress?.total_xp ?? 0);
     for (const [slot, key] of selections) {
       if (!key || !isRewardKeyForSlot(slot, key) || !isUnlockedForSlot(slot, key, score)) continue;
-      await this.database.withTransactionAsync(async () => {
-        await this.database.runAsync(
-          `INSERT OR IGNORE INTO inventory_items(child_profile_id, item_key, unlocked_at, equipped, slot)
-           VALUES (?, ?, ?, 0, ?)`,
-          profileId,
-          key,
-          new Date().toISOString(),
-          slot,
-        );
-        await this.database.runAsync(
-          `UPDATE inventory_items SET equipped = 0 WHERE child_profile_id = ? AND slot = ?`,
-          profileId,
-          slot,
-        );
-        await this.database.runAsync(
-          `UPDATE inventory_items SET equipped = 1 WHERE child_profile_id = ? AND item_key = ?`,
-          profileId,
-          key,
-        );
-      });
+      // No explicit transaction here: recovery runs concurrently with the
+      // foreground push sweep on the single SQLite connection, and opening a
+      // nested `BEGIN` in that window makes expo-sqlite throw
+      // `cannot rollback - no transaction is active`, which aborted the whole
+      // recovery pass. These three writes are individually safe and ordered so
+      // the slot never holds two equipped rows at once (which would violate the
+      // `inventory_one_equipped_per_profile_slot_uq` partial index): insert the
+      // row unequipped, clear any OTHER equipped row in the slot, then equip the
+      // target. A crash between the last two leaves the slot briefly empty,
+      // which the next hydrate/equip self-heals.
+      await this.database.runAsync(
+        `INSERT OR IGNORE INTO inventory_items(child_profile_id, item_key, unlocked_at, equipped, slot)
+         VALUES (?, ?, ?, 0, ?)`,
+        profileId,
+        key,
+        new Date().toISOString(),
+        slot,
+      );
+      await this.database.runAsync(
+        `UPDATE inventory_items SET equipped = 0
+         WHERE child_profile_id = ? AND slot = ? AND item_key <> ? AND equipped = 1`,
+        profileId,
+        slot,
+        key,
+      );
+      await this.database.runAsync(
+        `UPDATE inventory_items SET equipped = 1
+         WHERE child_profile_id = ? AND item_key = ? AND equipped = 0`,
+        profileId,
+        key,
+      );
     }
 
     // The state we just wrote is, by definition, in sync with what we recovered.

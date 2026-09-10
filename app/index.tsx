@@ -4,9 +4,9 @@ import { useEffect, useState } from 'react';
 import { getFamilyUseCases } from '@/application/family';
 import {
   ensureChildDataRecovered,
+  ensureChildPreferencesRecovered,
   getProfileSyncUseCases,
   pushPendingChildProfiles,
-  recoverChildPreferences,
   retryPendingCloudSync,
 } from '@/application/sync';
 import { perfMark, perfSince, perfStep } from '@/config/perf';
@@ -69,7 +69,10 @@ function deferCloudRecovery(): void {
         await perfStep('bootstrap:recoverFromCloud(deferred)', () => sync.recoverFromCloud());
       }
       await perfStep('bootstrap:recoverChildData(deferred)', ensureChildDataRecovered);
-      await perfStep('bootstrap:recoverChildPreferences(deferred)', recoverChildPreferences);
+      await perfStep(
+        'bootstrap:recoverChildPreferences(deferred)',
+        ensureChildPreferencesRecovered,
+      );
       void retryPendingCloudSync();
     } catch (error) {
       console.warn('index: deferred cloud recovery failed (non-blocking)', error);
@@ -145,7 +148,10 @@ export default function Index() {
           await perfStep('bootstrap:recoverFromCloud(cold)', () => sync.recoverFromCloud());
         }
         await perfStep('bootstrap:recoverChildData(cold)', ensureChildDataRecovered);
-        await perfStep('bootstrap:recoverChildPreferences(cold)', recoverChildPreferences);
+        await perfStep(
+          'bootstrap:recoverChildPreferences(cold)',
+          ensureChildPreferencesRecovered,
+        );
         void retryPendingCloudSync();
 
         const recovered = await family.getActiveProfile();
