@@ -46,7 +46,7 @@ export default function SummaryScreen() {
   const createProfile = async (selectedVoiceProfile: BrushingVoiceProfile) => {
     if (saving) return;
     if (!draft.nickname.trim()) return router.replace('/onboarding/nickname');
-    if (!draft.dateOfBirth || !draft.ageBand) return router.replace('/onboarding/age-band');
+    if (!draft.ageBand) return router.replace('/onboarding/age-band');
     if (!draft.avatarId) return router.replace('/onboarding/character');
     if (!session?.userId) return setFailed(true);
     const parentUserId = session.userId;
@@ -56,7 +56,7 @@ export default function SummaryScreen() {
       const useCases = await getFamilyUseCases();
       const profile = await useCases.createProfile({
         nickname: draft.nickname,
-        dateOfBirth: draft.dateOfBirth,
+        ageBand: draft.ageBand,
         avatarId: draft.avatarId,
       });
       await setBrushingVoiceProfile(parentUserId, profile.id, selectedVoiceProfile);

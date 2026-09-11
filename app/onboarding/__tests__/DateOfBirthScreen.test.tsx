@@ -24,7 +24,7 @@ jest.mock('@/features/onboarding/OnboardingDraftContext', () => ({
   useOnboardingDraft: () => ({
     ageBand: '4_6',
     avatarId: null,
-    dateOfBirth: '2020-01-15',
+    dateOfBirth: null,
     nickname: 'Ege',
     profileId: null,
     setAgeBand: mockSetAgeBand,
@@ -35,12 +35,12 @@ jest.mock('@/features/onboarding/OnboardingDraftContext', () => ({
 describe('date of birth onboarding', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('uses a date field and continues directly to the existing character screen', async () => {
+  it('keeps age bands without requesting birth date and continues directly to the existing character screen', async () => {
     const view = await render(<DateOfBirthScreen />);
 
-    expect(view.getByTestId('onboarding-date-of-birth')).toBeTruthy();
-    expect(view.queryByText('4–6 yaş')).toBeNull();
-    expect(view.queryByText('7–11 yaş')).toBeNull();
+    expect(view.queryByTestId('onboarding-date-of-birth')).toBeNull();
+    expect(view.getByText('4–6 yaş')).toBeTruthy();
+    expect(view.getByText('7–11 yaş')).toBeTruthy();
 
     await fireEvent.press(view.getByRole('button', { name: 'Devam et' }));
     await waitFor(() => expect(router.push).toHaveBeenCalledWith('/onboarding/character'));

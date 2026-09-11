@@ -7,7 +7,6 @@ import { useTranslation } from 'react-i18next';
 import { getFamilyUseCases, type ChildProfileViewModel } from '@/application/family';
 import { syncAllChildPreferences } from '@/application/sync';
 import { Button, Screen, ScreenHeader, Text, colors, radii, spacing } from '@/design-system';
-import { ageBandFromDateOfBirth } from '@/domain/family';
 import { useAuth } from '@/features/auth';
 import {
   brushingVoiceCues,
@@ -16,7 +15,6 @@ import {
   setBrushingVoiceProfile,
   type BrushingVoiceProfile,
 } from '@/features/brushing';
-import { DateOfBirthField } from '@/features/child-profile';
 import { isMoodLabAvailable } from '@/features/mood-lab/availability';
 
 const voiceProfiles: BrushingVoiceProfile[] = ['gokce', 'samet', 'off'];
@@ -26,8 +24,7 @@ export default function ParentSettingsScreen() {
   const { session } = useAuth();
   const [voiceProfile, setVoiceProfile] = useState<BrushingVoiceProfile | null>(null);
   const [childProfile, setChildProfile] = useState<ChildProfileViewModel | null>(null);
-  const [dateError, setDateError] = useState(false);
-  const [savingDate, setSavingDate] = useState(false);
+  const [, setDateError] = useState(false);
   const gokcePreview = useAudioPlayer(brushingVoiceCues.gokce[0].source);
   const sametPreview = useAudioPlayer(brushingVoiceCues.samet[0].source);
 
@@ -42,28 +39,6 @@ export default function ParentSettingsScreen() {
       })
       .catch(() => setDateError(true));
   }, [session?.userId]);
-
-  const updateDateOfBirth = async (dateOfBirth: string): Promise<void> => {
-    if (!childProfile || savingDate) return;
-    const ageBand = ageBandFromDateOfBirth(dateOfBirth);
-    if (!ageBand) {
-      setDateError(true);
-      return;
-    }
-    const previous = childProfile;
-    setDateError(false);
-    setSavingDate(true);
-    setChildProfile({ ...childProfile, dateOfBirth, ageBand });
-    try {
-      const useCases = await getFamilyUseCases();
-      setChildProfile(await useCases.updateProfile(childProfile.id, { dateOfBirth }));
-    } catch {
-      setChildProfile(previous);
-      setDateError(true);
-    } finally {
-      setSavingDate(false);
-    }
-  };
 
   const selectVoiceProfile = (nextProfile: BrushingVoiceProfile): void => {
     if (!session?.userId || !childProfile || voiceProfile === null) return;
@@ -98,27 +73,6 @@ export default function ParentSettingsScreen() {
         title={t('parent.settings.title')}
       />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {childProfile ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t('parent.settings.childProfile.title')}</Text>
-            <Text style={styles.sectionBody}>
-              {t('parent.settings.childProfile.body', { name: childProfile.nickname })}
-            </Text>
-            <DateOfBirthField
-              cancelLabel={t('common.cancel')}
-              confirmLabel={t('common.done')}
-              dateOfBirth={childProfile.dateOfBirth}
-              label={t('parent.settings.childProfile.dateOfBirth')}
-              onChange={(dateOfBirth) => void updateDateOfBirth(dateOfBirth)}
-              placeholder={t('onboarding.dateOfBirth.placeholder')}
-              testID="parent-date-of-birth"
-            />
-            {savingDate ? <Text>{t('common.saving')}</Text> : null}
-            {dateError ? (
-              <Text style={styles.error}>{t('parent.settings.childProfile.error')}</Text>
-            ) : null}
-          </View>
-        ) : null}
         <View style={styles.section}>
           <Button
             label={t('parent.reminders.title')}
@@ -205,7 +159,6 @@ export default function ParentSettingsScreen() {
 
 const styles = StyleSheet.create({
   content: { gap: spacing.lg, paddingBottom: spacing.xl },
-  error: { color: colors.brandSecondary },
   screen: { justifyContent: 'flex-start' },
   section: {
     backgroundColor: colors.white,

@@ -22,14 +22,12 @@ export const dateOfBirthSchema = z
   .refine((value) => parseDateOnly(value) !== null)
   .refine((value) => !isFutureDateOnly(value));
 
-export const createChildProfileSchema = z
-  .object({
-    familyId: z.string().uuid(),
-    nickname: nicknameSchema,
-    dateOfBirth: dateOfBirthSchema,
-    avatarId: starterAvatarSchema,
-  })
-  .refine((value) => ageBandFromDateOfBirth(value.dateOfBirth) !== null);
+export const createChildProfileSchema = z.object({
+  familyId: z.string().uuid(),
+  nickname: nicknameSchema,
+  ageBand: ageBandSchema,
+  avatarId: starterAvatarSchema,
+});
 
 export const updateChildProfileSchema = z
   .object({

@@ -93,13 +93,12 @@ export class SQLiteChildProfileRepository implements ChildProfileRepository {
     const input = createChildProfileSchema.parse(rawInput);
     const parentId = await this.requireActiveParentId();
     const createdAt = this.now();
-    const ageBand = ageBandFromDateOfBirth(input.dateOfBirth, new Date(createdAt));
-    if (!ageBand) throw new Error('DATE_OF_BIRTH_OUT_OF_RANGE');
+    const ageBand = input.ageBand;
     const profile: ChildProfile = {
       id: this.createId(),
       familyId: input.familyId,
       nickname: input.nickname,
-      dateOfBirth: input.dateOfBirth,
+      dateOfBirth: null,
       ageBand,
       avatarId: input.avatarId,
       createdAt,
@@ -112,13 +111,12 @@ export class SQLiteChildProfileRepository implements ChildProfileRepository {
     await this.database.withTransactionAsync(async () => {
       await this.database.runAsync(
         `INSERT INTO child_profiles
-          (id, family_id, nickname, date_of_birth, age_band, avatar_id, created_at, archived_at,
+          (id, family_id, nickname, age_band, avatar_id, created_at, archived_at,
            remote_id, parent_auth_user_id, sync_status, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)`,
         profile.id,
         profile.familyId,
         profile.nickname,
-        profile.dateOfBirth,
         profile.ageBand,
         profile.avatarId,
         profile.createdAt,

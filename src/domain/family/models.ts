@@ -40,7 +40,7 @@ export type ChildProfile = Readonly<{
 export type CreateChildProfileInput = Readonly<{
   familyId: string;
   nickname: string;
-  dateOfBirth: string;
+  ageBand: AgeBand;
   avatarId: StarterAvatarKey;
 }>;
 

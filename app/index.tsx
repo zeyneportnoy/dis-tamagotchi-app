@@ -29,7 +29,7 @@ export const routeForProfile = (profile: {
   dateOfBirth: string | null;
   ageBand: string;
 }): Extract<Destination, 'age-band-update' | 'child'> =>
-  !profile.dateOfBirth || isLegacyAgeBand(profile.ageBand) ? 'age-band-update' : 'child';
+  isLegacyAgeBand(profile.ageBand) ? 'age-band-update' : 'child';
 
 /**
  * A family with 2+ child profiles must ALWAYS see the post-login picker

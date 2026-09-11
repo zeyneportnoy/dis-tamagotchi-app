@@ -82,7 +82,7 @@ async function readHomeData(): Promise<HomeData | 'onboarding' | 'age-band-updat
     ]);
     trace('readHomeData/family-ok', { activeId: active?.id ?? null, profiles: profiles.length }); // [DIAG]
     if (!active) return 'onboarding';
-    if (!active.dateOfBirth || isLegacyAgeBand(active.ageBand)) return 'age-band-update';
+    if (isLegacyAgeBand(active.ageBand)) return 'age-band-update';
     const childUseCases = await getChildExperienceUseCases();
     trace('readHomeData/usecases-ok'); // [DIAG]
     const progress = await childUseCases.getProgress(active.id);

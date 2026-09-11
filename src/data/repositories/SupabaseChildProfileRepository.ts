@@ -52,7 +52,7 @@ export class SupabaseChildProfileRepository implements CloudChildProfileReposito
           id: profile.id,
           parent_id: profile.parentId,
           nickname: profile.nickname,
-          date_of_birth: profile.dateOfBirth,
+          ...(profile.dateOfBirth !== null ? { date_of_birth: profile.dateOfBirth } : {}),
           age_band: profile.ageBand,
           avatar_id: profile.avatarId,
           created_at: profile.createdAt,
