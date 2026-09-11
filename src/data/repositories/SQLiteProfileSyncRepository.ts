@@ -79,7 +79,13 @@ export class SQLiteProfileSyncRepository implements LocalProfileSyncRepository {
       // install), so blindly accepting it would silently revert an edit the
       // moment it loses a race with its own (still in-flight) push, and — since
       // sync_status would otherwise reset to 'synced' — never retry it again.
-      // date_of_birth keeps its own COALESCE rule below regardless.
+      // date_of_birth does NOT follow the pending/failed local-edit guard above:
+      // the product no longer collects or writes it anywhere, so it is not
+      // something a pending local edit could ever legitimately be protecting.
+      // The cloud is unconditionally authoritative for this one column —
+      // `excluded.date_of_birth` (NULL on every real recovery now) always wins,
+      // regardless of this row's sync_status, so a stale local birth date from
+      // before the product change is cleared out even mid-edit.
       await this.database.runAsync(
         `INSERT INTO child_profiles
           (id, family_id, nickname, date_of_birth, age_band, avatar_id, created_at, archived_at,
@@ -88,7 +94,7 @@ export class SQLiteProfileSyncRepository implements LocalProfileSyncRepository {
          ON CONFLICT(id) DO UPDATE SET
           nickname = CASE WHEN child_profiles.sync_status IN ('pending', 'failed')
             THEN child_profiles.nickname ELSE excluded.nickname END,
-          date_of_birth = COALESCE(excluded.date_of_birth, child_profiles.date_of_birth),
+          date_of_birth = excluded.date_of_birth,
           age_band = CASE WHEN child_profiles.sync_status IN ('pending', 'failed')
             THEN child_profiles.age_band ELSE excluded.age_band END,
           avatar_id = CASE WHEN child_profiles.sync_status IN ('pending', 'failed')

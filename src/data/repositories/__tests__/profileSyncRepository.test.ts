@@ -159,6 +159,83 @@ describe('SQLiteProfileSyncRepository.upsertCloud', () => {
       expect(row?.sync_status).toBe('synced');
     });
 
+    it('clears a stale local date_of_birth to NULL when the cloud row has none, while keeping the explicit age_band', async () => {
+      const database = new NodeSQLiteDatabase();
+      const sqlite = database as unknown as SQLiteDatabase;
+      await migrateDatabase(sqlite);
+      await sqlite.runAsync(
+        `INSERT INTO families (id, created_at, locale, timezone) VALUES ('family-1', '2026-08-01T00:00:00.000Z', 'tr', 'Europe/Istanbul')`,
+      );
+      // A device that collected a real birth date before the product stopped
+      // doing so: local still has one, sync_status is 'synced' (no pending edit).
+      await sqlite.runAsync(
+        `INSERT INTO child_profiles
+          (id, family_id, nickname, date_of_birth, age_band, avatar_id, created_at, archived_at,
+           remote_id, parent_auth_user_id, sync_status, updated_at)
+         VALUES (?, 'family-1', 'Emrah', '2017-03-15', '7_11', 'inci', '2026-08-01T00:00:00.000Z',
+           NULL, ?, ?, 'synced', '2026-08-29T09:00:00.000Z')`,
+        cloudProfile.id,
+        cloudProfile.id,
+        parentId,
+      );
+      const repository = new SQLiteProfileSyncRepository(sqlite);
+
+      // The cloud row (never wrote date_of_birth) carries the same explicit
+      // age_band but no birth date at all.
+      await repository.upsertCloud({ ...cloudProfile, dateOfBirth: null, ageBand: '7_11' });
+
+      const row = await sqlite.getFirstAsync<{ date_of_birth: string | null; age_band: string }>(
+        'SELECT date_of_birth, age_band FROM child_profiles WHERE id = ?',
+        cloudProfile.id,
+      );
+      expect(row?.date_of_birth).toBeNull();
+      expect(row?.age_band).toBe('7_11');
+    });
+
+    it.each(['pending', 'failed'] as const)(
+      'a null cloud date_of_birth clears local DOB even mid-edit (sync_status "%s"), while age_band still keeps its own pending/failed guard',
+      async (syncStatus) => {
+        const database = new NodeSQLiteDatabase();
+        const sqlite = database as unknown as SQLiteDatabase;
+        await migrateDatabase(sqlite);
+        await sqlite.runAsync(
+          `INSERT INTO families (id, created_at, locale, timezone) VALUES ('family-1', '2026-08-01T00:00:00.000Z', 'tr', 'Europe/Istanbul')`,
+        );
+        // A not-yet-pushed local nickname/avatar/age_band edit is in flight
+        // (sync_status pending/failed) — unrelated to date_of_birth, which the
+        // product no longer collects or edits at all.
+        await sqlite.runAsync(
+          `INSERT INTO child_profiles
+            (id, family_id, nickname, date_of_birth, age_band, avatar_id, created_at, archived_at,
+             remote_id, parent_auth_user_id, sync_status, updated_at)
+           VALUES (?, 'family-1', 'Yeni Isim', '2017-03-15', '7_11', 'inci', '2026-08-01T00:00:00.000Z',
+             NULL, ?, ?, ?, '2026-08-29T09:00:00.000Z')`,
+          cloudProfile.id,
+          cloudProfile.id,
+          parentId,
+          syncStatus,
+        );
+        const repository = new SQLiteProfileSyncRepository(sqlite);
+
+        // Stale pre-edit cloud row: different nickname/age_band, no DOB.
+        await repository.upsertCloud({ ...cloudProfile, dateOfBirth: null, ageBand: '4_6' });
+
+        const row = await sqlite.getFirstAsync<{
+          date_of_birth: string | null;
+          age_band: string;
+          nickname: string;
+          sync_status: string;
+        }>(
+          'SELECT date_of_birth, age_band, nickname, sync_status FROM child_profiles WHERE id = ?',
+          cloudProfile.id,
+        );
+        expect(row?.date_of_birth).toBeNull(); // cloud DOB wins unconditionally
+        expect(row?.age_band).toBe('7_11'); // pending/failed local edit still protected
+        expect(row?.nickname).toBe('Yeni Isim'); // pending/failed local edit still protected
+        expect(row?.sync_status).toBe(syncStatus); // still retried, not silently marked synced
+      },
+    );
+
     it('never resurrects a locally-archived child while its removal is still pending in the outbox', async () => {
       const database = new NodeSQLiteDatabase();
       const sqlite = database as unknown as SQLiteDatabase;

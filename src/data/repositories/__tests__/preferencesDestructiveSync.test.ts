@@ -537,9 +537,11 @@ describe('root cause: bulk preferences push cannot destroy an unresolved sibling
 // DOB completeness
 // ---------------------------------------------------------------------------
 describe('DOB completeness across recovery', () => {
-  it('a null cloud DOB never erases a known local DOB (recoverFromCloud runs on every bootstrap)', async () => {
+  it('a null cloud DOB clears a STALE local DOB (product no longer collects/writes birth dates)', async () => {
     const db = new NodeSQLiteDatabase();
     await migrateDatabase(asDb(db));
+    // Simulates an older device that collected a real birth date before the
+    // product stopped doing so.
     await seedChild(db, 'child-1', { dateOfBirth: '2019-05-04' });
     const localSync = new SQLiteProfileSyncRepository(asDb(db));
     const cloud = new FakeCloudProfiles();
@@ -547,7 +549,7 @@ describe('DOB completeness across recovery', () => {
       id: 'child-1',
       parentId: 'parent-1',
       nickname: 'child-1',
-      dateOfBirth: null, // stale/incomplete cloud row
+      dateOfBirth: null, // the cloud never writes this column anymore
       ageBand: '4_6',
       avatarId: 'inci',
       createdAt: '2026-08-01T00:00:00.000Z',
@@ -558,7 +560,7 @@ describe('DOB completeness across recovery', () => {
 
     await useCases.recoverFromCloud();
 
-    expect(await readDob(db, 'child-1')).toBe('2019-05-04'); // preserved, not nulled
+    expect(await readDob(db, 'child-1')).toBeNull(); // cloud NULL wins, stale local value cleared
     db.close();
   });
 
@@ -587,7 +589,7 @@ describe('DOB completeness across recovery', () => {
     db.close();
   });
 
-  it('survives 100 repeated recovery cycles with a null cloud DOB — never flips to null even once', async () => {
+  it('stays NULL across 100 repeated recovery cycles with a null cloud DOB — never flips back to a stale value', async () => {
     const db = new NodeSQLiteDatabase();
     await migrateDatabase(asDb(db));
     await seedChild(db, 'child-1', { dateOfBirth: '2017-11-30' });
@@ -608,7 +610,7 @@ describe('DOB completeness across recovery', () => {
 
     for (let i = 0; i < 100; i += 1) {
       await useCases.recoverFromCloud();
-      expect(await readDob(db, 'child-1')).toBe('2017-11-30');
+      expect(await readDob(db, 'child-1')).toBeNull();
     }
     db.close();
   });
