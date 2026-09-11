@@ -52,7 +52,12 @@ export class SupabaseChildProfileRepository implements CloudChildProfileReposito
           id: profile.id,
           parent_id: profile.parentId,
           nickname: profile.nickname,
-          ...(profile.dateOfBirth !== null ? { date_of_birth: profile.dateOfBirth } : {}),
+          // date_of_birth is deliberately NEVER sent to Supabase, even when a
+          // device's local profile still carries one from before we stopped
+          // collecting it. This is the only create/update/claim path that
+          // writes public.child_profiles, so omitting the field here — rather
+          // than gating it on `profile.dateOfBirth` — is what keeps a stale
+          // local value from ever reaching the cloud again.
           age_band: profile.ageBand,
           avatar_id: profile.avatarId,
           created_at: profile.createdAt,
