@@ -18,7 +18,7 @@ export default function DateOfBirthUpdateRedirect() {
       .then((useCases) => useCases.getActiveProfile())
       .then((profile) => {
         if (!profile) return router.replace('/onboarding/nickname');
-        if (profile.dateOfBirth && !isLegacyAgeBand(profile.ageBand)) {
+        if (!isLegacyAgeBand(profile.ageBand)) {
           return router.replace('/(child)');
         }
         draft.beginExistingProfile({

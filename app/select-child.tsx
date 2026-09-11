@@ -62,7 +62,7 @@ export default function SelectChildScreen() {
       const family = await getFamilyUseCases();
       await family.selectActiveProfile(profile.id);
       router.replace(
-        !profile.dateOfBirth || isLegacyAgeBand(profile.ageBand)
+        isLegacyAgeBand(profile.ageBand)
           ? '/age-band-update'
           : '/(child)',
       );

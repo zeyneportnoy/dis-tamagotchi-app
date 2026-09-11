@@ -71,7 +71,7 @@ export default function ParentAccountScreen() {
     const ageBand =
       profile.ageBand === '4_6' || profile.ageBand === '7_11' ? profile.ageBand : null;
     const avatarId = starterAvatarKeys.includes(profile.avatarId) ? profile.avatarId : null;
-    if (nickname && dateOfBirth && ageBand && avatarId) {
+    if (nickname && ageBand && avatarId) {
       draft.reset();
       router.replace('/(child)');
       return;
@@ -85,7 +85,7 @@ export default function ParentAccountScreen() {
       avatarId,
     });
     if (!nickname) return router.replace('/onboarding/nickname');
-    if (!dateOfBirth || !ageBand) return router.replace('/onboarding/age-band');
+    if (!ageBand) return router.replace('/onboarding/age-band');
     router.replace('/onboarding/character');
   };
 
