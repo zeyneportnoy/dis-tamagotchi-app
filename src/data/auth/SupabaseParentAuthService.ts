@@ -29,7 +29,18 @@ export class SupabaseParentAuthService implements ParentAuthService {
         emailRedirectTo: authLinks.emailVerification,
       },
     });
-    if (error) throw new Error(error.status === 429 ? 'AUTH_RATE_LIMIT' : 'AUTH_SIGN_UP_FAILED');
+    if (error) {
+      if (error.code === 'user_already_exists' || /already registered/i.test(error.message)) {
+        throw new Error('AUTH_EMAIL_ALREADY_REGISTERED');
+      }
+      throw new Error(error.status === 429 ? 'AUTH_RATE_LIMIT' : 'AUTH_SIGN_UP_FAILED');
+    }
+    // With email confirmation on, signUp for an already-registered, confirmed
+    // email returns no error — an obfuscated user with an empty `identities`
+    // array instead (Supabase's documented anti-enumeration behavior).
+    if (data.user?.identities?.length === 0) {
+      throw new Error('AUTH_EMAIL_ALREADY_REGISTERED');
+    }
     return data.user ? toSession(data.user) : null;
   }
 

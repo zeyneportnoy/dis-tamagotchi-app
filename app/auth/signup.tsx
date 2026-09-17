@@ -104,6 +104,7 @@ export default function SignUpScreen() {
   const [guardianConfirmed, setGuardianConfirmed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [emailAlreadyRegistered, setEmailAlreadyRegistered] = useState(false);
   const [passwordTooShort, setPasswordTooShort] = useState(false);
   const [passwordMismatch, setPasswordMismatch] = useState(false);
 
@@ -113,6 +114,7 @@ export default function SignUpScreen() {
     if (!useCases || saving) return setFailed(true);
     setSaving(true);
     setFailed(false);
+    setEmailAlreadyRegistered(false);
     setPasswordTooShort(false);
     setPasswordMismatch(false);
     try {
@@ -139,6 +141,8 @@ export default function SignUpScreen() {
               issue.path[0] === 'passwordConfirmation' && issue.message === 'PASSWORD_MISMATCH',
           ),
         );
+      } else if (error instanceof Error && error.message === 'AUTH_EMAIL_ALREADY_REGISTERED') {
+        setEmailAlreadyRegistered(true);
       } else {
         setFailed(true);
       }
@@ -272,6 +276,9 @@ export default function SignUpScreen() {
                 {configured ? t('auth.signupError') : t('auth.configMissingBody')}
               </Text>
             ) : null}
+            {emailAlreadyRegistered ? (
+              <Text style={styles.error}>{t('auth.emailAlreadyRegistered')}</Text>
+            ) : null}
           </View>
 
           <View style={styles.actions}>
@@ -286,6 +293,20 @@ export default function SignUpScreen() {
               label={t('auth.createAccount')}
               onPress={() => void submit()}
             />
+            {emailAlreadyRegistered ? (
+              <>
+                <Button
+                  label={t('auth.login')}
+                  onPress={() => router.replace('/auth/login')}
+                  variant="secondary"
+                />
+                <Button
+                  label={t('auth.forgotPassword')}
+                  onPress={() => router.push('/auth/forgot-password')}
+                  variant="secondary"
+                />
+              </>
+            ) : null}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

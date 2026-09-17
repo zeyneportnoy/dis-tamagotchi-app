@@ -47,6 +47,7 @@ export const tr = {
         checkbox: 'Çocuğun ebeveyni veya yasal velisi olduğumu onaylıyorum.',
       },
       signupError: 'Bilgileri kontrol edip yeniden deneyin.',
+      emailAlreadyRegistered: 'Bu e-posta adresiyle zaten bir hesap var.',
       loginTitle: 'Veli girişi',
       loginBody: 'Çocuk profillerine güvenli biçimde eriş.',
       login: 'Giriş Yap',
