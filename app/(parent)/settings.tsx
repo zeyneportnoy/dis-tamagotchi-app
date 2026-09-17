@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 
 import { getFamilyUseCases, type ChildProfileViewModel } from '@/application/family';
 import { syncAllChildPreferences } from '@/application/sync';
-import { Button, Screen, ScreenHeader, Text, colors, radii, spacing } from '@/design-system';
+import { Button, Screen, ScreenHeader, Text, colors, radii, spacing, typography } from '@/design-system';
 import { useAuth } from '@/features/auth';
 import {
   brushingVoiceCues,
@@ -89,6 +89,18 @@ export default function ParentSettingsScreen() {
           />
         </View>
         <View style={styles.section}>
+          <Pressable
+            accessibilityLabel={t('parent.cavityRiskTest.title')}
+            accessibilityRole="button"
+            onPress={() => router.push('/(parent)/cavity-risk-test')}
+            style={({ pressed }) => [styles.cavityRiskCard, pressed && styles.cavityRiskCardPressed]}
+            testID="open-cavity-risk-test"
+          >
+            <Text style={styles.cavityRiskTitle}>{t('parent.cavityRiskTest.title')}</Text>
+            <Text style={styles.cavityRiskSubtitle}>{t('parent.cavityRiskTest.card.subtitle')}</Text>
+          </Pressable>
+        </View>
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('parent.settings.voiceGuide.title')}</Text>
           <Text style={styles.sectionBody}>{t('parent.settings.voiceGuide.body')}</Text>
           <View accessibilityRole="radiogroup" style={styles.voiceOptions}>
@@ -158,6 +170,15 @@ export default function ParentSettingsScreen() {
 }
 
 const styles = StyleSheet.create({
+  cavityRiskCard: { gap: spacing.xs / 2 },
+  cavityRiskCardPressed: { opacity: 0.72 },
+  cavityRiskSubtitle: { color: colors.textPrimary, fontSize: typography.size.caption, opacity: 0.66 },
+  cavityRiskTitle: {
+    color: colors.brandPrimary,
+    fontFamily: typography.family.display,
+    fontSize: typography.button,
+    fontWeight: '700',
+  },
   content: { gap: spacing.lg, paddingBottom: spacing.xl },
   screen: { justifyContent: 'flex-start' },
   section: {

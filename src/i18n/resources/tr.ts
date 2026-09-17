@@ -782,6 +782,97 @@ export const tr = {
           appointmentBody: 'Yarınki diş hekimi ziyaretini unutmayın.',
         },
       },
+      cavityRiskTest: {
+        card: {
+          subtitle: '2 dakikalık kısa değerlendirme',
+        },
+        title: 'Çürük Riski Testi',
+        progress: '{{current}} / {{total}}',
+        back: 'Geri',
+        continueLabel: 'Devam',
+        seeResult: 'Sonucu Gör',
+        done: 'Tamam',
+        disclaimer:
+          'Bu değerlendirme bilgilendirme amaçlı bir ön değerlendirmedir ve diş hekimi muayenesinin yerini tutmaz.',
+        questions: [
+          {
+            text: 'Son dönemde çocuğunuzda çürük nedeniyle dolgu, çekim veya başka bir tedavi yapıldı mı?',
+            options: ['Hayır, son 3 yılda olmadı', '1–3 yıl önce oldu', 'Son 12 ay içinde oldu'],
+          },
+          {
+            text: 'Diş hekiminiz çocuğunuzda şu anda çürük veya başlangıç çürüğü/beyaz leke olduğunu söyledi mi?',
+            options: ['Hayır', 'Bilmiyorum / kontrol edilmedi', 'Evet'],
+          },
+          {
+            text: 'Çocuğunuz öğün aralarında şekerli yiyecek veya içecek ne sıklıkta tüketiyor?',
+            options: ['Nadiren / her gün değil', 'Günde 1–2 kez', 'Günde 3 veya daha fazla'],
+          },
+          {
+            text: 'Uyumadan önce veya gece, dişlerini fırçaladıktan sonra su dışında bir şey tüketiyor mu?',
+            options: ['Hayır / yalnızca su', 'Bazen', 'Çoğu gece / her gece'],
+          },
+          {
+            text: 'Florürlü diş macunu kullanıyor mu?',
+            options: ['Evet', 'Bilmiyorum', 'Hayır'],
+          },
+          {
+            text: 'Dişler ne sıklıkta fırçalanıyor?',
+            options: ['Günde 2 veya daha fazla', 'Günde 1 kez', 'Her gün değil'],
+          },
+          {
+            text: 'Fırçalama ebeveyn tarafından yapılıyor veya kontrol ediliyor mu?',
+            options: ['Düzenli olarak', 'Bazen', 'Hayır'],
+          },
+          {
+            text: 'Dişlerin üzerinde sık sık gözle görülür plak/birikinti fark ediyor musunuz?',
+            options: ['Hayır / nadiren', 'Bazen', 'Sık sık'],
+          },
+          {
+            text: 'Çocuğunuzda çürük riskini artırabilecek özel bir durum var mı?',
+            options: [
+              'Hayır',
+              'Bilmiyorum',
+              'Ağız kuruluğu, tükürüğü azaltan ilaç, mine gelişim bozukluğu veya temizliği zorlaştıran ağız içi aparey var',
+            ],
+          },
+          {
+            text: 'Çocuğunuz düzenli diş hekimi kontrolüne gidiyor mu?',
+            options: ['Son 6–12 ay içinde kontrol edildi', '12–24 ay oldu', '2 yıldan uzun / hiç gitmedi'],
+          },
+        ],
+        result: {
+          low: {
+            title: 'Çürük riski: Düşük 🟢',
+            body: 'Harika gidiyorsunuz! Çocuğunuzun mevcut alışkanlıkları çürükten korunmayı destekliyor.',
+            tip: 'Günde iki kez florürlü diş macunuyla fırçalamaya, şekerli yiyecek ve içecekleri öğün aralarında sınırlamaya ve düzenli diş hekimi kontrollerine devam edin.',
+          },
+          medium: {
+            title: 'Çürük riski: Orta 🟡',
+            body: 'Çocuğunuzda çürük gelişimini artırabilecek bazı faktörler bulunuyor. Bunların önemli bir kısmı günlük alışkanlıklardaki küçük değişikliklerle iyileştirilebilir.',
+          },
+          high: {
+            title: 'Çürük riski: Yüksek 🔴',
+            body: 'Verdiğiniz yanıtlara göre çocuğunuzda çürük gelişimi açısından dikkat edilmesi gereken birden fazla faktör bulunuyor.',
+            extraNote:
+              'Mevcut veya yakın dönem çürük öyküsü nedeniyle çocuğunuzun diş hekimi tarafından değerlendirilmesini öneriyoruz.',
+          },
+        },
+        tips: {
+          sugar: '🍭 Şekerli atıştırma ve içeceklerin gün içindeki sıklığını azaltmaya çalışın.',
+          nightIntake: '🌙 Gece fırçalamadan sonra mümkün olduğunca yalnızca su tüketilmesini tercih edin.',
+          fluoride:
+            '🪥 Çocuğun yaşına uygun miktarda florürlü diş macunu kullanılması çürükten korunmaya yardımcı olabilir.',
+          brushingFrequency: '🪥 Günde iki kez düzenli diş fırçalamayı hedefleyin.',
+          parentSupervision:
+            '👨‍👩‍👧 Özellikle küçük çocuklarda fırçalamanın bir yetişkin tarafından yapılması veya kontrol edilmesi faydalıdır.',
+          plaque: '✨ Diş yüzeylerinde birikinti kalmaması için fırçalama tekniğini ve ağız bakımını gözden geçirin.',
+          dentistCheck: '🦷 Çocuğunuz için bir diş hekimi kontrolü planlayın.',
+          existingCaries:
+            '🦷 Çürüklerin ve başlangıç lezyonlarının değerlendirilmesi için diş hekiminizle görüşün.',
+          specialCondition:
+            '💧 Çürük riskini artırabilecek özel durumlar için çocuğunuzun diş hekimiyle kişisel koruyucu bakım planı oluşturun.',
+        },
+      },
       moodLab: {
         open: 'Character Preview / Mood Lab',
         title: 'Character Preview / Mood Lab',
