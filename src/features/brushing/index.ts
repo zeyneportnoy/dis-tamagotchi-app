@@ -24,5 +24,6 @@ export {
 } from './completionMessages';
 export * from './brushMotion';
 export * from './completionJingles';
+export * from './OffSlotCompletionNotice';
 export * from './voiceGuidance';
 export { ensureVoicePreviewAudioMode } from './voicePreview';

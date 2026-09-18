@@ -59,6 +59,7 @@ import {
   chooseCompletionJingleIndex,
   completionJingles,
   completionRewardPresentation,
+  OffSlotCompletionNotice,
   growthCompletionMessageKey,
   getBrushingVoiceCue,
   getBrushingVoiceProfile,
@@ -69,6 +70,7 @@ import {
   personalizedVoiceCueIndexes,
   shouldPlayVoiceCue,
   shouldEmitAlignedTick,
+  shouldShowOffSlotCompletionNotice,
   warmPersonalizedVoiceCue,
   type BrushingVoiceProfile,
   type PersonalizedVoiceCueIndex,
@@ -683,6 +685,7 @@ export default function BrushingScreen() {
   const [exitConfirmation, setExitConfirmation] = useState(false);
   const [exitSaving, setExitSaving] = useState(false);
   const [result, setResult] = useState<BrushingRewardResult | null>(null);
+  const [offSlotNoticeDismissed, setOffSlotNoticeDismissed] = useState(false);
   const [completionMessageKey, setCompletionMessageKey] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [appStateStatus, setAppStateStatus] = useState(AppState.currentState);
@@ -1323,6 +1326,10 @@ export default function BrushingScreen() {
 
   if (result) {
     const completionStage = growthStageForXp(result.progress.totalXp);
+    const showOffSlotNotice = shouldShowOffSlotCompletionNotice(
+      result.session.completed,
+      result.session.completedAt,
+    );
     const rewardPresentation = completionRewardPresentation(
       result.session.period,
       result.xpGranted,
@@ -1376,12 +1383,12 @@ export default function BrushingScreen() {
                   </Text>
                 </View>
               </View>
-            ) : (
+            ) : !showOffSlotNotice ? (
               <View style={styles.noRewardCopy} testID="brushing-no-reward-copy">
                 <Text style={styles.noRewardTitle}>{t(rewardPresentation.titleKey)}</Text>
                 <Text style={styles.centerText}>{t(rewardPresentation.detailKey)}</Text>
               </View>
-            )}
+            ) : null}
             <Text style={styles.centerText}>
               {t('brushing.dailyResult', {
                 evening: result.dailyProgress.eveningCompleted ? '✓' : '•',
@@ -1426,6 +1433,10 @@ export default function BrushingScreen() {
             }}
           />
         </ScrollView>
+        <OffSlotCompletionNotice
+          onDismiss={() => setOffSlotNoticeDismissed(true)}
+          visible={showOffSlotNotice && !offSlotNoticeDismissed}
+        />
       </Screen>
     );
   }
