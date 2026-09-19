@@ -170,7 +170,14 @@ export default function ParentSettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  cavityRiskCard: { gap: spacing.xs / 2 },
+  cavityRiskCard: {
+    alignItems: 'center',
+    borderColor: colors.brandPrimary,
+    borderRadius: radii.md,
+    borderWidth: 2,
+    gap: spacing.xs / 2,
+    paddingHorizontal: spacing.md,
+  },
   cavityRiskCardPressed: { opacity: 0.72 },
   cavityRiskSubtitle: { color: colors.textPrimary, fontSize: typography.size.caption, opacity: 0.66 },
   cavityRiskTitle: {
