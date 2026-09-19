@@ -15,7 +15,7 @@ import {
   typography,
 } from '@/design-system';
 import { getFamilyUseCases } from '@/application/family';
-import { syncChildReminders } from '@/application/sync';
+import { ensureChildPreferencesRecovered, syncChildReminders } from '@/application/sync';
 import { useAuth } from '@/features/auth';
 import {
   defaultReminderSettings,
@@ -57,6 +57,11 @@ export default function BrushingRemindersScreen() {
       .then(async (activeProfile) => {
         if (!activeProfile) return;
         setChildProfileId(activeProfile.id);
+        // Cloud recovery may still be in flight (deferred, non-blocking bootstrap
+        // path — see app/index.tsx). Without this, a screen opened before it
+        // resolves reads and permanently displays local defaults instead of the
+        // real recovered preference.
+        await ensureChildPreferencesRecovered();
         setSettings(await reminderSettingsService.get(userId, activeProfile.id));
       })
       .catch(() => undefined);

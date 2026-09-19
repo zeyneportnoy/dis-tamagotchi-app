@@ -10,7 +10,6 @@ import {
   retryPendingCloudSync,
 } from '@/application/sync';
 import { perfMark, perfSince, perfStep } from '@/config/perf';
-import { trace, traceErr } from '@/debug/traceSink'; // [DIAG]
 import { ErrorState } from '@/design-system';
 import { isLegacyAgeBand } from '@/domain/family';
 import { useAuth } from '@/features/auth';
@@ -69,17 +68,13 @@ function deferCloudRecovery(): void {
       if (sync) {
         await perfStep('bootstrap:recoverFromCloud(deferred)', () => sync.recoverFromCloud());
       }
-      trace('defer/start'); // [DIAG]
       await perfStep('bootstrap:recoverChildData(deferred)', ensureChildDataRecovered);
-      trace('defer/recoverChildData-ok'); // [DIAG]
       await perfStep(
         'bootstrap:recoverChildPreferences(deferred)',
         ensureChildPreferencesRecovered,
       );
-      trace('defer/recoverChildPreferences-ok'); // [DIAG]
       void retryPendingCloudSync();
     } catch (error) {
-      traceErr('defer/THROW', error); // [DIAG]
       console.warn('index: deferred cloud recovery failed (non-blocking)', error);
     }
   })();

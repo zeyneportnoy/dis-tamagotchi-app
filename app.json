@@ -2,6 +2,7 @@
   "expo": {
     "name": "DentHero",
     "slug": "dis-tamagotchi",
+    "owner": "zeyneportnoy",
     "version": "1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -23,7 +24,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.distamagotchi.app",
-      "buildNumber": "7",
+      "buildNumber": "10",
       "infoPlist": {
         "CFBundleDisplayName": "DentHero",
         "CFBundleName": "DentHero"
@@ -33,10 +34,22 @@
       "package": "com.distamagotchi.app",
       "adaptiveIcon": {
         "backgroundColor": "#F7F7F4"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
     },
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "8d021c6e-d18f-49a7-80b8-45ad2192657f"
+      }
     }
   }
 }

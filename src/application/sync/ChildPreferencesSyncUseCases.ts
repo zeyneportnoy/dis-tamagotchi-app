@@ -7,8 +7,6 @@ import type {
   LocalChildPreferenceSyncRepository,
 } from '@/domain/sync';
 
-import { trace, traceErr } from '@/debug/traceSink'; // [DIAG]
-
 /**
  * Voice + morning/evening reminder preferences are now stored per child. These
  * accessors keep this use case free of feature-module imports; every call is
@@ -239,31 +237,21 @@ export class ChildPreferencesSyncUseCases {
   }
 
   private async recoverAllChildren(): Promise<void> {
-    trace('recoverAll/start'); // [DIAG]
-    const rows = await this.cloud.listOwned();
-    trace('recoverAll/listOwned-ok', { rows: rows.length }); // [DIAG]
-    for (const row of rows) {
+    for (const row of await this.cloud.listOwned()) {
       try {
         await this.recoverChild(row);
-        trace('recoverAll/child-ok', { childId: row.childId }); // [DIAG]
       } catch (err) {
         // Per-child isolation: one child's failure (e.g. a transient SQLite
         // contention error) must never stop the remaining children from
         // recovering. Logged rather than swallowed silently so it is visible.
         console.warn(`[childPreferencesSync] recover: skipped child ${row.childId}`, err);
-        traceErr('recoverAll/child-SKIPPED', err); // [DIAG]
       }
     }
-    trace('recoverAll/end', { total: rows.length }); // [DIAG]
   }
 
   private async recoverChild(row: CloudChildPreferences): Promise<void> {
-    trace('recoverChild/start', { childId: row.childId }); // [DIAG]
     const profileId = await this.local.findProfileByRemoteChildId(row.childId);
-    if (!profileId) {
-      trace('recoverChild/no-profile', { childId: row.childId }); // [DIAG]
-      return;
-    }
+    if (!profileId) return;
 
     // Customization (brush / background / effect / room layout): the cloud row
     // is authoritative once this device has no unpushed local change of its
@@ -275,10 +263,8 @@ export class ChildPreferencesSyncUseCases {
     const hasLocalCustomization = await this.local.hasLocalCustomization(profileId);
     const customizationClean =
       !hasLocalCustomization || !(await this.local.readCustomizationSyncMeta(profileId)).dirty;
-    trace('recoverChild/custo', { childId: row.childId, customizationClean }); // [DIAG]
     if (customizationClean) {
       await this.local.hydrateCustomization(profileId, row);
-      trace('recoverChild/hydrated', { childId: row.childId }); // [DIAG]
     }
 
     // Dentist last-visit / next-appointment dates live purely on the child row
