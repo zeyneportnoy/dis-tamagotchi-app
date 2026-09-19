@@ -432,35 +432,48 @@ function AnimatedToothbrush({
   );
 }
 
-const celebrationParticles = [
-  { color: '#FFD166', left: '8%', top: '14%' },
-  { color: '#FF6B81', left: '23%', top: '7%' },
-  { color: '#42D6C5', left: '40%', top: '13%' },
-  { color: '#FFFFFF', left: '57%', top: '6%' },
-  { color: '#FF9FC6', left: '73%', top: '15%' },
-  { color: '#FFD166', left: '87%', top: '8%' },
-  { color: '#42D6C5', left: '14%', top: '45%' },
-  { color: '#FFFFFF', left: '82%', top: '42%' },
-] as const;
+const celebrationColors = ['#FF8FB8', '#FFD166', '#42D6C5', '#8F7CFF', '#72B7FF'] as const;
+const celebrationOrigins = ['22%', '50%', '78%'] as const;
+const celebrationParticles = Array.from({ length: 32 }, (_, index) => {
+  const spreadStep = (index % 11) - 5;
+  const direction = index % 2 === 0 ? 1 : -1;
+  const burstX = Math.max(-150, Math.min(150, spreadStep * 28 + direction * 12));
+
+  return {
+    burstX,
+    burstY: -45 + (index % 6) * 23,
+    color: celebrationColors[index % celebrationColors.length],
+    fallX: Math.max(-150, Math.min(150, burstX + direction * (12 + (index % 4) * 6))),
+    fallY: 180 + (index % 7) * 40,
+    height: 8 + (index % 5) * 2,
+    left: celebrationOrigins[index % celebrationOrigins.length],
+    rotation: direction * (180 + (index % 5) * 90),
+    top: 48 + (index % 4) * 8,
+    width: index % 3 === 0 ? 8 : 8 + (index % 5) * 2,
+  };
+});
 
 function CompletionCelebration({ stage }: { stage: ReturnType<typeof growthStageForXp> }) {
   const [burst] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(burst, {
-          duration: stage >= 3 ? 850 : 1100,
-          easing: Easing.out(Easing.cubic),
-          toValue: 1,
-          useNativeDriver: true,
-        }),
-        Animated.timing(burst, { duration: 280, toValue: 0, useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [burst, stage]);
+    const animation = Animated.sequence([
+      Animated.timing(burst, {
+        duration: 500,
+        easing: Easing.out(Easing.cubic),
+        toValue: 1,
+        useNativeDriver: true,
+      }),
+      Animated.timing(burst, {
+        duration: 950,
+        easing: Easing.in(Easing.quad),
+        toValue: 2,
+        useNativeDriver: true,
+      }),
+    ]);
+    animation.start();
+    return () => animation.stop();
+  }, [burst]);
 
   return (
     <View
@@ -470,27 +483,43 @@ function CompletionCelebration({ stage }: { stage: ReturnType<typeof growthStage
     >
       {celebrationParticles.map((particle, index) => (
         <Animated.View
-          key={`${particle.left}-${particle.top}`}
+          key={index}
           style={[
             styles.confettiParticle,
-            particle,
-            index % 2 === 0 ? styles.confettiRound : styles.confettiDiamond,
+            {
+              backgroundColor: particle.color,
+              height: particle.height,
+              left: particle.left,
+              top: particle.top,
+              width: particle.width,
+            },
+            index % 4 === 0 ? styles.confettiDiamond : null,
             {
               opacity: burst.interpolate({
-                inputRange: [0, 0.15, 0.82, 1],
-                outputRange: [0.35, 1, 0.8, 0.25],
+                inputRange: [0, 0.08, 1, 1.45, 2],
+                outputRange: [0, 1, 1, 0.82, 0],
               }),
               transform: [
                 {
+                  translateX: burst.interpolate({
+                    inputRange: [0, 1, 2],
+                    outputRange: [0, particle.burstX, particle.fallX],
+                  }),
+                },
+                {
                   translateY: burst.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 18 + (index % 3) * 8],
+                    inputRange: [0, 1, 2],
+                    outputRange: [0, particle.burstY, particle.fallY],
                   }),
                 },
                 {
                   rotate: burst.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ['0deg', index % 2 === 0 ? '150deg' : '-150deg'],
+                    inputRange: [0, 1, 2],
+                    outputRange: [
+                      index % 4 === 0 ? '45deg' : '0deg',
+                      `${particle.rotation * 0.55}deg`,
+                      `${particle.rotation}deg`,
+                    ],
                   }),
                 },
               ],
@@ -1358,7 +1387,6 @@ export default function BrushingScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.celebrationStage}>
-            <CompletionCelebration stage={completionStage} />
             <Text style={styles.confettiLeft}>✦</Text>
             <Text style={styles.confettiRight}>★</Text>
             <ResultGrowth profile={profile} result={result} />
@@ -1433,6 +1461,7 @@ export default function BrushingScreen() {
             }}
           />
         </ScrollView>
+        <CompletionCelebration stage={completionStage} />
         <OffSlotCompletionNotice
           onDismiss={() => setOffSlotNoticeDismissed(true)}
           visible={showOffSlotNotice && !offSlotNoticeDismissed}
@@ -1695,11 +1724,8 @@ const styles = StyleSheet.create({
     width: 180,
   },
   celebrationEffects: {
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    top: 0,
+    ...StyleSheet.absoluteFill,
+    zIndex: 10,
   },
   celebrationStage: {
     alignItems: 'center',
@@ -1731,8 +1757,7 @@ const styles = StyleSheet.create({
     right: spacing.lg,
     top: 72,
   },
-  confettiParticle: { height: 11, position: 'absolute', width: 11 },
-  confettiRound: { borderRadius: radii.pill },
+  confettiParticle: { position: 'absolute' },
   noRewardCopy: { alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.md },
   noRewardTitle: { fontWeight: '900', textAlign: 'center' },
   controls: { gap: spacing.md },
