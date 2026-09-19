@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   Keyboard,
@@ -21,8 +21,18 @@ export default function ParentGateScreen() {
   const insets = useSafeAreaInsets();
   const challenge = useMemo(() => createParentChallenge(), []);
   const advancing = useRef(false);
+  const answerFocused = useRef(false);
+  const scrollRef = useRef<ScrollView>(null);
   const [answer, setAnswer] = useState('');
   const [incorrect, setIncorrect] = useState(false);
+
+  useEffect(() => {
+    const keyboardDidShow = Keyboard.addListener('keyboardDidShow', () => {
+      if (!answerFocused.current) return;
+      requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+    });
+    return () => keyboardDidShow.remove();
+  }, []);
 
   const advance = (): void => {
     if (advancing.current) return;
@@ -56,6 +66,7 @@ export default function ParentGateScreen() {
           contentInsetAdjustmentBehavior="never"
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
+          ref={scrollRef}
           showsVerticalScrollIndicator={false}
           testID="parent-gate-scroll"
         >
@@ -75,10 +86,17 @@ export default function ParentGateScreen() {
             <Input
               accessibilityLabel={t('parentGate.answerLabel')}
               keyboardType="number-pad"
+              onBlur={() => {
+                answerFocused.current = false;
+              }}
               onChangeText={(value) => {
                 setAnswer(value);
                 setIncorrect(false);
                 if (value.trim() && Number(value) === challenge.answer) advance();
+              }}
+              onFocus={() => {
+                answerFocused.current = true;
+                requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
               }}
               style={styles.answerInput}
               value={answer}
