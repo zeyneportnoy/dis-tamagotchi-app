@@ -30,6 +30,7 @@ export interface LocalProfileSyncRepository {
   listClaimable(parentId: string): Promise<readonly CloudChildProfile[]>;
   countClaimable(parentId: string): Promise<number>;
   upsertCloud(profile: CloudChildProfile): Promise<void>;
+  reconcileCloudSnapshot(parentId: string, activeRemoteIds: ReadonlySet<string>): Promise<void>;
   markSynced(localId: string, parentId: string, remoteId: string): Promise<void>;
   markFailed(localId: string): Promise<void>;
   listPendingRemovals(parentId: string): Promise<readonly PendingProfileRemoval[]>;

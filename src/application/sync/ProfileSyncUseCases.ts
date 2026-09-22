@@ -6,13 +6,17 @@ export class ProfileSyncUseCases {
     private readonly cloud: CloudChildProfileRepository,
   ) {}
 
-  async recoverFromCloud(): Promise<number> {
+  async recoverFromCloud(parentId: string): Promise<number> {
     // age_band is never derived from date_of_birth here: the product no longer
     // collects or writes birth dates, and an existing Supabase row may still
     // carry a stale one from before that change. The explicit `age_band` the
     // cloud row carries is authoritative and is passed through as-is.
     const profiles = await this.cloud.listOwned();
     for (const profile of profiles) await this.local.upsertCloud(profile);
+    await this.local.reconcileCloudSnapshot(
+      parentId,
+      new Set(profiles.map((profile) => profile.id)),
+    );
     return profiles.length;
   }
 

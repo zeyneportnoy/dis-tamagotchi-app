@@ -1,7 +1,8 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { ProfileSyncUseCases } from '@/application/sync/ProfileSyncUseCases';
 import { migrateDatabase } from '@/data/db';
-import type { CloudChildProfile } from '@/domain/sync';
+import type { CloudChildProfile, CloudChildProfileRepository } from '@/domain/sync';
 import { NodeSQLiteDatabase } from '@/test/NodeSQLiteDatabase';
 
 import { SQLiteProfileSyncRepository } from '../SQLiteProfileSyncRepository';
@@ -351,5 +352,141 @@ describe('SQLiteProfileSyncRepository.upsertCloud', () => {
         sync_status: 'synced',
       });
     });
+  });
+});
+
+describe('SQLiteProfileSyncRepository.reconcileCloudSnapshot', () => {
+  async function seedProfile(
+    sqlite: SQLiteDatabase,
+    values: Readonly<{
+      id: string;
+      parentId?: string;
+      remoteId?: string | null;
+      syncStatus?: string;
+    }>,
+  ): Promise<void> {
+    await sqlite.runAsync(
+      `INSERT INTO child_profiles
+        (id, family_id, nickname, age_band, avatar_id, created_at, archived_at,
+         remote_id, parent_auth_user_id, sync_status, updated_at)
+       VALUES (?, 'family-1', ?, '4_6', 'inci', '2026-09-01T00:00:00.000Z', NULL,
+         ?, ?, ?, '2026-09-01T00:00:00.000Z')`,
+      values.id,
+      values.id.slice(0, 20),
+      values.remoteId === undefined ? values.id : values.remoteId,
+      values.parentId ?? parentId,
+      values.syncStatus ?? 'synced',
+    );
+  }
+
+  async function setup(): Promise<{ database: NodeSQLiteDatabase; sqlite: SQLiteDatabase }> {
+    const database = new NodeSQLiteDatabase();
+    const sqlite = database as unknown as SQLiteDatabase;
+    await migrateDatabase(sqlite);
+    await sqlite.runAsync(
+      `INSERT INTO families (id, created_at, locale, timezone)
+       VALUES ('family-1', '2026-09-01T00:00:00.000Z', 'tr', 'Europe/Istanbul')`,
+    );
+    return { database, sqlite };
+  }
+
+  it('archives only missing clean synced children for the current parent and clears a stale active selection', async () => {
+    const { database, sqlite } = await setup();
+    await seedProfile(sqlite, { id: 'cloud-present' });
+    await seedProfile(sqlite, { id: 'cloud-missing' });
+    await seedProfile(sqlite, { id: 'pending-local', syncStatus: 'pending' });
+    await seedProfile(sqlite, { id: 'failed-local', syncStatus: 'failed' });
+    await seedProfile(sqlite, { id: 'legacy-local', syncStatus: 'legacy_local' });
+    await seedProfile(sqlite, { id: 'null-remote', remoteId: null });
+    await seedProfile(sqlite, { id: 'other-parent', parentId: 'parent-2' });
+    await seedProfile(sqlite, { id: 'pending-removal' });
+    await sqlite.runAsync(
+      `INSERT INTO pending_cloud_profile_removals
+        (remote_id, parent_auth_user_id, mode, archived_at, requested_at)
+       VALUES ('pending-removal', ?, 'delete', NULL, '2026-09-01T01:00:00.000Z')`,
+      parentId,
+    );
+    await sqlite.runAsync(
+      `INSERT INTO active_parent_profile(parent_auth_user_id, child_profile_id)
+       VALUES (?, 'cloud-missing')`,
+      parentId,
+    );
+
+    const repository = new SQLiteProfileSyncRepository(sqlite);
+    await repository.reconcileCloudSnapshot(parentId, new Set(['cloud-present']));
+
+    const rows = await sqlite.getAllAsync<{
+      id: string;
+      archived_at: string | null;
+      sync_status: string;
+    }>('SELECT id, archived_at, sync_status FROM child_profiles ORDER BY id');
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    expect(byId.get('cloud-missing')?.archived_at).not.toBeNull();
+    for (const preserved of [
+      'cloud-present',
+      'pending-local',
+      'failed-local',
+      'legacy-local',
+      'null-remote',
+      'other-parent',
+      'pending-removal',
+    ]) {
+      expect(byId.get(preserved)?.archived_at).toBeNull();
+    }
+    await expect(
+      sqlite.getFirstAsync(
+        'SELECT child_profile_id FROM active_parent_profile WHERE parent_auth_user_id = ?',
+        parentId,
+      ),
+    ).resolves.toBeNull();
+    await expect(
+      sqlite.getFirstAsync(
+        'SELECT remote_id FROM pending_cloud_profile_removals WHERE remote_id = ?',
+        'pending-removal',
+      ),
+    ).resolves.toEqual({ remote_id: 'pending-removal' });
+    database.close();
+  });
+
+  it('hides a child deleted on one device when a second device successfully recovers, without touching valid siblings', async () => {
+    const { database, sqlite } = await setup();
+    await seedProfile(sqlite, { id: 'deleted-on-device-one' });
+    await seedProfile(sqlite, { id: 'valid-sibling' });
+    await sqlite.runAsync(
+      `INSERT INTO active_parent_profile(parent_auth_user_id, child_profile_id)
+       VALUES (?, 'deleted-on-device-one')`,
+      parentId,
+    );
+    const validCloudProfile: CloudChildProfile = {
+      ...cloudProfile,
+      id: 'valid-sibling',
+      parentId,
+      nickname: 'Valid sibling',
+    };
+    const cloud: jest.Mocked<CloudChildProfileRepository> = {
+      listOwned: jest.fn().mockResolvedValue([validCloudProfile]),
+      upsert: jest.fn().mockImplementation((value) => Promise.resolve(value)),
+      remove: jest.fn().mockResolvedValue(undefined),
+    };
+
+    await new ProfileSyncUseCases(new SQLiteProfileSyncRepository(sqlite), cloud).recoverFromCloud(
+      parentId,
+    );
+
+    const rows = await sqlite.getAllAsync<{ id: string; archived_at: string | null }>(
+      `SELECT id, archived_at FROM child_profiles
+       WHERE id IN ('deleted-on-device-one', 'valid-sibling') ORDER BY id`,
+    );
+    expect(rows).toEqual([
+      { id: 'deleted-on-device-one', archived_at: expect.any(String) },
+      { id: 'valid-sibling', archived_at: null },
+    ]);
+    await expect(
+      sqlite.getFirstAsync(
+        'SELECT child_profile_id FROM active_parent_profile WHERE parent_auth_user_id = ?',
+        parentId,
+      ),
+    ).resolves.toBeNull();
+    database.close();
   });
 });

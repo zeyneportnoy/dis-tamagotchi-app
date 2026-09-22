@@ -558,7 +558,7 @@ describe('DOB completeness across recovery', () => {
     });
     const useCases = new ProfileSyncUseCases(localSync, cloud);
 
-    await useCases.recoverFromCloud();
+    await useCases.recoverFromCloud('parent-1');
 
     expect(await readDob(db, 'child-1')).toBeNull(); // cloud NULL wins, stale local value cleared
     db.close();
@@ -583,7 +583,7 @@ describe('DOB completeness across recovery', () => {
     });
     const useCases = new ProfileSyncUseCases(localSync, cloud);
 
-    await useCases.recoverFromCloud();
+    await useCases.recoverFromCloud('parent-1');
 
     expect(await readDob(db, 'child-1')).toBe('2018-03-09');
     db.close();
@@ -609,7 +609,7 @@ describe('DOB completeness across recovery', () => {
     const useCases = new ProfileSyncUseCases(localSync, cloud);
 
     for (let i = 0; i < 100; i += 1) {
-      await useCases.recoverFromCloud();
+      await useCases.recoverFromCloud('parent-1');
       expect(await readDob(db, 'child-1')).toBeNull();
     }
     db.close();

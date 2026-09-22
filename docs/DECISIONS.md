@@ -1,5 +1,16 @@
 # Teknik Kararlar
 
+# 2026-09-22 — Cloud profile snapshot yalnız başarılı fetch sonrası negatif reconcile edilir
+
+- Authenticated parent'ın başarılı Supabase `listOwned()` sonucu aktif child profil snapshot'ıdır;
+  yalnız `synced`, remote kimlikli ve parent-scoped yerel profiller bu listede yoksa yerelde arşivlenir.
+  Pending, failed, legacy-local, remote kimliksiz veya pending-removal outbox'ındaki profiller korunur.
+- Stale profil fiziksel silinmez: child'a bağlı progress, brushing geçmişi, inventory ve reminder
+  kayıtlarının `ON DELETE CASCADE` ile kaybolmaması için `archived_at` ile görünmez yapılır. Profil
+  cloud'da yeniden görünürse mevcut upsert akışı yerel arşivi güvenle geri açabilir.
+- Stale profil aktif seçiliyse parent-scoped active mapping temizlenir; mevcut manuel archive davranışı
+  gibi otomatik kardeş seçilmez. Cloud fetch hatası veya hydration hatasında negatif reconcile çalışmaz.
+
 ## 2026-08-29 — Yerel doğum tarihi ve dinamik yaş bandı
 
 - Ürün kararı gereği çocuk doğum tarihi, veli tarafından native tarih seçiciyle alınan `YYYY-MM-DD` tarih-only değeri olarak yalnız yerel `child_profiles` kaydında saklanır; Supabase şeması ve senkronizasyon sözleşmesi genişletilmez.

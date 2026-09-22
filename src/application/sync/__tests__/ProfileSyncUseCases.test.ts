@@ -18,6 +18,7 @@ const local = (): jest.Mocked<LocalProfileSyncRepository> => ({
   listClaimable: jest.fn().mockResolvedValue([profile]),
   countClaimable: jest.fn().mockResolvedValue(1),
   upsertCloud: jest.fn().mockResolvedValue(undefined),
+  reconcileCloudSnapshot: jest.fn().mockResolvedValue(undefined),
   markSynced: jest.fn().mockResolvedValue(undefined),
   markFailed: jest.fn().mockResolvedValue(undefined),
   listPendingRemovals: jest.fn().mockResolvedValue([]),
@@ -39,14 +40,35 @@ describe('ProfileSyncUseCases', () => {
     expect(localRepository.markSynced).toHaveBeenCalledWith(profile.id, 'parent-1', profile.id);
   });
 
-  it('hydrates cloud profiles into local cache and never deletes local data on failure', async () => {
+  it('hydrates cloud profiles and reconciles only after a successful authoritative fetch', async () => {
     const localRepository = local();
     const cloudRepository = cloud();
     const useCases = new ProfileSyncUseCases(localRepository, cloudRepository);
-    await expect(useCases.recoverFromCloud()).resolves.toBe(1);
+    await expect(useCases.recoverFromCloud('parent-1')).resolves.toBe(1);
     expect(localRepository.upsertCloud).toHaveBeenCalledWith(
       expect.objectContaining({ id: profile.id, parentId: 'parent-1' }),
     );
+    expect(localRepository.reconcileCloudSnapshot).toHaveBeenCalledWith(
+      'parent-1',
+      new Set([profile.id]),
+    );
+  });
+
+  it('does not reconcile or remove anything when the cloud fetch fails', async () => {
+    const localRepository = local();
+    const cloudRepository = cloud();
+    cloudRepository.listOwned.mockRejectedValueOnce(new Error('offline'));
+    const useCases = new ProfileSyncUseCases(localRepository, cloudRepository);
+
+    await expect(useCases.recoverFromCloud('parent-1')).rejects.toThrow('offline');
+    expect(localRepository.upsertCloud).not.toHaveBeenCalled();
+    expect(localRepository.reconcileCloudSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('marks a legacy profile failed when its upload fails', async () => {
+    const localRepository = local();
+    const cloudRepository = cloud();
+    const useCases = new ProfileSyncUseCases(localRepository, cloudRepository);
 
     cloudRepository.upsert.mockRejectedValueOnce(new Error('offline'));
     await expect(useCases.claimLegacyProfiles('parent-1')).resolves.toBe(0);

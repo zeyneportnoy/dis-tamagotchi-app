@@ -55,7 +55,7 @@ export async function routeForActiveChild(
  * usable screen when local state already answers the routing question, and its
  * failures must not affect navigation. Runs once per bootstrap.
  */
-function deferCloudRecovery(): void {
+function deferCloudRecovery(parentId: string): void {
   void (async () => {
     try {
       // Flush any locally-queued profile edit / archive / delete BEFORE pulling
@@ -66,7 +66,9 @@ function deferCloudRecovery(): void {
       await perfStep('bootstrap:pushPendingChildProfiles(deferred)', pushPendingChildProfiles);
       const sync = await getProfileSyncUseCases();
       if (sync) {
-        await perfStep('bootstrap:recoverFromCloud(deferred)', () => sync.recoverFromCloud());
+        await perfStep('bootstrap:recoverFromCloud(deferred)', () =>
+          sync.recoverFromCloud(parentId),
+        );
       }
       await perfStep('bootstrap:recoverChildData(deferred)', ensureChildDataRecovered);
       await perfStep(
@@ -135,7 +137,7 @@ export default function Index() {
             perfSince('bootstrap:route-decided(local)', 'bootstrap:start');
             tag(localRoute);
           }
-          deferCloudRecovery();
+          deferCloudRecovery(boundUserId);
           return;
         }
 
@@ -145,7 +147,9 @@ export default function Index() {
         // (the second -10 penalty guard) are recovered here too, before any
         // screen reads them.
         if (sync) {
-          await perfStep('bootstrap:recoverFromCloud(cold)', () => sync.recoverFromCloud());
+          await perfStep('bootstrap:recoverFromCloud(cold)', () =>
+            sync.recoverFromCloud(boundUserId),
+          );
         }
         await perfStep('bootstrap:recoverChildData(cold)', ensureChildDataRecovered);
         await perfStep(

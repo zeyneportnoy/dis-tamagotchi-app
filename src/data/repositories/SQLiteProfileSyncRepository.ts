@@ -20,6 +20,11 @@ type LegacyRow = {
   archived_at: string | null;
 };
 
+type SyncedRemoteRow = {
+  id: string;
+  remote_id: string;
+};
+
 export class SQLiteProfileSyncRepository implements LocalProfileSyncRepository {
   constructor(private readonly database: SQLiteDatabase) {}
 
@@ -53,6 +58,53 @@ export class SQLiteProfileSyncRepository implements LocalProfileSyncRepository {
       parentId,
     );
     return row?.count ?? 0;
+  }
+
+  async reconcileCloudSnapshot(
+    parentId: string,
+    activeRemoteIds: ReadonlySet<string>,
+  ): Promise<void> {
+    await this.database.withTransactionAsync(async () => {
+      const candidates = await this.database.getAllAsync<SyncedRemoteRow>(
+        `SELECT child_profiles.id, child_profiles.remote_id
+         FROM child_profiles
+         WHERE child_profiles.parent_auth_user_id = ?
+           AND child_profiles.sync_status = 'synced'
+           AND child_profiles.remote_id IS NOT NULL
+           AND child_profiles.archived_at IS NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM pending_cloud_profile_removals
+             WHERE pending_cloud_profile_removals.parent_auth_user_id = ?
+               AND pending_cloud_profile_removals.remote_id = child_profiles.remote_id
+           )`,
+        parentId,
+        parentId,
+      );
+      const archivedAt = new Date().toISOString();
+      for (const candidate of candidates) {
+        if (activeRemoteIds.has(candidate.remote_id)) continue;
+        const result = await this.database.runAsync(
+          `UPDATE child_profiles SET archived_at = ?, updated_at = ?
+           WHERE id = ?
+             AND parent_auth_user_id = ?
+             AND sync_status = 'synced'
+             AND remote_id = ?
+             AND archived_at IS NULL`,
+          archivedAt,
+          archivedAt,
+          candidate.id,
+          parentId,
+          candidate.remote_id,
+        );
+        if (result.changes === 0) continue;
+        await this.database.runAsync(
+          `DELETE FROM active_parent_profile
+           WHERE parent_auth_user_id = ? AND child_profile_id = ?`,
+          parentId,
+          candidate.id,
+        );
+      }
+    });
   }
 
   async upsertCloud(profile: CloudChildProfile): Promise<void> {
