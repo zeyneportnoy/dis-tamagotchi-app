@@ -3,7 +3,7 @@
     "name": "DentHero",
     "slug": "dis-tamagotchi",
     "owner": "zeyneportnoy",
-    "version": "1.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "distamagotchi",
@@ -24,7 +24,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.distamagotchi.app",
-      "buildNumber": "10",
+      "buildNumber": "11",
       "infoPlist": {
         "CFBundleDisplayName": "DentHero",
         "CFBundleName": "DentHero"
