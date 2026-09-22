@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { getFamilyUseCases, type ChildProfileViewModel } from '@/application/family';
+import { ensureChildDataRecovered } from '@/application/sync';
 import {
   ErrorState,
   LoadingState,
@@ -33,6 +34,15 @@ export default function SelectChildScreen() {
     let mounted = true;
     void getFamilyUseCases()
       .then(async (family) => {
+        // Wait on the same one-time cloud-recovery gate `MissedSlotReconciler`
+        // (app/_layout.tsx) awaits before its own DB writes. Without this, this
+        // screen's read and the reconciler's recovery transactions can run
+        // concurrently on the single shared SQLite connection and throw
+        // "cannot rollback - no transaction is active" (expo-sqlite does not
+        // queue concurrent transactions on one connection). Memoized, so this
+        // is a no-op once recovery has already completed this session.
+        await ensureChildDataRecovered();
+        if (!mounted) return;
         const [listed, active] = await Promise.all([
           family.listProfiles(),
           family.getActiveProfile(),
